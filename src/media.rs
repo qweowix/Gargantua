@@ -1,5 +1,5 @@
 //! Системные медиа-контролы через souvlaki: MPRIS на Linux (панели вроде quickshell/waybar, playerctl,
-//! медиа-клавиши). На Windows souvlaki нужен HWND окна — пока не передаём, там контролов нет.
+//! медиа-клавиши). На Windows — SMTC, ему нужен HWND уже показанного окна.
 
 use std::time::{Duration, Instant};
 
@@ -23,11 +23,15 @@ pub struct Media {
 }
 
 impl Media {
-    pub fn new(on: impl Fn(Action) + Send + 'static) -> Option<Self> {
+    pub fn new(hwnd: Option<*mut std::ffi::c_void>, on: impl Fn(Action) + Send + 'static) -> Option<Self> {
         // имя уникально на процесс: если открыт второй BlackHole, "blackhole" уже занято, и souvlaki
         // падал с NameTaken. Спецификация MPRIS разрешает суффикс .instanceN
         let name = format!("blackhole.instance{}", std::process::id());
-        let cfg = PlatformConfig { display_name: "BlackHole", dbus_name: &name, hwnd: None };
+        let cfg = PlatformConfig { display_name: "BlackHole", dbus_name: &name, hwnd };
+        // souvlaki на винде без HWND не ошибку возвращает, а паникует — и плеер молча закрывался
+        if cfg!(windows) && hwnd.is_none() {
+            return None;
+        }
         let mut c = MediaControls::new(cfg).map_err(|e| eprintln!("медиа-контролы: {e:?}")).ok()?;
         c.attach(move |e| {
             let a = match e {

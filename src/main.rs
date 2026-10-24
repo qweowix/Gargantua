@@ -2995,7 +2995,32 @@ impl App {
     }
 }
 
+#[cfg(windows)]
+fn win_hwnd(ui: &AppWindow) -> Option<*mut std::ffi::c_void> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    match ui.window().window_handle().window_handle().ok()?.as_raw() {
+        RawWindowHandle::Win32(h) => Some(h.hwnd.get() as *mut std::ffi::c_void),
+        _ => None,
+    }
+}
+
+/// На винде консоли нет: паника молча закрывала окно. Пишем её в crash.log рядом с data.json
+fn crash_log() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let dir = Store::dir();
+        let _ = std::fs::create_dir_all(&dir);
+        let msg = format!("{info}\n{}\n\n", std::backtrace::Backtrace::force_capture());
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("crash.log")) {
+            use std::io::Write;
+            let _ = f.write_all(msg.as_bytes());
+        }
+        prev(info);
+    }));
+}
+
 fn main() -> Result<(), slint::PlatformError> {
+    crash_log();
     // второй экземпляр держал бы в памяти старый список и при закрытии затёр бы им свежий data.json
     // Skia: текст со сглаживанием и дробными позициями — буквы в lyrics двигаются и растут плавно.
     // BLACKHOLE_RENDER=femtovg — старый лёгкий рендер (для сравнения)
@@ -3178,7 +3203,14 @@ fn main() -> Result<(), slint::PlatformError> {
     APP.with(|a| *a.borrow_mut() = Some(app));
     with(|a| a.apply_settings());
     // MPRIS: панель, playerctl и медиа-клавиши видят и управляют плеером
-    let media = media::Media::new(|act| {
+    #[cfg(windows)]
+    let hwnd = {
+        ui.show()?;
+        win_hwnd(&ui)
+    };
+    #[cfg(not(windows))]
+    let hwnd = None;
+    let media = media::Media::new(hwnd, |act| {
         post(move |a| match act {
             media::Action::Play if !a.ui.get_playing() => a.toggle(),
             media::Action::Pause if a.ui.get_playing() => a.toggle(),
