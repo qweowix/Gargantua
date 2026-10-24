@@ -51,8 +51,9 @@ pub fn read(p: &Path) -> Option<Track> {
         None => (stem.clone(), String::new()),
     };
     let (mut dur, mut cover) = (0, String::new());
-    let opts = lofty::config::ParseOptions::new().read_cover_art(false);
-    if let Ok(f) = lofty::probe::Probe::open(p).and_then(|pr| pr.options(opts).read()) {
+    // с read_cover_art(false) lofty выкидывает картинки целиком и picture_count() всегда 0 — обложка
+    // у своих файлов не показывалась никогда. Читаем с картинками (сканирование и так в фоне с nice 19)
+    if let Ok(f) = lofty::probe::Probe::open(p).and_then(|pr| pr.read()) {
         dur = f.properties().duration().as_secs();
         if let Some(tag) = f.primary_tag().or_else(|| f.first_tag()) {
             if let Some(t) = tag.title().filter(|t| !t.trim().is_empty()) {
@@ -61,7 +62,6 @@ pub fn read(p: &Path) -> Option<Track> {
             if let Some(a) = tag.artist().filter(|a| !a.trim().is_empty()) {
                 artist = a.trim().to_string();
             }
-            // read_cover_art(false) не читает саму картинку, но есть ли она — видно по тегу
             if tag.picture_count() > 0 {
                 cover = format!("{COVER}{path}");
             }
@@ -99,6 +99,29 @@ mod tests {
         let t = super::scan(&[dir.clone()]);
         assert_eq!(t.len(), 1);
         assert_eq!((t[0].artist.as_str(), t[0].title.as_str(), t[0].dur), ("TV Girl", "Lovers Rock", 2));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Обложка в тегах mp3 должна находиться: в файле она есть, а плеер её не показывал
+    #[test]
+    fn finds_embedded_cover() {
+        let dir = std::env::temp_dir().join(format!("bh-cover-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.mp3");
+        let ok = std::process::Command::new("ffmpeg")
+            .args(["-loglevel", "error", "-f", "lavfi", "-i", "sine=d=1", "-f", "lavfi", "-i", "color=red:s=64x64:d=1", "-frames:v", "1"])
+            .args(["-map", "0", "-map", "1", "-c:v", "mjpeg", "-disposition:v", "attached_pic", "-id3v2_version", "3", "-y"])
+            .arg(&f)
+            .status()
+            .is_ok_and(|s| s.success());
+        if !ok {
+            eprintln!("нет ffmpeg — пропускаю");
+            return;
+        }
+        let t = super::read(&f).unwrap();
+        assert!(!t.cover.is_empty(), "обложку не увидели");
+        assert!(super::picture(f.to_str().unwrap()).is_some());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
