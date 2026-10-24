@@ -1,9 +1,10 @@
-//! Статус «Слушает» в Discord через его локальный IPC-сокет (discord-ipc-N). Без библиотек:
+//! Статус «Слушает» в Discord через его локальный IPC (сокет discord-ipc-N, на винде — канал). Без библиотек:
 //! кадр = op (u32 LE) + длина (u32 LE) + JSON. Один фоновый поток; Discord не запущен — раз в 15 с
 //! тихо пробуем подключиться снова, пока есть что показать.
 
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream as Sock;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -43,6 +44,16 @@ impl Discord {
     }
 }
 
+/// На винде Discord слушает именованный канал — он открывается как обычный файл
+#[cfg(windows)]
+type Sock = std::fs::File;
+
+#[cfg(windows)]
+fn sockets() -> Vec<PathBuf> {
+    (0..10).map(|i| PathBuf::from(format!(r"\\.\pipe\discord-ipc-{i}"))).collect()
+}
+
+#[cfg(unix)]
 fn sockets() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = vec![];
     for var in ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"] {
@@ -56,7 +67,7 @@ fn sockets() -> Vec<PathBuf> {
     dirs.iter().flat_map(|d| subs.iter().flat_map(move |s| (0..10).map(move |i| d.join(s).join(format!("discord-ipc-{i}"))))).collect()
 }
 
-fn frame(s: &mut UnixStream, op: u32, v: &Value) -> std::io::Result<Value> {
+fn frame(s: &mut Sock, op: u32, v: &Value) -> std::io::Result<Value> {
     let body = v.to_string();
     let mut buf = Vec::with_capacity(8 + body.len());
     buf.extend(op.to_le_bytes());
@@ -75,10 +86,20 @@ fn frame(s: &mut UnixStream, op: u32, v: &Value) -> std::io::Result<Value> {
     Ok(serde_json::from_slice(&body).unwrap_or(Value::Null))
 }
 
-fn connect() -> Option<UnixStream> {
+fn open(p: &std::path::Path) -> std::io::Result<Sock> {
+    #[cfg(unix)]
+    {
+        let s = Sock::connect(p)?;
+        s.set_read_timeout(Some(Duration::from_secs(5)))?;
+        Ok(s)
+    }
+    #[cfg(windows)]
+    std::fs::OpenOptions::new().read(true).write(true).open(p)
+}
+
+fn connect() -> Option<Sock> {
     for p in sockets() {
-        let Ok(mut s) = UnixStream::connect(&p) else { continue };
-        let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
+        let Ok(mut s) = open(&p) else { continue };
         if frame(&mut s, 0, &json!({"v": 1, "client_id": APP_ID})).is_ok() {
             return Some(s);
         }
@@ -119,7 +140,7 @@ fn activity(n: &Option<Now>) -> Value {
 }
 
 fn run(rx: mpsc::Receiver<Option<Now>>) {
-    let mut conn: Option<UnixStream> = None;
+    let mut conn: Option<Sock> = None;
     let mut want: Option<Now> = None;
     let mut dirty = false;
     let mut nonce = 0u64;

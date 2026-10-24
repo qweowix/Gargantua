@@ -19,8 +19,6 @@ rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 souvlaki = { version = "0.8", default-features = false, features = ["use_zbus"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 lofty = "0.22"
-
-[target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]

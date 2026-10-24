@@ -271,16 +271,13 @@ fn post(f: impl FnOnce(&mut App) + Send + 'static) {
 /// Замок на файл в папке настроек: держится, пока жив процесс (ядро отпускает его само, даже при падении)
 /// Err — уже запущен. Файл замка создать не вышло — запускаемся без защиты, а не отказываемся работать
 fn single_instance() -> Result<Option<std::fs::File>, ()> {
-    use std::os::fd::AsRawFd;
     let dir = Store::dir();
     let _ = std::fs::create_dir_all(&dir);
     let Ok(f) = std::fs::File::create(dir.join("lock")) else { return Ok(None) };
-    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
-        return Ok(Some(f));
-    }
-    match std::io::Error::last_os_error().raw_os_error() {
-        Some(libc::EWOULDBLOCK) => Err(()),
-        _ => Ok(None),
+    match f.try_lock() {
+        Ok(()) => Ok(Some(f)),
+        Err(std::fs::TryLockError::WouldBlock) => Err(()),
+        Err(_) => Ok(None),
     }
 }
 
@@ -1772,7 +1769,10 @@ impl App {
         }
         std::thread::spawn(move || {
             // приоритет потока наследуют yt-dlp и node — музыка и интерфейс их не замечают
-            unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, 19) };
+            #[cfg(target_os = "linux")]
+            unsafe {
+                libc::setpriority(libc::PRIO_PROCESS, 0, 19)
+            };
             let (first, rest) = todo.split_at(1);
             for batch in [first, rest] {
                 // спотик/саундклауд сначала ищем на YT Music, это обычные http-запросы
@@ -2536,7 +2536,10 @@ impl App {
         let shown: Vec<slint::SharedString> = self.store.settings.music_dirs.iter().map(|d| d.as_str().into()).collect();
         self.ui.set_music_dirs(Rc::new(VecModel::from(shown)).into());
         std::thread::spawn(move || {
-            unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, 19) };
+            #[cfg(target_os = "linux")]
+            unsafe {
+                libc::setpriority(libc::PRIO_PROCESS, 0, 19)
+            };
             let tracks = local::scan(&dirs);
             post(move |a| {
                 a.local = tracks;

@@ -27,21 +27,42 @@ pub struct Stats {
     pub artists: HashMap<String, u64>,
 }
 
+/// Сейчас по местному времени (поля C-шного tm: год от 1900, месяц с 0)
+fn local_now() -> libc::tm {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    let t = now as libc::time_t;
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    #[cfg(unix)]
+    unsafe {
+        libc::localtime_r(&t, &mut tm)
+    };
+    #[cfg(windows)]
+    unsafe {
+        libc::localtime_s(&mut tm, &t)
+    };
+    tm
+}
+
+/// Номер дня от 1970-01-01 по дате (алгоритм Хиннанта, days_from_civil)
+fn days(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (m as i64 + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
 /// Сегодняшний день по местному времени
 pub fn today() -> i64 {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    let t = now as libc::time_t;
-    unsafe { libc::localtime_r(&t, &mut tm) };
-    (now + tm.tm_gmtoff as i64).div_euclid(86400)
+    let tm = local_now();
+    days(tm.tm_year as i64 + 1900, tm.tm_mon as u32 + 1, tm.tm_mday as u32)
 }
 
 /// Который час по местному времени — для приветствия на главной
 pub fn hour() -> i32 {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    unsafe { libc::localtime_r(&(now as libc::time_t), &mut tm) };
-    tm.tm_hour
+    local_now().tm_hour
 }
 
 /// (год, месяц, день) по номеру дня — для подписей
@@ -158,6 +179,10 @@ mod tests {
         assert_eq!(ymd(0), (1970, 1, 1));
         assert_eq!(ymd(20384), (2025, 10, 23));
         assert_eq!(weekday(20384), 3); // четверг
+        assert_eq!(days(2025, 10, 23), 20384);
+        assert_eq!(days(1970, 1, 1), 0);
+        assert_eq!(days(2024, 2, 29), 19782);
+        assert!((0..24).contains(&hour()) && today() > 20000);
         let t = Track { title: "Это любовь".into(), artist: "Скриптонит & Charusha".into(), id: "x".into(), ..Default::default() };
         let mut s = Stats::default();
         s.add(&t, 90.0, 100);
