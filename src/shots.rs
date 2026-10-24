@@ -113,8 +113,11 @@ fn ui() {
     ui.set_deps("mpv: есть ✓   ·   yt-dlp: есть ✓".into());
     ui.set_version("0.1.0".into());
 
+    // длинный ключ не должен раздвигать окно за край
+    ui.set_spicy_key("sl_sk_".repeat(20).into());
     ui.set_setup_open(true);
     snap(&win, "01-setup");
+    ui.set_spicy_key("".into());
     ui.set_setup_open(false);
 
     // главная: строка поиска пустая — миксы, быстрый подбор, недавнее, плейлисты
@@ -400,4 +403,69 @@ fn duet_scroll() {
     drop(top);
     let worst: Vec<String> = ms.chunks(6).map(|c| format!("{:.0}", c.iter().cloned().fold(0.0, f64::max))).collect();
     println!("y: {ys:?}\nшаг: {steps:?}\nмс/кадр, макс по 0.1 с: {}", worst.join(" "));
+}
+
+/// Переход на следующую строку с караоке и без: во что обходится караоке на прокрутке
+/// (cargo test --release karaoke_step -- --ignored --nocapture)
+#[test]
+#[ignore]
+fn karaoke_step() {
+    let win = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    slint::platform::set_platform(Box::new(Offscreen(win.clone()))).unwrap();
+    win.set_size(slint::PhysicalSize::new(W, H));
+    let ui = AppWindow::new().unwrap();
+    ui.show().unwrap();
+    ui.set_intro_t(100_000.0);
+    ui.set_intro_gone(true);
+    let lines: Vec<LyrLine> = (0..30)
+        .map(|i| {
+            let s = format!("Сколько б не дрались, но нам, как всегда {i}");
+            let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
+            let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
+            let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
+            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false }
+        })
+        .collect();
+    ui.set_lyr_lines(Rc::new(VecModel::from(lines)).into());
+    ui.set_lyr_state(1);
+    ui.set_lyrics_open(true);
+    let mut buf = vec![slint::Rgb8Pixel::default(); (W * H) as usize];
+    for (name, karaoke, glow) in [("без караоке", false, 1.0), ("караоке", true, 1.0), ("караоке без свечения", true, 0.0)] {
+        ui.set_karaoke(karaoke);
+        ui.set_lyr_glow(glow);
+        ui.set_lyr_cur(10);
+        ui.set_lyr_cur_top(840.0);
+        ui.set_act0(10);
+        ui.set_p0(0.6);
+        ui.set_lyr_prep(11);
+        snap(&win, "karaoke-step");
+        let mut ms = vec![];
+        for f in 0..60 {
+            if f == 4 {
+                ui.set_lyr_cur(11);
+                ui.set_lyr_cur_top(924.0);
+                ui.set_act0(11);
+                ui.set_lyr_prep(-1);
+            }
+            if f == 50 {
+                ui.set_lyr_prep(12);
+            }
+            if f < 4 {
+                ui.set_p0(0.6 + f as f32 * 0.1);
+            } else {
+                ui.set_p0((f - 4) as f32 * 0.01);
+            }
+            NOW.with(|t| t.set(t.get() + Duration::from_millis(16)));
+            slint::platform::update_timers_and_animations();
+            let t = Instant::now();
+            win.request_redraw();
+            win.draw_if_needed(|r| {
+                r.render(&mut buf, W as usize);
+            });
+            ms.push(t.elapsed().as_secs_f64() * 1000.0);
+        }
+        let worst: Vec<String> = ms.chunks(6).map(|c| format!("{:.0}", c.iter().cloned().fold(0.0, f64::max))).collect();
+        println!("{name}: мс/кадр, макс по 0.1 с → {}", worst.join(" "));
+        println!("  первые кадры: {:?}", ms.iter().take(12).map(|m| m.round() as i32).collect::<Vec<_>>());
+    }
 }

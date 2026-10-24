@@ -293,8 +293,12 @@ component Field inherits Rectangle {
                 fill: inp.has-focus ? Theme.soft1 : Theme.dim;
             }
         }
+        // поле не растёт под текст: длинный ключ раздвигал окно настройки за край экрана
         Rectangle {
             horizontal-stretch: 1;
+            min-width: 0px;
+            preferred-width: 0px;
+            clip: true;
             Text {
                 width: 100%;
                 height: 100%;
@@ -998,6 +1002,7 @@ component LyricLine inherits Rectangle {
     in property <length> hole-x; // центр логотипа-дыры в координатах колонки
     in property <length> hole-y;
     in property <int> idx;
+    in property <int> prep-idx: -1; // эту строку заранее держим буквами (невидимыми), см. lyr-prep
     in property <float> stay-ms;  // сколько упавшие буквы лежат внизу
     in property <length> floor-y; // "пол" — низ экрана, куда падают буквы
     in property <length> shift;   // сдвиг вниз, пока над строкой раскрыты точки проигрыша
@@ -1117,7 +1122,8 @@ component LyricLine inherits Rectangle {
         property <float> g2: self.g1 + 0.06;
         // свечение гаснет плавно, когда ряд/строка допеты
         property <float> glow-k: self.filling ? 1 : 0;
-        animate glow-k { duration: 700ms; easing: ease-out; }
+        // допетая строка гасит ореол быстрее: иначе 24 копии текста ехали вместе с прокруткой ещё 0.7 с
+        animate glow-k { duration: root.active ? 700ms : 250ms; easing: ease-out; }
         // при резком уходе (буквами, в дыру, сдувом) ореол не досвечивает — оставался призрак целой строки
         if root.karaoke && root.glow > 0 && row-box.glow-k > 0.01 && !row-box.by-letters && !(root.gone && root.exit != 0): Rectangle {
             for o in root.halo: Text {
@@ -1215,10 +1221,13 @@ component LyricLine inherits Rectangle {
         // переключение между цельным текстом и буквами не видно. После конца строки волна гаснет за
         // секунду (live). В дыру строка тоже летит буквами — без наклона, зато буквы не падают рывком
         property <bool> by-letters: root.karaoke && !root.line.empty && !root.line.dots && !root.letters && (root.active || root.live > 0.01);
+        // буквы следующей строки создаём и размечаем заранее, но не рисуем: раньше они создавались и
+        // мерились в момент смены строки — кадр в 2–3 раза дороже ровно тогда, когда начинается прокрутка
+        property <bool> prep: root.karaoke && !root.line.empty && !root.line.dots && !root.letters && root.idx == root.prep-idx;
         property <float> n: max(1, row.chars.length);
         // край волны в буквах: у звучащей строки может уйти за конец ряда, у спетой — весь ряд залит
         property <float> edge: (root.active ? max(row-box.f, row-box.run) : row-box.f) * self.n;
-        if row-box.by-letters: Rectangle {
+        if row-box.by-letters || row-box.prep: Rectangle {
             for ch[k] in row.chars: cb := Rectangle {
                 // где буква стоит в цельном тексте (ширина ряда до неё минус она сама). femtovg рисует букву
                 // на целом пикселе, а дробную часть позиции зашивает в картинку глифа. Отдельная буква с x = pen
@@ -1283,7 +1292,10 @@ component LyricLine inherits Rectangle {
                     }
                 }
 
+                // заготовка следующей строки: ячейки уже размечены (Slint считает размеры лениво — только
+                // у того, что обходит при отрисовке), а сами буквы не рисуем
                 lc := Text {
+                    visible: row-box.by-letters;
                     width: cb.width;
                     horizontal-alignment: right;
                     text: ch;
@@ -1553,6 +1565,7 @@ export component AppWindow inherits Window {
     in property <float> p2;
     in property <[float]> still; // сек, сколько заливка каждой звучащей строки (act0..2) стоит на месте
     in property <int> act-max: -1;
+    in property <int> lyr-prep: -1; // следующая строка, буквы которой заготовить заранее
     in property <int> lyr-jump: -1; // строки выше неё пропущены перемоткой — уходят без анимации
     in property <int> lyr-bg-done: -1; // бэк-вокал под звучащей строкой, который уже допет (последний такой)
     in property <bool> karaoke: true;
@@ -5076,6 +5089,7 @@ export component AppWindow inherits Window {
                         for line[i] in root.lyr-lines: LyricLine {
                             width: lyr-col.width;
                             idx: i;
+                            prep-idx: root.lyr-prep;
                             line: line;
                             hole-x: hole.x + hole.width / 2 - lyr-col.off-x;
                             hole-y: hole.y + hole.height / 2 - lyr-col.off-y;

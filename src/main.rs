@@ -105,6 +105,7 @@ struct LyrData {
     bg: Vec<bool>,
     dots: Vec<bool>,
     cur: i32,
+    cur_at: Instant, // когда сменилась текущая строка — заготовку букв следующей делаем после прокрутки
 }
 
 /// Открытый альбом или "все песни" артиста
@@ -2704,7 +2705,7 @@ impl App {
         self.show_credit(f.as_ref().map(|f| &f.credit));
         match f.map(|f| f.lyr) {
             Some(lyrics::Lyrics::Synced(lines)) => {
-                self.lyr = Some(LyrData { raw: lines, words: vec![], starts: vec![], ends: vec![], fills: vec![], tops: vec![], bg: vec![], dots: vec![], cur: -2 });
+                self.lyr = Some(LyrData { raw: lines, words: vec![], starts: vec![], ends: vec![], fills: vec![], tops: vec![], bg: vec![], dots: vec![], cur: -2, cur_at: Instant::now() });
                 self.layout_lyrics();
                 self.ui.set_lyr_state(1);
             }
@@ -2839,9 +2840,16 @@ impl App {
             }
             if cur != d.cur {
                 d.cur = cur;
+                d.cur_at = now;
                 self.ui.set_lyr_cur(cur);
                 // до первой строки держим текст чуть ниже якоря
                 self.ui.set_lyr_cur_top(if cur >= 0 { d.tops[cur as usize] } else { -LYR_ROW_H * 1.5 });
+            }
+            // буквы следующей строки создаются и размечаются заранее, когда прокрутка уже доехала (750 мс):
+            // в кадр смены строки это стоило в 2–3 раза дороже обычного — как раз на старте прокрутки
+            let prep = if now.duration_since(d.cur_at) > Duration::from_millis(800) { cur + 1 } else { -1 };
+            if self.ui.get_lyr_prep() != prep {
+                self.ui.set_lyr_prep(prep);
             }
             let progress = |i: usize| -> f32 {
                 let pos = pos + self.lyr_step; // UI доезжает до этого значения как раз за step
@@ -2964,21 +2972,8 @@ impl App {
         ui.set_offline(st.offline);
         ui.set_cache_gb(st.cache_gb);
         ui.set_setup_open(!st.setup_done);
-        // язык: из настроек, а при первом запуске — по системной локали
-        let lang = match st.lang.as_str() {
-            "" => {
-                let sys = std::env::var("LC_ALL").or_else(|_| std::env::var("LC_MESSAGES")).or_else(|_| std::env::var("LANG")).unwrap_or_default();
-                if sys.starts_with("uk") {
-                    "uk"
-                } else if ["ru", "be", "kk"].iter().any(|p| sys.starts_with(p)) {
-                    "ru"
-                } else {
-                    "en"
-                }
-            }
-            l => l,
-        }
-        .to_string();
+        // язык: из настроек, а при первом запуске — английский (выбирается в первом же окне настройки)
+        let lang = if st.lang.is_empty() { "en".to_string() } else { st.lang.clone() };
         self.set_lang(&lang);
         self.update_lyr_timer();
         self.apply_fx();

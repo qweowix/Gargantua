@@ -83,7 +83,7 @@ pub struct Settings {
     pub karaoke: bool,
     pub lyr_anim: i32, // 0 плавно, 1 каскад, 2 фокус
     pub lyr_exit: i32, // 0 тускнеют, 2 сдув, 3 в дыру, 4 падение, 5 испарение, 6 взрыв (1 был распад)
-    pub lang: String,  // "ru" / "en"; пусто — по системной локали
+    pub lang: String,  // "ru" / "en" / "uk"; пусто — английский
     pub fall_stay: f32,  // сколько секунд упавшие буквы лежат внизу
     pub glow: f32,       // сила свечения поющегося слова 0–2, 0 — выкл
     pub hole_always: bool,
