@@ -341,3 +341,63 @@ fn hitch() {
         run(&format!("следующая строка, уход {exit}"), 60, &ui, &sing);
     }
 }
+
+/// Дуэт: вторая строка начинается, пока первая ещё звучит. Прокрутка должна ехать плавно —
+/// печатаем, где по вертикали первая (белая) строка каждый кадр (cargo test --release duet -- --ignored --nocapture)
+#[test]
+#[ignore]
+fn duet_scroll() {
+    let win = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    slint::platform::set_platform(Box::new(Offscreen(win.clone()))).unwrap();
+    win.set_size(slint::PhysicalSize::new(W, H));
+    let ui = AppWindow::new().unwrap();
+    ui.show().unwrap();
+    ui.set_intro_t(100_000.0);
+    ui.set_intro_gone(true);
+    let lines: Vec<LyrLine> = (0..30)
+        .map(|i| {
+            let s = format!("line number {i} goes like this");
+            let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
+            let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
+            let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
+            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false }
+        })
+        .collect();
+    ui.set_lyr_lines(Rc::new(VecModel::from(lines)).into());
+    ui.set_lyr_state(1);
+    ui.set_lyr_cur(10);
+    ui.set_lyr_cur_top(840.0);
+    ui.set_act0(10);
+    ui.set_p0(1.0);
+    ui.set_lyrics_open(true);
+    snap(&win, "duet-0");
+    let mut buf = vec![slint::Rgb8Pixel::default(); (W * H) as usize];
+    // верх самой яркой строки: первая сверху строка пикселей с почти белым цветом
+    let mut ms = vec![];
+    let mut top = || {
+        let t = Instant::now();
+        win.request_redraw();
+        win.draw_if_needed(|r| {
+            r.render(&mut buf, W as usize);
+        });
+        ms.push(t.elapsed().as_secs_f64() * 1000.0);
+        (0..H).find(|&y| (0..W).any(|x| buf[(y * W + x) as usize].r > 235 && buf[(y * W + x) as usize].b > 235)).unwrap_or(0) as i32
+    };
+    let mut ys = vec![top()];
+    for f in 0..60 {
+        if f == 2 {
+            ui.set_act1(11);
+            ui.set_p1(1.0);
+            ui.set_act_max(11);
+            ui.set_lyr_cur(11);
+            ui.set_lyr_cur_top(924.0);
+        }
+        NOW.with(|t| t.set(t.get() + Duration::from_millis(16)));
+        slint::platform::update_timers_and_animations();
+        ys.push(top());
+    }
+    let steps: Vec<i32> = ys.windows(2).map(|w| w[1] - w[0]).collect();
+    drop(top);
+    let worst: Vec<String> = ms.chunks(6).map(|c| format!("{:.0}", c.iter().cloned().fold(0.0, f64::max))).collect();
+    println!("y: {ys:?}\nшаг: {steps:?}\nмс/кадр, макс по 0.1 с: {}", worst.join(" "));
+}
