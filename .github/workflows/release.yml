@@ -28,7 +28,7 @@ jobs:
           mkdir -p $D
           cp target/release/blackhole $D/
           cp assets/icon-256.png $D/blackhole.png
-          cp packaging/blackhole.desktop packaging/install.sh $D/
+          cp packaging/blackhole.desktop packaging/install.sh LICENSE $D/
           chmod +x $D/install.sh
           tar czf $D.tar.gz $D
       - uses: actions/upload-artifact@v4
@@ -59,6 +59,7 @@ jobs:
           7z e mpv.7z mpv.exe -o"$D/bin" -y | Out-Null
           if (-not (Test-Path "$D/bin/mpv.exe")) { throw "mpv.exe не распаковался" }
           Copy-Item packaging/windows-README.txt "$D/README.txt"
+          Copy-Item LICENSE "$D/LICENSE.txt"
           Compress-Archive -Path $D -DestinationPath "$D.zip"
       - uses: actions/upload-artifact@v4
         with:

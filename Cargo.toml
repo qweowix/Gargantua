@@ -2,6 +2,8 @@
 name = "blackhole"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/qweowix/blackhole"
 
 [dependencies]
 slint = { version = "1", features = ["renderer-skia"] }

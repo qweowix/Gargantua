@@ -126,6 +126,10 @@ cargo build --release
 
 [lrclib](https://lrclib.net), Liriqo и [Spicy Lyrics](https://spicylyrics.org) — тексты песен. [mpv](https://mpv.io) и [yt-dlp](https://github.com/yt-dlp/yt-dlp) — без них ничего бы не играло.
 
+## Лицензия
+
+[GPL-3.0](LICENSE): код можно брать, менять и распространять, но любая выложенная версия тоже должна быть открытой под GPL.
+
 ---
 
 <a name="english"></a>
@@ -140,3 +144,5 @@ Also included: daily mixes, listening stats with a GitHub-style heatmap, an offl
 - **Linux:** install `mpv`, `yt-dlp` and `python3`, unpack the archive and run `./install.sh`.
 
 **Build from source:** `cargo build --release`.
+
+**License:** [GPL-3.0](LICENSE).
