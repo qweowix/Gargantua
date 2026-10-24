@@ -2631,7 +2631,17 @@ impl App {
         });
         // большая обложка и размытый фон для экрана lyrics
         std::thread::spawn(move || {
-            let Ok(b) = covers::big(&cover).map_err(|e| eprintln!("big cover: {e:#}")) else { return };
+            // нет обложки (локальный файл без картинки) — убираем фон и цвета прошлого трека
+            let Ok(b) = covers::big(&cover).map_err(|e| eprintln!("big cover: {e:#}")) else {
+                post(move |a| {
+                    if a.lyr_gen == tok {
+                        a.ui.set_has_big(false);
+                        a.cover_pal = None;
+                        a.apply_theme();
+                    }
+                });
+                return;
+            };
             post(move |a| {
                 if a.lyr_gen == tok {
                     a.cover_pal = b.palette;
