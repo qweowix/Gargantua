@@ -184,6 +184,18 @@ fn hsv(h: f32, s: f32, v: f32) -> [u8; 3] {
 
 /// Тема по обложке: главный оттенок — самый насыщенный и частый, второй — другой заметный (или соседний).
 /// Порядок как в Theme: c1, c2, soft1, pale1, soft2, deep1, deep2, glow. Серая обложка — None
+/// Цвета темы «Моно» (c1, c2, soft1, pale1, soft2, deep1, deep2, glow — как в app.slint)
+const MONO: [[u8; 3]; 8] = [
+    [0xa1, 0xa1, 0xaa],
+    [0xe4, 0xe4, 0xe7],
+    [0xd4, 0xd4, 0xd8],
+    [0xf4, 0xf4, 0xf5],
+    [0xfa, 0xfa, 0xfa],
+    [0x1f, 0x1f, 0x23],
+    [0x2a, 0x2a, 0x2e],
+    [0x52, 0x52, 0x5b],
+];
+
 pub fn palette(img: &image::RgbImage) -> Option<[[u8; 3]; 8]> {
     const BINS: usize = 36;
     let mut w = [0f32; BINS];
@@ -207,8 +219,10 @@ pub fn palette(img: &image::RgbImage) -> Option<[[u8; 3]; 8]> {
     // сглаживаем по соседям: оттенок на границе двух корзин не должен проигрывать
     let sm: Vec<f32> = (0..BINS).map(|i| w[(i + BINS - 1) % BINS] * 0.5 + w[i] + w[(i + 1) % BINS] * 0.5).collect();
     let total: f32 = w.iter().sum();
+    // чёрно-белая обложка: раньше тут был None, и включалась обычная тема юзера (фиолетовый «Горизонт»
+    // на чёрно-белом альбоме). Отдаём серую палитру — как у темы «Моно»
     if total / ((img.width() * img.height()) as f32) < 0.04 {
-        return None;
+        return Some(MONO);
     }
     let hue = |i: usize| {
         let (x, y) = (-1..=1).map(|d| (i as i32 + d).rem_euclid(BINS as i32) as usize).fold((0.0, 0.0), |(x, y), k| (x + hx[k], y + hy[k]));
@@ -251,7 +265,8 @@ mod tests {
         let p = super::palette(&img).unwrap();
         assert!(p[0][2] > p[0][0] && p[0][2] > p[0][1], "c1 {:?}", p[0]);
         assert!(p[1][0] > p[1][2], "c2 {:?}", p[1]);
-        // серая — своей темы нет
-        assert!(super::palette(&image::RgbImage::from_pixel(48, 48, image::Rgb([90, 90, 95]))).is_none());
+        // чёрно-белая — серая палитра, а не обычная тема юзера
+        let bw = image::RgbImage::from_fn(48, 48, |x, _| if x < 24 { image::Rgb([0, 0, 0]) } else { image::Rgb([250, 250, 250]) });
+        assert_eq!(super::palette(&bw), Some(super::MONO));
     }
 }
