@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=BlackHole
+Comment=Music player for YouTube Music, SoundCloud, Spotify and local files
+Exec=blackhole
+Icon=blackhole
+Terminal=false
+Categories=Audio;AudioVideo;Player;

@@ -1,0 +1,16 @@
+# Сборка под macOS по кнопке: Actions → macOS build → Run workflow. Готовый zip — в Artifacts.
+# Один раннер собирает универсальный бинарь (Apple Silicon + Intel)
+name: macOS build
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: tools/build-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BlackHole-macos
+          path: dist/BlackHole-macos.zip

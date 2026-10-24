@@ -1,0 +1,82 @@
+# Релиз: пушнули тег v* — собираем Linux и Windows и выкладываем архивы в GitHub Releases.
+# Руками: Actions → Release → Run workflow (тег берётся из поля, релиз создаётся черновиком)
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Тег релиза, например v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    # 22.04 — старая glibc, бинарь запустится и на дистрибутивах постарше
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libfreetype-dev libxkbcommon-dev
+      - run: cargo build --release
+      - name: Архив
+        run: |
+          D=BlackHole-linux-x86_64
+          mkdir -p $D
+          cp target/release/blackhole $D/
+          cp assets/icon-256.png $D/blackhole.png
+          cp packaging/blackhole.desktop packaging/install.sh $D/
+          chmod +x $D/install.sh
+          tar czf $D.tar.gz $D
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: BlackHole-linux-x86_64.tar.gz
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release
+      - name: Архив с mpv и yt-dlp
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $D = "BlackHole-windows-x86_64"
+          New-Item -ItemType Directory -Force "$D/bin" | Out-Null
+          Copy-Item target/release/blackhole.exe "$D/BlackHole.exe"
+          Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile "$D/bin/yt-dlp.exe"
+          # mpv: свежая сборка без AVX2 (x86_64, не v3) — пойдёт и на старых процессорах
+          $rel = Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } https://api.github.com/repos/zhongfly/mpv-winbuild/releases/latest
+          $asset = $rel.assets | Where-Object { $_.name -match '^mpv-x86_64-\d{8}-git-[0-9a-f]+\.7z$' } | Select-Object -First 1
+          if (-not $asset) { throw "не нашёл сборку mpv" }
+          Invoke-WebRequest $asset.browser_download_url -OutFile mpv.7z
+          7z e mpv.7z mpv.exe -o"$D/bin" -y | Out-Null
+          if (-not (Test-Path "$D/bin/mpv.exe")) { throw "mpv.exe не распаковался" }
+          Copy-Item packaging/windows-README.txt "$D/README.txt"
+          Compress-Archive -Path $D -DestinationPath "$D.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: BlackHole-windows-x86_64.zip
+
+  release:
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          generate_release_notes: true
+          files: |
+            BlackHole-linux-x86_64.tar.gz
+            BlackHole-windows-x86_64.zip

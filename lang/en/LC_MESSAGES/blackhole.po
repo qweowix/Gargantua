@@ -1,0 +1,855 @@
+# Английский перевод BlackHole. Исходные строки — русские (msgid), см. @tr() в ui/app.slint
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "{} · превью → YT"
+msgstr "{} · preview → YT"
+
+msgid "Радио по этому треку"
+msgstr "Radio from this track"
+
+msgid "Уже скачано"
+msgstr "Already downloaded"
+
+msgid "Качается…"
+msgstr "Downloading…"
+
+msgid "Скачать в mp3"
+msgstr "Download as mp3"
+
+msgid "Добавить в плейлист"
+msgstr "Add to playlist"
+
+msgid "Убрать из плейлиста"
+msgstr "Remove from playlist"
+
+msgid "Выше в очереди"
+msgstr "Move up"
+
+msgid "Ниже в очереди"
+msgstr "Move down"
+
+msgid "Убрать из очереди"
+msgstr "Remove from queue"
+
+msgid "все сервисы · одна дыра"
+msgstr "every service · one hole"
+
+msgid "Поиск"
+msgstr "Search"
+
+msgid "Импорт"
+msgstr "Import"
+
+msgid "Настройки"
+msgstr "Settings"
+
+msgid "О программе"
+msgstr "About"
+
+msgid "ПЛЕЙЛИСТЫ"
+msgstr "PLAYLISTS"
+
+msgid "Новый плейлист"
+msgstr "New playlist"
+
+msgid "Трек, артист, что угодно — дыра всё засосёт"
+msgstr "Track, artist, anything — the hole will suck it in"
+
+msgid "Все"
+msgstr "All"
+
+msgid "Яндекс"
+msgstr "Yandex"
+
+msgid "Артисты"
+msgstr "Artists"
+
+msgid "Альбомы"
+msgstr "Albums"
+
+msgid "Треки"
+msgstr "Tracks"
+
+msgid "Засасываю результаты…"
+msgstr "Sucking in results…"
+
+msgid "Чёрная дыра голодна. Вбей что-нибудь сверху."
+msgstr "The black hole is hungry. Type something above."
+
+msgid "Сменить обложку"
+msgstr "Change cover"
+
+msgid "ПЛЕЙЛИСТ"
+msgstr "PLAYLIST"
+
+msgid "{} треков"
+msgstr "{} tracks"
+
+msgid "Слушать"
+msgstr "Play"
+
+msgid "Вперемешку"
+msgstr "Shuffle"
+
+msgid "Качаю… {}"
+msgstr "Downloading… {}"
+
+msgid "Скачать всё"
+msgstr "Download all"
+
+msgid "Поделиться QR-кодом"
+msgstr "Share as QR code"
+
+msgid "Удалить плейлист"
+msgstr "Delete playlist"
+
+msgid "Пусто. Найди треки в поиске и жми «+»."
+msgstr "Empty. Find tracks in search and hit “+”."
+
+msgid "Импорт плейлиста"
+msgstr "Import a playlist"
+
+msgid "Кидай ссылку на плейлист или альбом из Spotify, Apple Music, YouTube Music или SoundCloud — дыра его засосёт целиком. Треки из Spotify и Apple Music сразу ищутся на YT Music, сомнительные совпадения спрошу. Ключи не нужны."
+msgstr "Drop a link to a playlist or album from Spotify, Apple Music, YouTube Music or SoundCloud — the hole will suck it in whole. Spotify and Apple Music tracks are matched on YT Music right away; I'll ask about doubtful matches. No keys needed."
+
+msgid "Засасываю…"
+msgstr "Sucking in…"
+
+msgid "Засосать"
+msgstr "Suck it in"
+
+msgid "Добавить по QR-коду"
+msgstr "Add from a QR code"
+
+msgid "• Spotify: open.spotify.com/playlist/… или /album/…\n• Apple Music: music.apple.com/…/playlist/… или /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/юзер/sets/…\n• Яндекс Музыка: music.yandex.ru/users/…/playlists/… или /album/…\n• QR-код: картинка или фото QR, которым поделились из BlackHole (можно выбрать сразу все части)"
+msgstr "• Spotify: open.spotify.com/playlist/… or /album/…\n• Apple Music: music.apple.com/…/playlist/… or /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/user/sets/…\n• Yandex Music: music.yandex.ru/users/…/playlists/… or /album/…\n• QR code: a picture or photo of a QR shared from BlackHole (you can pick all parts at once)"
+
+msgid "версия {}"
+msgstr "version {}"
+
+msgid "Полностью бесплатный музыкальный плеер с открытым кодом и поддержкой нескольких стриминговых сервисов.\nРазработчик — qweowix"
+msgstr "A completely free, open-source music player with support for multiple music streaming services.\nDeveloped by qweowix"
+
+msgid "ГЛАВНЫЕ ПЛЮСЫ"
+msgstr "WHY BLACKHOLE"
+
+msgid "Всё локально"
+msgstr "Everything is local"
+
+msgid "Плейлисты, история и настройки хранятся только у тебя на компьютере. Никаких аккаунтов, регистраций, подписок и API-ключей."
+msgstr "Playlists, history and settings live only on your computer. No accounts, no sign-ups, no subscriptions, no API keys."
+
+msgid "Все сервисы в одном месте"
+msgstr "Every service in one place"
+
+msgid "Поиск сразу по YouTube Music и SoundCloud, импорт плейлистов и альбомов из Spotify, Apple Music, YouTube Music и SoundCloud."
+msgstr "Search YouTube Music and SoundCloud at once, import playlists and albums from Spotify, Apple Music, YouTube Music and SoundCloud."
+
+msgid "Смешанные плейлисты"
+msgstr "Mixed playlists"
+
+msgid "Треки из разных сервисов спокойно живут в одном плейлисте."
+msgstr "Tracks from different services live happily in one playlist."
+
+msgid "Бесплатно и без рекламы"
+msgstr "Free, no ads"
+
+msgid "Ни рекламы, ни платных функций, ни телеметрии. Код открыт."
+msgstr "No ads, no paid features, no telemetry. The code is open."
+
+msgid "Лёгкий"
+msgstr "Lightweight"
+
+msgid "Нативное приложение без браузерного движка: в простое почти не нагружает процессор, а для слабых машин есть лайт-режим."
+msgstr "A native app without a browser engine: barely touches the CPU when idle, and there is a lite mode for weaker machines."
+
+msgid "Тексты как в Apple Music"
+msgstr "Apple Music–style lyrics"
+
+msgid "Экран текстов с караоке по словам, свечением и анимациями. Тексты собираются из нескольких источников и выравниваются по твоему треку."
+msgstr "A lyrics screen with word-by-word karaoke, glow and animations. Lyrics are gathered from several sources and aligned to your exact track."
+
+msgid "Без ожидания"
+msgstr "No waiting"
+
+msgid "Следующие треки подгружаются заранее, переключение почти мгновенное — даже в перемешку."
+msgstr "Upcoming tracks are preloaded, so skipping is almost instant — even on shuffle."
+
+msgid "Дружит с системой"
+msgstr "Plays well with your system"
+
+msgid "Виден в панели и медиа-клавишах (MPRIS), умеет очередь, историю, перемешку и повтор."
+msgstr "Shows up in your panel and media keys (MPRIS), with a queue, history, shuffle and repeat."
+
+msgid "Разработчик"
+msgstr "Developer"
+
+msgid "При поддержке"
+msgstr "Supported by"
+
+msgid "Телеграм-канал"
+msgstr "Telegram channel"
+
+msgid "АРТИСТ"
+msgstr "ARTIST"
+
+msgid "Загружаю…"
+msgstr "Loading…"
+
+msgid "Радио"
+msgstr "Radio"
+
+msgid "Свернуть"
+msgstr "Show less"
+
+msgid "Читать полностью"
+msgstr "Read more"
+
+msgid "Популярное"
+msgstr "Popular"
+
+msgid "Все песни"
+msgstr "All songs"
+
+msgid "Синглы и EP"
+msgstr "Singles & EPs"
+
+msgid "Похожие артисты"
+msgstr "Fans might also like"
+
+msgid "Назад"
+msgstr "Back"
+
+msgid "В плейлисты"
+msgstr "Save as playlist"
+
+msgid "Язык"
+msgstr "Language"
+
+msgid "Тема"
+msgstr "Theme"
+
+msgid "Горизонт"
+msgstr "Horizon"
+
+msgid "Океан"
+msgstr "Ocean"
+
+msgid "Токсик"
+msgstr "Toxic"
+
+msgid "Сакура"
+msgstr "Sakura"
+
+msgid "Закат"
+msgstr "Sunset"
+
+msgid "Моно"
+msgstr "Mono"
+
+msgid "Лайт-режим"
+msgstr "Lite mode"
+
+msgid "Вырубает постоянные анимации (вращение, пульсацию). Ноль лишней нагрузки."
+msgstr "Turns off constant animations (spinning, pulsing). Zero extra load."
+
+msgid "Упавшие буквы лежат: {} с"
+msgstr "Fallen letters stay for: {} s"
+
+msgid "Для ухода строк «падение»: сколько буквы лежат внизу экрана, прежде чем растаять."
+msgstr "For the “fall” exit: how long the letters lie at the bottom of the screen before melting away."
+
+msgid "Свечение текста: выкл"
+msgstr "Lyrics glow: off"
+
+msgid "Свечение текста: {}%"
+msgstr "Lyrics glow: {}%"
+
+msgid "Ореол вокруг слова, которое сейчас поётся. Ползунок до упора влево — выключить."
+msgstr "Halo around the word being sung. Slide all the way left to turn it off."
+
+msgid "Дыра в lyrics всегда"
+msgstr "Always show the hole in lyrics"
+
+msgid "Логотип-дыра в углу экрана lyrics виден всегда. Если выключить — появляется только с уходом строк «в дыру»."
+msgstr "The black-hole logo in the corner of the lyrics screen is always visible. When off, it only shows up with the “into the hole” exit animation."
+
+msgid "Куки YouTube"
+msgstr "YouTube cookies"
+
+msgid "Если YouTube просит доказать, что ты не бот, и треки не играют — выбери браузер, где ты залогинен в YouTube. yt-dlp возьмёт оттуда куки; они никуда, кроме YouTube, не уходят."
+msgstr "If YouTube asks you to prove you're not a bot and tracks won't play, pick the browser where you're signed in to YouTube. yt-dlp takes the cookies from there; they go nowhere except YouTube."
+
+msgid "Выкл"
+msgstr "Off"
+
+msgid "Папка загрузок"
+msgstr "Download folder"
+
+msgid "Открыть"
+msgstr "Open"
+
+msgid "Сменить"
+msgstr "Change"
+
+msgid "Ключ Spicy Lyrics"
+msgstr "Spicy Lyrics key"
+
+msgid "Ещё один источник текстов: синки по слогам от сообщества и Apple Music. Нужен свой бесплатный ключ (secret key, sl_sk_…) — хранится только у тебя на компьютере. Пусто — источник выключен."
+msgstr "One more lyrics source: syllable-level community syncs and Apple Music. Needs your own free key (secret key, sl_sk_…) — stored only on your computer. Empty — source is off."
+
+msgid "Получить ключ"
+msgstr "Get a key"
+
+msgid "Стереть настройки"
+msgstr "Wipe settings"
+
+msgid "Тишина"
+msgstr "Silence"
+
+msgid "засасываю поток…"
+msgstr "sucking in the stream…"
+
+msgid "включи что-нибудь"
+msgstr "play something"
+
+msgid "Перемешать"
+msgstr "Shuffle"
+
+msgid "Предыдущий трек"
+msgstr "Previous track"
+
+msgid "Пауза"
+msgstr "Pause"
+
+msgid "Играть"
+msgstr "Play"
+
+msgid "Следующий трек"
+msgstr "Next track"
+
+msgid "Повтор"
+msgstr "Repeat"
+
+msgid "Эквалайзер и скорость"
+msgstr "Equalizer and speed"
+
+msgid "Очередь"
+msgstr "Queue"
+
+msgid "Текст песни"
+msgstr "Lyrics"
+
+msgid "Звук"
+msgstr "Sound"
+
+msgid "Сбросить всё"
+msgstr "Reset all"
+
+msgid "Закрыть"
+msgstr "Close"
+
+msgid " Гц"
+msgstr " Hz"
+
+msgid "Скорость"
+msgstr "Speed"
+
+msgid "Сохранять тональность"
+msgstr "Keep pitch"
+
+msgid "Выключи — и при замедлении голос станет ниже, при ускорении выше: тот самый slowed / sped up."
+msgstr "Turn it off and slowing down lowers the voice, speeding up raises it — the classic slowed / sped up sound."
+
+msgid "ИСТОРИЯ"
+msgstr "HISTORY"
+
+msgid "СЕЙЧАС ИГРАЕТ"
+msgstr "NOW PLAYING"
+
+msgid "ДАЛЕЕ · ВПЕРЕМЕШКУ"
+msgstr "UP NEXT · SHUFFLED"
+
+msgid "ДАЛЕЕ"
+msgstr "UP NEXT"
+
+msgid "Дальше пусто"
+msgstr "Nothing up next"
+
+msgid "Караоке: вкл"
+msgstr "Karaoke: on"
+
+msgid "Караоке: выкл"
+msgstr "Karaoke: off"
+
+msgid "Стиль: {}"
+msgstr "Style: {}"
+
+msgid "плавно"
+msgstr "smooth"
+
+msgid "каскад"
+msgstr "cascade"
+
+msgid "фокус"
+msgstr "focus"
+
+msgid "Уход: {}"
+msgstr "Exit: {}"
+
+msgid "тускнеют"
+msgstr "fade"
+
+msgid "сдув"
+msgstr "blow away"
+
+msgid "в дыру"
+msgstr "into the hole"
+
+msgid "в дыру буквами"
+msgstr "into the hole, letters"
+
+msgid "падение"
+msgstr "fall"
+
+msgid "испарение"
+msgstr "evaporate"
+
+msgid "взрыв"
+msgstr "burst"
+
+msgid "Ищу текст…"
+msgstr "Looking for lyrics…"
+
+msgid "Текста нет"
+msgstr "No lyrics"
+
+msgid "Инструментал, или lrclib про этот трек не знает"
+msgstr "It's instrumental, or nobody knows the lyrics yet"
+
+msgid "Во весь экран"
+msgstr "Fullscreen"
+
+msgid "Свернуть текст"
+msgstr "Close lyrics"
+
+msgid "Удалить плейлист?"
+msgstr "Delete playlist?"
+
+msgid "Поделиться плейлистом"
+msgstr "Share playlist"
+
+msgid "Точно эта песня?"
+msgstr "Is this the right song?"
+
+msgid "или в новый:"
+msgstr "or to a new one:"
+
+msgid "Плейлист большой — это часть {0} из {1}. При импорте выбери все части сразу."
+msgstr "The playlist is big — this is part {0} of {1}. When importing, pick all parts at once."
+
+msgid "Отсканируй или сохрани картинку и добавь её через «Импорт → Добавить по QR-коду»."
+msgstr "Scan it or save the picture, then add it via “Import → Add from a QR code”."
+
+msgid "Предыдущая часть"
+msgstr "Previous part"
+
+msgid "Следующая часть"
+msgstr "Next part"
+
+msgid "«{0}» ({1} треков) улетит за горизонт событий. Вернуть не получится."
+msgstr "“{0}” ({1} tracks) will fall past the event horizon. This can’t be undone."
+
+msgid "Искал"
+msgstr "Looked for"
+
+msgid "Нашлось на YT Music"
+msgstr "Found on YT Music"
+
+msgid "Название, артист или длительность не сходятся — возможно, это другая песня или другая версия. Осталось проверить: {}"
+msgstr "The title, artist or length don't match — it may be a different song or version. Left to check: {}"
+
+msgid "Оставить все"
+msgstr "Keep all"
+
+msgid "Пропустить все"
+msgstr "Skip all"
+
+msgid "Название плейлиста"
+msgstr "Playlist name"
+
+msgid "Отмена"
+msgstr "Cancel"
+
+msgid "Пропустить"
+msgstr "Skip"
+
+msgid "Оставить"
+msgstr "Keep"
+
+msgid "Сохранить все PNG"
+msgstr "Save all PNGs"
+
+msgid "Сохранить PNG"
+msgstr "Save PNG"
+
+msgid "Создать"
+msgstr "Create"
+
+msgid "Удалить"
+msgstr "Delete"
+
+msgid "Быстрая настройка"
+msgstr "Quick setup"
+
+msgid "Пара вещей, чтобы всё сразу работало. Потом всё меняется в настройках."
+msgstr "A couple of things so everything works right away. You can change them later in settings."
+
+msgid "Браузер, где ты залогинен в YouTube"
+msgstr "Browser where you're signed in to YouTube"
+
+msgid "Если YouTube начнёт просить доказать, что ты не бот, плеер возьмёт куки из этого браузера. Они никуда, кроме YouTube, не уходят."
+msgstr "If YouTube starts asking you to prove you're not a bot, the player will take cookies from this browser. They go nowhere but YouTube."
+
+msgid "Без кук"
+msgstr "No cookies"
+
+msgid "Ключ Spicy Lyrics — необязательно, но желательно"
+msgstr "Spicy Lyrics key — optional, but recommended"
+
+msgid "Ещё один источник текстов: синки по слогам и бэк-вокал. Ключ бесплатный и хранится только у тебя."
+msgstr "One more lyrics source: syllable sync and backing vocals. The key is free and stays on your computer."
+
+msgid "Готово"
+msgstr "Done"
+
+msgid "Продолжить"
+msgstr "Continue"
+
+msgid "Название и описание"
+msgstr "Name and description"
+
+msgid "Изменить плейлист"
+msgstr "Edit playlist"
+
+msgid "Описание (необязательно)"
+msgstr "Description (optional)"
+
+msgid "Сохранить"
+msgstr "Save"
+
+msgid "Моя музыка"
+msgstr "My music"
+
+msgid "Статистика"
+msgstr "Stats"
+
+msgid "Ищу музыку в папках…"
+msgstr "Looking for music in folders…"
+
+msgid "{} треков с диска · папка загрузок подхватывается сама"
+msgstr "{} tracks from disk · the downloads folder is picked up automatically"
+
+msgid "Пересканировать папки"
+msgstr "Rescan folders"
+
+msgid "Добавить папку"
+msgstr "Add folder"
+
+msgid "Убрать папку"
+msgstr "Remove folder"
+
+msgid "Пока пусто. Добавь папку с mp3, flac, ogg или m4a — треки появятся здесь, их можно класть в плейлисты наравне со стримингом."
+msgstr "Nothing here yet. Add a folder with mp3, flac, ogg or m4a — the tracks show up here and go into playlists just like streaming ones."
+
+msgid "Сегодня"
+msgstr "Today"
+
+msgid "За неделю"
+msgstr "This week"
+
+msgid "За месяц"
+msgstr "This month"
+
+msgid "За всё время"
+msgstr "All time"
+
+msgid "Год музыки"
+msgstr "A year of music"
+
+msgid "пн"
+msgstr "Mon"
+
+msgid "ср"
+msgstr "Wed"
+
+msgid "пт"
+msgstr "Fri"
+
+msgid "Наведи на клетку — покажу, сколько слушал в тот день"
+msgstr "Hover a square to see how much you listened that day"
+
+msgid "меньше"
+msgstr "less"
+
+msgid "больше"
+msgstr "more"
+
+msgid "Пока пусто — включи что-нибудь, и тут появятся любимые исполнители и треки."
+msgstr "Nothing yet — play something and your favourite artists and tracks will show up here."
+
+msgid "Любимый исполнитель"
+msgstr "Favourite artist"
+
+msgid "{} вместе"
+msgstr "{} together"
+
+msgid "Топ-5 треков"
+msgstr "Top 5 tracks"
+
+msgid "Цвета из обложки"
+msgstr "Colours from the cover"
+
+msgid "Акцентные цвета интерфейса подстраиваются под обложку играющего трека. Выбор темы выше выключает это."
+msgstr "Accent colours follow the cover of the playing track. Picking a theme above turns this off."
+
+msgid "Выравнивать громкость"
+msgstr "Normalize volume"
+
+msgid "Тихие треки подтягиваются, громкие прижимаются — не надо крутить громкость между песнями. Почти не нагружает процессор."
+msgstr "Quiet tracks get boosted, loud ones get tamed — no more riding the volume between songs. Barely touches the CPU."
+
+msgid "Кроссфейд: выкл"
+msgstr "Crossfade: off"
+
+msgid "Кроссфейд: {} с"
+msgstr "Crossfade: {} s"
+
+msgid "Конец трека плавно перетекает в начало следующего. Если следующий ещё не подгружен — обычный переход."
+msgstr "The end of a track blends into the start of the next. If the next one isn't loaded yet, it's a normal switch."
+
+msgid "Дальше похожее"
+msgstr "Keep playing similar"
+
+msgid "Когда плейлист или очередь заканчиваются, музыка не замолкает — включаются похожие треки."
+msgstr "When a playlist or the queue runs out, the music doesn't stop — similar tracks start playing."
+
+msgid "Таймер сна"
+msgstr "Sleep timer"
+
+msgid "Музыка плавно затихнет и встанет на паузу. Тот же таймер — на луне в плеере."
+msgstr "The music fades out and pauses. Same timer as the moon in the player bar."
+
+msgid "15 мин"
+msgstr "15 min"
+
+msgid "30 мин"
+msgstr "30 min"
+
+msgid "1 час"
+msgstr "1 hour"
+
+msgid "После трека"
+msgstr "After this track"
+
+msgid "Статус в Discord"
+msgstr "Discord status"
+
+msgid "Друзья видят, что ты слушаешь: трек, исполнитель, обложка и сколько осталось. На паузе статус пропадает."
+msgstr "Friends see what you're listening to: track, artist, cover and time left. The status disappears on pause."
+
+msgid "В этой сборке нет Application ID для Discord — статус пока не работает."
+msgstr "This build has no Discord Application ID — the status doesn't work yet."
+
+msgid "Горячие клавиши"
+msgstr "Hotkeys"
+
+msgid "Пробел"
+msgstr "Space"
+
+msgid "пауза / играть"
+msgstr "pause / play"
+
+msgid "перемотка на 5 с"
+msgstr "seek 5 s"
+
+msgid "предыдущий / следующий трек (или P / N)"
+msgstr "previous / next track (or P / N)"
+
+msgid "громкость"
+msgstr "volume"
+
+msgid "без звука"
+msgstr "mute"
+
+msgid "текст песни"
+msgstr "lyrics"
+
+msgid "перемешка / повтор"
+msgstr "shuffle / repeat"
+
+msgid "полный экран"
+msgstr "fullscreen"
+
+msgid "поиск"
+msgstr "search"
+
+msgid "закрыть окно или выйти из поля ввода"
+msgstr "close a dialog or leave a text field"
+
+msgid "Усну после этого трека"
+msgstr "Sleeping after this track"
+
+msgid "Усну через {} мин"
+msgstr "Sleeping in {} min"
+
+msgid "Нажми на клавишу справа и потом новое сочетание. Занятая клавиша поменяется местами. Esc всегда закрывает окна и выходит из поля ввода."
+msgstr "Click a key on the right, then press the new combo. If it's taken, the two swap. Esc always closes dialogs and leaves text fields."
+
+msgid "жми клавишу… (Esc — отмена)"
+msgstr "press a key… (Esc to cancel)"
+
+msgid "Вернуть клавиши по умолчанию"
+msgstr "Restore default keys"
+
+msgid "Неон"
+msgstr "Neon"
+
+msgid "Лава"
+msgstr "Lava"
+
+msgid "Лаванда"
+msgstr "Lavender"
+
+msgid "Аврора"
+msgstr "Aurora"
+
+msgid "Полночь"
+msgstr "Midnight"
+
+msgid "Золото"
+msgstr "Gold"
+
+msgid "Мята"
+msgstr "Mint"
+
+msgid "Кровь"
+msgstr "Blood"
+
+msgid "Персик"
+msgstr "Peach"
+
+msgid "Главная"
+msgstr "Home"
+
+msgid "Собираю миксы…"
+msgstr "Building mixes…"
+
+msgid "Пересобрать миксы"
+msgstr "Rebuild mixes"
+
+msgid "Послушай пару треков — и тут появятся миксы под тебя, недавнее и похожие артисты. А пока ищи что угодно сверху."
+msgstr "Play a few tracks and your mixes, recent plays and similar artists will show up here. Meanwhile, search for anything above."
+
+msgid "Собираю миксы под тебя…"
+msgstr "Building mixes for you…"
+
+msgid "Твои миксы"
+msgstr "Your mixes"
+
+msgid "Быстрый подбор"
+msgstr "Quick picks"
+
+msgid "Недавно играло"
+msgstr "Recently played"
+
+msgid "Твои плейлисты"
+msgstr "Your playlists"
+
+msgid "Похоже на {}"
+msgstr "Similar to {}"
+
+msgid "Найти в плейлисте"
+msgstr "Find in playlist"
+
+msgid "Как добавлены"
+msgstr "As added"
+
+msgid "Сначала новые"
+msgstr "Newest first"
+
+msgid "Название"
+msgstr "Title"
+
+msgid "Артист"
+msgstr "Artist"
+
+msgid "Длительность"
+msgstr "Length"
+
+msgid "Ничего не нашлось"
+msgstr "Nothing found"
+
+msgid "Офлайн-кэш"
+msgstr "Offline cache"
+
+msgid "Прослушанные треки тихо сохраняются на диск: повторно играют мгновенно и без интернета. Старые вытесняются, когда кэш упрётся в предел."
+msgstr "Tracks you play are quietly saved to disk: next time they start instantly, even offline. Old ones are evicted when the cache hits the limit."
+
+msgid "Предел:"
+msgstr "Limit:"
+
+msgid "{} ГБ"
+msgstr "{} GB"
+
+msgid "Очистить · {}"
+msgstr "Clear · {}"
+
+msgid "Плейлисты, история, статистика и настройки хранятся только у тебя на компьютере. Никаких аккаунтов, регистраций, подписок и телеметрии."
+msgstr "Playlists, history, stats and settings live only on your computer. No accounts, sign-ups, subscriptions or telemetry."
+
+msgid "Поиск сразу по YouTube Music, SoundCloud и Яндекс Музыке. Импорт плейлистов и альбомов из Spotify, Apple Music, YouTube Music, SoundCloud и Яндекса — одной ссылкой или QR-кодом."
+msgstr "Search YouTube Music, SoundCloud and Yandex Music at once. Import playlists and albums from Spotify, Apple Music, YouTube Music, SoundCloud and Yandex with one link or a QR code."
+
+msgid "Твои файлы рядом со стримингом"
+msgstr "Your files next to streaming"
+
+msgid "mp3, flac, ogg и m4a из твоих папок играют наравне со стримингом и живут в тех же плейлистах."
+msgstr "mp3, flac, ogg and m4a from your folders play just like streaming and live in the same playlists."
+
+msgid "Главная под тебя"
+msgstr "A home made for you"
+
+msgid "Каждый день свежие миксы по тому, что ты слушаешь: твой микс, миксы по любимым артистам и открытия — то, чего ты ещё не слышал."
+msgstr "Fresh mixes every day based on what you play: your mix, mixes for your favourite artists and discoveries you haven't heard yet."
+
+msgid "Караоке по словам, свечение, волна по буквам и семь анимаций ухода строк. Тексты собираются из нескольких источников и подгоняются под твой трек."
+msgstr "Word-by-word karaoke, glow, a letter wave and seven line exit animations. Lyrics come from several sources and are aligned to your track."
+
+msgid "Быстрый и офлайн"
+msgstr "Fast and offline"
+
+msgid "Следующие треки подгружаются заранее, а прослушанные сохраняются на диск — повторно играют мгновенно и без интернета."
+msgstr "Next tracks load ahead of time, and played ones are saved to disk — they start instantly, even offline."
+
+msgid "Всё, что нужно плееру"
+msgstr "Everything a player needs"
+
+msgid "Кроссфейд, эквалайзер, скорость, таймер сна, горячие клавиши, очередь, история, перемешка и повтор. «Дальше похожее», когда плейлист кончился."
+msgstr "Crossfade, equalizer, speed, sleep timer, hotkeys, queue, history, shuffle and repeat. Similar tracks keep playing when a playlist ends."
+
+msgid "Сколько слушал за день, неделю и месяц, год клеточками, любимый исполнитель и топ треков."
+msgstr "Listening time per day, week and month, a year in squares, your favourite artist and top tracks."
+
+msgid "Виден в панели и медиа-клавишах (MPRIS), показывает, что играет, в статусе Discord."
+msgstr "Shows up in your panel and media keys (MPRIS), and shows what's playing in your Discord status."
+
+msgid "Пятнадцать тем"
+msgstr "Fifteen themes"
+
+msgid "Или цвета прямо из обложки играющего трека."
+msgstr "Or colours straight from the playing track's cover."
