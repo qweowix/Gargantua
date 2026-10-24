@@ -38,7 +38,9 @@
 
 | | |
 |---|---|
-| ![Текст песни](docs/lyrics.png) | ![Статистика](docs/stats.png) |
+| ![Текст песни](docs/lyrics.png) | ![Текст песни в цвет обложки](docs/lyrics-tvgirl.png) |
+| ![Плейлист](docs/playlist.png) | ![Статистика](docs/stats.png) |
+| ![Настройки](docs/settings.png) | ![О программе](docs/about.png) |
 
 ## Установка
 
