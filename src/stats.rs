@@ -65,6 +65,12 @@ pub fn hour() -> i32 {
     local_now().tm_hour
 }
 
+/// Местное время «ЧЧ:ММ»
+pub fn hm() -> String {
+    let tm = local_now();
+    format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+}
+
 /// (год, месяц, день) по номеру дня — для подписей
 pub fn ymd(day: i64) -> (i64, u32, u32) {
     // алгоритм Хиннанта (days_from_civil наоборот)

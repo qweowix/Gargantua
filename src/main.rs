@@ -2,6 +2,7 @@
 
 mod apple;
 mod cache;
+mod cloud;
 mod covers;
 mod discord;
 mod download;
@@ -252,6 +253,8 @@ struct App {
     home_similar_model: Rc<VecModel<Card>>,
     home_quick_model: Rc<VecModel<TrackItem>>,
     save_timer: Timer,
+    cloud_timer: Timer,
+    syncing: bool,
 }
 
 thread_local! {
@@ -405,7 +408,7 @@ fn rand_below(n: usize) -> usize {
 }
 
 /// Горячие клавиши: (действие, клавиша по умолчанию). Esc не меняется — им выходят из всего
-const KEYS: [(&str, &str); 13] = [
+const KEYS: [(&str, &str); 14] = [
     ("toggle", "Space"),
     ("back", "←"),
     ("fwd", "→"),
@@ -419,6 +422,7 @@ const KEYS: [(&str, &str); 13] = [
     ("repeat", "R"),
     ("fullscreen", "F"),
     ("search", "Ctrl+F"),
+    ("sync", "Ctrl+R"),
 ];
 
 /// Нажатие → имя клавиши вида "Ctrl+Shift+K". Буквы — по месту на клавиатуре, а не по раскладке:
@@ -473,6 +477,26 @@ fn fmt_long(ms: u64) -> String {
 /// Один и тот же трек из разных мест (радио отдаёт свои id) — по названию и артисту
 fn same_song(t: &Track) -> String {
     format!("{}|{}", t.title.to_lowercase(), first_artist(&t.artist).to_lowercase())
+}
+
+/// Код ошибки Firebase → человеческий текст. Протухшая сессия — выходим из аккаунта (плейлисты остаются)
+fn acc_err(e: &anyhow::Error) -> String {
+    let s = e.to_string();
+    let code = s.split([' ', ':']).next().unwrap_or("");
+    match code {
+        "EMAIL_EXISTS" => tr!("На эту почту уже есть аккаунт — просто войди", "This email already has an account — just sign in", "На цю пошту вже є акаунт — просто увійди"),
+        "INVALID_LOGIN_CREDENTIALS" | "INVALID_PASSWORD" | "EMAIL_NOT_FOUND" => tr!("Неверная почта или пароль", "Wrong email or password", "Невірна пошта або пароль"),
+        "WEAK_PASSWORD" => tr!("Пароль слишком короткий: нужно от 6 символов", "Password is too short: at least 6 characters", "Пароль закороткий: потрібно від 6 символів"),
+        "INVALID_EMAIL" | "MISSING_EMAIL" => tr!("Это не похоже на почту", "That doesn't look like an email", "Це не схоже на пошту"),
+        "MISSING_PASSWORD" => tr!("Введи пароль", "Enter a password", "Введи пароль"),
+        "TOO_MANY_ATTEMPTS_TRY_LATER" => tr!("Слишком много попыток, подожди немного", "Too many attempts, wait a bit", "Забагато спроб, зачекай трохи"),
+        "NETWORK" => tr!("Нет связи с сервером", "Can't reach the server", "Немає зв'язку з сервером"),
+        "TOKEN_EXPIRED" | "INVALID_REFRESH_TOKEN" | "USER_NOT_FOUND" | "USER_DISABLED" | "NOT_SIGNED_IN" => {
+            cloud::sign_out();
+            tr!("Сессия кончилась, войди заново", "Session expired, sign in again", "Сесія скінчилася, увійди знову")
+        }
+        _ => tr!("Не вышло: {}", "Failed: {}", "Не вийшло: {}", s),
+    }
 }
 
 fn now_ms() -> i64 {
@@ -1325,6 +1349,112 @@ impl App {
                 Err(e) => a.toast(&tr!("Не вышло: {:#}", "Failed: {:#}", "Не вийшло: {:#}", e)),
             });
         });
+    }
+
+    // ── аккаунт и плейлисты в облаке ──
+
+    fn acc_refresh_ui(&self) {
+        let a = cloud::account();
+        self.ui.set_acc_on(cloud::cfg().is_some());
+        self.ui.set_acc_state(if !a.signed_in() { 0 } else if !a.verified { 1 } else { 2 });
+        self.ui.set_acc_email(a.email.into());
+    }
+
+    /// Запрос к аккаунту в фоне: Ok — что написать под кнопками
+    fn acc_job(&mut self, f: impl FnOnce(&cloud::Cfg, &str) -> anyhow::Result<String> + Send + 'static) {
+        let Some(c) = cloud::cfg() else { return };
+        let lang = if self.store.settings.lang.is_empty() { "en".to_string() } else { self.store.settings.lang.clone() };
+        self.ui.set_acc_busy(true);
+        self.ui.set_acc_msg("".into());
+        std::thread::spawn(move || {
+            let r = f(&c, &lang);
+            post(move |a| {
+                a.ui.set_acc_busy(false);
+                a.ui.set_acc_msg(r.unwrap_or_else(|e| acc_err(&e)).into());
+                a.acc_refresh_ui();
+                if cloud::account().verified {
+                    a.cloud_sync(false);
+                }
+            });
+        });
+    }
+
+    /// Слить плейлисты с облаком: при запуске, раз в минуту и по кнопке (manual — с тостом)
+    fn cloud_sync(&mut self, manual: bool) {
+        let Some(c) = cloud::cfg() else { return };
+        let acc = cloud::account();
+        if !acc.signed_in() {
+            if manual {
+                self.toast(&tr!("Сначала войди в аккаунт в настройках", "Sign in to your account in settings first", "Спершу увійди в акаунт у налаштуваннях"));
+            }
+            return;
+        }
+        if self.syncing || self.ui.get_acc_busy() {
+            return;
+        }
+        if !acc.verified {
+            // ждём, пока нажмут ссылку в письме: проверяем тихо, подтвердили — тут же синхронизируемся
+            self.acc_job(move |c, l| {
+                Ok(if cloud::check_verified(c, l)? || !manual {
+                    String::new()
+                } else {
+                    tr!("Почта ещё не подтверждена", "Email isn't confirmed yet", "Пошту ще не підтверджено")
+                })
+            });
+            return;
+        }
+        self.syncing = true;
+        self.ui.set_acc_syncing(true);
+        let local = self.store.playlists.clone();
+        let snap = cloud::hashes(&local);
+        std::thread::spawn(move || {
+            let r = cloud::sync(&c, &local);
+            post(move |a| {
+                a.syncing = false;
+                a.ui.set_acc_syncing(false);
+                match r {
+                    // за время запроса плейлисты поправили — результат устарел, сливаем заново
+                    Ok(_) if cloud::hashes(&a.store.playlists) != snap => a.cloud_sync(manual),
+                    Ok(s) => {
+                        cloud::update(|acc| acc.base = s.base);
+                        if cloud::hashes(&s.playlists) != snap {
+                            a.apply_cloud(s.playlists);
+                        }
+                        a.ui.set_acc_msg(tr!("Синхронизировано в {}", "Synced at {}", "Синхронізовано о {}", stats::hm()).into());
+                        if manual {
+                            a.toast(&tr!("Плейлисты синхронизированы", "Playlists synced", "Плейлисти синхронізовано"));
+                        }
+                    }
+                    Err(e) => {
+                        let m = acc_err(&e);
+                        if manual {
+                            a.toast(&m);
+                        }
+                        a.ui.set_acc_msg(m.into());
+                        a.acc_refresh_ui(); // сессия могла протухнуть — тогда снова форма входа
+                    }
+                }
+            });
+        });
+    }
+
+    /// Плейлисты пришли из облака: заменить свои, открытый плейлист остаётся открытым
+    fn apply_cloud(&mut self, pls: Vec<Playlist>) {
+        let open = self.open_pl.and_then(|i| self.store.playlists.get(i)).map(|p| p.name.clone());
+        for p in self.store.playlists.iter().filter(|p| !p.cover.is_empty() && !pls.iter().any(|n| n.cover == p.cover)) {
+            let _ = std::fs::remove_file(&p.cover); // плейлист удалили на другом компьютере — его обложка тут больше не нужна
+        }
+        self.store.playlists = pls;
+        self.open_pl = open.and_then(|n| self.store.playlists.iter().position(|p| p.name == n));
+        self.save();
+        self.refresh_playlists();
+        self.refresh_home();
+        if self.ui.get_page() == "playlist" {
+            match self.open_pl {
+                Some(i) => self.open_playlist(i),
+                None => self.ui.set_page("search".into()),
+            }
+        }
     }
 
     fn delete_playlist(&mut self) {
@@ -2401,6 +2531,7 @@ impl App {
             tr!("Повтор", "Repeat", "Повтор"),
             tr!("Полный экран", "Fullscreen", "Повний екран"),
             tr!("Поиск", "Search", "Пошук"),
+            tr!("Синхронизировать плейлисты", "Sync playlists", "Синхронізувати плейлисти"),
         ];
         let space = tr!("Пробел", "Space", "Пробіл");
         let binds: Vec<KeyBind> = KEYS
@@ -2471,6 +2602,7 @@ impl App {
                 self.ui.set_repeat(self.repeat);
             }
             "lyrics" => self.set_lyrics_open(!self.ui.get_lyrics_open()),
+            "sync" => self.cloud_sync(true),
             _ => {}
         }
     }
@@ -3204,6 +3336,8 @@ fn main() -> Result<(), slint::PlatformError> {
         home_similar_model: home_similar_model.clone(),
         home_quick_model: home_quick_model.clone(),
         save_timer: Timer::default(),
+        cloud_timer: Timer::default(),
+        syncing: false,
     };
     APP.with(|a| *a.borrow_mut() = Some(app));
     with(|a| a.apply_settings());
@@ -3655,6 +3789,57 @@ fn main() -> Result<(), slint::PlatformError> {
             a.save();
         });
     });
+    ui.on_acc_login(|e, p| {
+        let (e, p) = (e.trim().to_string(), p.to_string());
+        with(|a| {
+            a.acc_job(move |c, l| {
+                Ok(if cloud::sign_in(c, l, &e, &p)? {
+                    String::new()
+                } else {
+                    tr!("Почта не подтверждена: открой ссылку из письма или отправь его ещё раз", "Email isn't confirmed: open the link from the email or send it again", "Пошту не підтверджено: відкрий посилання з листа або надішли його ще раз")
+                })
+            })
+        });
+    });
+    ui.on_acc_register(|e, p| {
+        let (e, p) = (e.trim().to_string(), p.to_string());
+        with(|a| {
+            a.acc_job(move |c, l| {
+                cloud::sign_up(c, l, &e, &p)?;
+                Ok(tr!("Письмо ушло на {}. Открой ссылку в нём и вернись сюда", "Sent an email to {}. Open the link in it and come back", "Лист пішов на {}. Відкрий посилання в ньому і повертайся", e))
+            })
+        });
+    });
+    ui.on_acc_reset(|e| {
+        let e = e.trim().to_string();
+        with(|a| {
+            a.acc_job(move |c, l| {
+                cloud::send_reset(c, l, &e)?;
+                Ok(tr!("Письмо для смены пароля ушло на {}", "Sent a password reset email to {}", "Лист для зміни пароля пішов на {}", e))
+            })
+        });
+    });
+    ui.on_acc_resend(|| {
+        with(|a| {
+            a.acc_job(|c, l| {
+                cloud::send_verify(c, l)?;
+                Ok(tr!("Отправил ещё раз, глянь и в спаме", "Sent again, check spam too", "Надіслав ще раз, глянь і в спамі"))
+            })
+        });
+    });
+    ui.on_acc_check(|| {
+        with(|a| a.cloud_sync(true));
+    });
+    ui.on_acc_logout(|| {
+        cloud::sign_out();
+        with(|a| {
+            a.acc_refresh_ui();
+            a.ui.set_acc_msg(tr!("Вышел. Плейлисты остались на этом компьютере", "Signed out. Playlists stay on this computer", "Вийшов. Плейлисти лишилися на цьому комп'ютері").into());
+        });
+    });
+    ui.on_cloud_sync(|| {
+        with(|a| a.cloud_sync(true));
+    });
     ui.on_set_spicy_key(|k| {
         with(|a| {
             a.store.settings.spicy_key = k.trim().to_string();
@@ -3811,6 +3996,14 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     with(|a| a.restore_last());
+    // плейлисты из облака: сразу при запуске и потом раз в минуту
+    with(|a| {
+        a.acc_refresh_ui();
+        a.cloud_sync(false);
+        a.cloud_timer.start(TimerMode::Repeated, Duration::from_secs(60), || {
+            with(|a| a.cloud_sync(false));
+        });
+    });
     ui.run()?;
     with(|a| {
         a.save_last();

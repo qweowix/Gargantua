@@ -853,3 +853,48 @@ msgstr "Fifteen themes"
 
 msgid "Или цвета прямо из обложки играющего трека."
 msgstr "Or colours straight from the playing track's cover."
+
+msgid "Аккаунт"
+msgstr "Account"
+
+msgid "Войди, и плейлисты будут одинаковые на всех твоих компьютерах. Без аккаунта всё работает как раньше."
+msgstr "Sign in and your playlists will be the same on all your computers. Without an account everything works as before."
+
+msgid "Почта"
+msgstr "Email"
+
+msgid "Пароль"
+msgstr "Password"
+
+msgid "Войти"
+msgstr "Sign in"
+
+msgid "Создать аккаунт"
+msgstr "Create account"
+
+msgid "Забыл пароль"
+msgstr "Forgot password"
+
+msgid "Подтверди почту {}: открой ссылку из письма. Плейлисты начнут синхронизироваться сразу после этого."
+msgstr "Confirm your email {}: open the link from the email. Playlists start syncing right after that."
+
+msgid "Я подтвердил"
+msgstr "I've confirmed"
+
+msgid "Отправить ещё раз"
+msgstr "Send again"
+
+msgid "Выйти"
+msgstr "Sign out"
+
+msgid "Синхронизирую…"
+msgstr "Syncing…"
+
+msgid "Синхронизировать"
+msgstr "Sync"
+
+msgid "Секунду…"
+msgstr "One sec…"
+
+msgid "Синхронизировать плейлисты"
+msgstr "Sync playlists"

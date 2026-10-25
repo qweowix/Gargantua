@@ -172,6 +172,23 @@ fn ui() {
 
     ui.set_page("settings".into());
     snap(&win, "05-settings");
+    // аккаунт: форма входа, ожидание письма, вошёл
+    ui.set_acc_on(true);
+    ui.set_acc_msg("Неверная почта или пароль".into());
+    snap(&win, "05a-account");
+    ui.set_acc_state(1);
+    ui.set_acc_email("qweowix@example.com".into());
+    ui.set_acc_msg("".into());
+    snap(&win, "05b-account-verify");
+    ui.set_acc_state(2);
+    ui.set_acc_msg("Синхронизировано в 14:02".into());
+    snap(&win, "05c-account-in");
+    ui.set_page("playlist".into());
+    snap(&win, "05d-playlist-sync");
+    ui.set_acc_on(false);
+    ui.set_acc_state(0);
+    ui.set_acc_msg("".into());
+    ui.set_page("settings".into());
     for t in [1, 3, 5] {
         ui.global::<Theme>().set_id(t);
         snap(&win, &format!("06-theme-{t}"));

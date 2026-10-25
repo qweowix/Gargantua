@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Все сервисы — одна дыра.</b><br>
-  Бесплатный музыкальный плеер для Linux и Windows: YouTube Music, SoundCloud, Spotify, Apple Music, Яндекс Музыка и твои файлы — в одном окне. Без рекламы, без аккаунтов, всё хранится у тебя.
+  Бесплатный музыкальный плеер для Linux и Windows: YouTube Music, SoundCloud, Spotify, Apple Music, Яндекс Музыка и твои файлы — в одном окне. Без рекламы, аккаунт не обязателен, всё хранится у тебя.
 </p>
 
 <p align="center">
@@ -33,6 +33,7 @@
 - **Discord**: статус «Слушает» с обложкой и кнопкой на трек.
 - **15 тем** плюс тема в цвет обложки текущего трека.
 - **Обмен плейлистами через QR-код.**
+- **Аккаунт по желанию**: вход по почте, и плейлисты одинаковые на всех компьютерах. Синхронизируются при запуске, раз в минуту и по кнопке. Настройка своего Firebase — [docs/firebase.md](docs/firebase.md).
 - Медиа-клавиши и системные контролы (MPRIS на Linux), русский / английский / украинский интерфейс.
 - **Лёгкий**: нативный интерфейс на Rust и Slint, без браузерного движка внутри.
 
@@ -88,6 +89,7 @@ yt-dlp лучше держать свежим (`yt-dlp -U` или через п�
 | `S` / `R` | перемешать / повтор |
 | `F` | во весь экран |
 | `Ctrl+F` | поиск |
+| `Ctrl+R` | синхронизировать плейлисты с аккаунтом |
 
 Любую можно переназначить в настройках. Клавиши работают по месту на клавиатуре, раскладка не важна.
 
@@ -122,6 +124,7 @@ cargo build --release
 - Интерфейс — [Slint](https://slint.dev) со Skia-рендером, весь в `ui/app.slint`.
 - Звук — [mpv](https://mpv.io) по JSON IPC, ссылки на потоки — [yt-dlp](https://github.com/yt-dlp/yt-dlp), который живёт в фоне и не запускается заново на каждый трек.
 - Поиск и импорт — внутренние веб-API сервисов, ключи и аккаунты не нужны.
+- Аккаунты — Firebase Auth и Firestore по REST (`src/cloud.rs`), проект задаётся переменными при сборке, см. [docs/firebase.md](docs/firebase.md).
 - Переводы — `lang/*/LC_MESSAGES/blackhole.po`.
 
 ## Благодарности
@@ -137,7 +140,7 @@ cargo build --release
 <a name="english"></a>
 ## English
 
-**BlackHole** is a free music player for Linux and Windows. It searches YouTube Music, SoundCloud and Yandex Music at once, imports playlists from Spotify, Apple Music and others by link, plays your local files, and shows word-by-word synced lyrics with karaoke effects. It has no ads and needs no accounts. Everything is stored locally.
+**BlackHole** is a free music player for Linux and Windows. It searches YouTube Music, SoundCloud and Yandex Music at once, imports playlists from Spotify, Apple Music and others by link, plays your local files, and shows word-by-word synced lyrics with karaoke effects. It has no ads, and an account is optional: sign in with email to keep your playlists in sync across computers. Everything else is stored locally.
 
 Also included: daily mixes, listening stats with a GitHub-style heatmap, an offline cache, mp3 downloads, crossfade, an EQ, a sleep timer, rebindable hotkeys, Discord Rich Presence, 15 themes plus a cover-coloured theme, QR playlist sharing, and an English/Russian/Ukrainian UI.
 
