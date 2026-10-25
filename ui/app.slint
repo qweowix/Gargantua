@@ -1559,6 +1559,7 @@ export component AppWindow inherits Window {
     in property <bool> acc-on; // Firebase задан при сборке — иначе аккаунтов нет совсем
     in property <int> acc-state;
     in property <string> acc-email;
+    in property <string> acc-letter; // первая буква почты — на аватарке
     in-out property <string> acc-msg;
     in-out property <bool> acc-reg; // окно входа в режиме регистрации
     in-out property <string> acc-pw2; // повтор пароля при регистрации
@@ -1864,15 +1865,6 @@ export component AppWindow inherits Window {
                             }
                         }
 
-                        if root.acc-on && root.acc-state == 2: NavItem {
-                            icon: Icons.user;
-                            text: root.acc-email;
-                            clicked => {
-                                root.page = "settings";
-                                set-fl.content-y = 0; // раздел аккаунта — самый верх настроек
-                            }
-                        }
-
                         NavItem {
                             icon: Icons.info;
                             text: @tr("О программе");
@@ -1916,6 +1908,63 @@ export component AppWindow inherits Window {
                                 active: root.page == "playlist" && root.open-pl == i;
                                 clicked => {
                                     root.open-playlist(i);
+                                }
+                            }
+                        }
+
+                        // аккаунт — внизу панели, клик открывает его страницу
+                        if root.acc-on && root.acc-state == 2: Rectangle {
+                            height: 56px;
+                            border-radius: 14px;
+                            background: root.page == "account" ? Theme.c1.transparentize(0.82) : (acc-ta.has-hover ? #ffffff0d : #ffffff06);
+                            border-width: 1px;
+                            border-color: #ffffff12;
+                            animate background { duration: 150ms; }
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 12px;
+                                spacing: 10px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        width: 34px;
+                                        height: 34px;
+                                        border-radius: 17px;
+                                        background: @linear-gradient(135deg, Theme.c1 0%, Theme.c2 100%);
+                                        Text {
+                                            text: root.acc-letter;
+                                            color: white;
+                                            font-size: 15px;
+                                            font-weight: 800;
+                                        }
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    Text {
+                                        text: root.acc-email;
+                                        color: Theme.text;
+                                        font-size: 13px;
+                                        font-weight: 700;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: root.acc-syncing ? @tr("Синхронизирую…") : root.acc-msg != "" ? root.acc-msg : @tr("Аккаунт");
+                                        color: Theme.faint;
+                                        font-size: 11px;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+
+                            acc-ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.page = "account";
                                 }
                             }
                         }
@@ -3476,6 +3525,95 @@ export component AppWindow inherits Window {
                         }
                     }
 
+                    // аккаунт
+                    Page {
+                        shown: root.page == "account";
+                        VerticalLayout {
+                            padding: 26px;
+                            spacing: 14px;
+                            alignment: start;
+                            Text {
+                                text: @tr("Аккаунт");
+                                color: Theme.text;
+                                font-size: 28px;
+                                font-weight: 800;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 16px;
+                                Rectangle {
+                                    width: 64px;
+                                    height: 64px;
+                                    border-radius: 32px;
+                                    background: @linear-gradient(135deg, Theme.c1 0%, Theme.c2 100%);
+                                    drop-shadow-blur: 24px;
+                                    drop-shadow-color: Theme.c1.transparentize(0.5);
+                                    Text {
+                                        text: root.acc-letter;
+                                        color: white;
+                                        font-size: 28px;
+                                        font-weight: 800;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    horizontal-stretch: 1;
+                                    spacing: 4px;
+                                    Text {
+                                        text: root.acc-email;
+                                        color: Theme.text;
+                                        font-size: 18px;
+                                        font-weight: 700;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: root.acc-syncing ? @tr("Синхронизирую…") : root.acc-msg;
+                                        color: Theme.dim;
+                                        font-size: 13px;
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: @tr("Плейлисты хранятся в аккаунте и одинаковые на всех твоих компьютерах. Правки уходят на сервер сразу, свежие подтягиваются раз в минуту. История, статистика и настройки остаются на этом компьютере.");
+                                color: Theme.dim;
+                                font-size: 13px;
+                                wrap: word-wrap;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 10px;
+                                alignment: start;
+                                Pill {
+                                    text: root.acc-syncing ? @tr("Синхронизирую…") : @tr("Синхронизировать");
+                                    icon: Icons.refresh;
+                                    enabled: !root.acc-syncing;
+                                    clicked => {
+                                        root.cloud-sync();
+                                    }
+                                }
+
+                                Pill {
+                                    text: @tr("Сменить пароль");
+                                    primary: false;
+                                    clicked => {
+                                        root.acc-reset(root.acc-email);
+                                    }
+                                }
+
+                                Pill {
+                                    text: @tr("Выйти");
+                                    danger: true;
+                                    clicked => {
+                                        root.acc-logout();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // настройки
                     Page {
                         shown: root.page == "settings";
@@ -3492,65 +3630,6 @@ export component AppWindow inherits Window {
                                 color: Theme.text;
                                 font-size: 28px;
                                 font-weight: 800;
-                            }
-
-                            if root.acc-on && root.acc-state == 2: VerticalLayout {
-                                spacing: 10px;
-                                Text {
-                                    text: @tr("Аккаунт");
-                                    color: Theme.text;
-                                    font-size: 15px;
-                                    font-weight: 700;
-                                }
-
-                                if root.acc-state == 2: HorizontalLayout {
-                                    spacing: 10px;
-                                    VerticalLayout {
-                                        horizontal-stretch: 1;
-                                        alignment: center;
-                                        Text {
-                                            text: root.acc-email;
-                                            color: Theme.text;
-                                            font-size: 14px;
-                                            overflow: elide;
-                                        }
-                                    }
-
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Pill {
-                                            text: root.acc-syncing ? @tr("Синхронизирую…") : @tr("Синхронизировать");
-                                            icon: Icons.refresh;
-                                            enabled: !root.acc-syncing;
-                                            clicked => {
-                                                root.cloud-sync();
-                                            }
-                                        }
-                                    }
-
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Pill {
-                                            text: @tr("Выйти");
-                                            primary: false;
-                                            clicked => {
-                                                root.acc-logout();
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if root.acc-busy || root.acc-msg != "": Text {
-                                    text: root.acc-busy ? @tr("Секунду…") : root.acc-msg;
-                                    color: Theme.dim;
-                                    font-size: 13px;
-                                    wrap: word-wrap;
-                                }
-
-                                Rectangle {
-                                    height: 1px;
-                                    background: Theme.line;
-                                }
                             }
 
                             HorizontalLayout {

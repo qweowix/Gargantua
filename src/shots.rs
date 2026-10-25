@@ -185,6 +185,8 @@ fn ui() {
     snap(&win, "05b-account-verify");
     ui.set_acc_state(2);
     ui.set_acc_msg("Синхронизировано в 14:02".into());
+    ui.set_acc_letter("Q".into());
+    ui.set_page("account".into());
     snap(&win, "05c-account-in");
     ui.set_page("playlist".into());
     snap(&win, "05d-playlist-sync");

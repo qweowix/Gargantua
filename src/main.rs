@@ -1384,7 +1384,11 @@ impl App {
         if state != 0 {
             self.ui.set_acc_reg(false); // вышел потом — окно снова начинается со входа
         }
+        self.ui.set_acc_letter(a.email.chars().next().map_or("?".into(), |c| c.to_uppercase().to_string()).into());
         self.ui.set_acc_email(a.email.into());
+        if state != 2 && self.ui.get_page() == "account" {
+            self.ui.set_page("search".into());
+        }
     }
 
     /// Запрос к аккаунту в фоне: Ok — что написать под кнопками
@@ -3858,6 +3862,18 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.on_acc_reset(|e| {
         let e = e.trim().to_string();
+        if cloud::account().verified {
+            // смена пароля со страницы аккаунта: ответ тостом, строку «синхронизировано» не трогаем
+            let (Some(c), lang) = (cloud::cfg(), with(|a| a.store.settings.lang.clone()).unwrap_or_default()) else { return };
+            std::thread::spawn(move || {
+                let r = cloud::send_reset(&c, if lang.is_empty() { "en" } else { &lang }, &e);
+                post(move |a| match r {
+                    Ok(()) => a.toast(&tr!("Письмо для смены пароля ушло на {}", "Sent a password reset email to {}", "Лист для зміни пароля пішов на {}", e)),
+                    Err(err) => a.toast(&acc_err(&err)),
+                });
+            });
+            return;
+        }
         with(|a| {
             a.acc_job(move |c, l| {
                 cloud::send_reset(c, l, &e)?;

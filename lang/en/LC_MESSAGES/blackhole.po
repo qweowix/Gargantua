@@ -937,3 +937,9 @@ msgstr "Sign up"
 
 msgid "Регистрация"
 msgstr "Sign up"
+
+msgid "Плейлисты хранятся в аккаунте и одинаковые на всех твоих компьютерах. Правки уходят на сервер сразу, свежие подтягиваются раз в минуту. История, статистика и настройки остаются на этом компьютере."
+msgstr "Playlists live in your account and are the same on all your computers. Edits go to the server right away, fresh ones are pulled every minute. History, stats and settings stay on this computer."
+
+msgid "Сменить пароль"
+msgstr "Change password"
