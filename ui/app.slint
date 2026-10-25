@@ -138,6 +138,7 @@ global Icons {
     out property <string> chart: "M4 19h16v2H4zM5 10h3v7H5zm5.5-6h3v13h-3zM16 13h3v4h-3z";
     out property <string> moon: "M12.3 3a9 9 0 1 0 8.7 11.3A7 7 0 0 1 12.3 3z";
     out property <string> library: "M4 6H2v14a2 2 0 0 0 2 2h14v-2H4zm16-4H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-2 5h-3v5.5a2.5 2.5 0 1 1-1-2V5h4z";
+    out property <string> user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
     out property <string> refresh: "M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z";
 }
 
@@ -1861,6 +1862,15 @@ export component AppWindow inherits Window {
                             }
                         }
 
+                        if root.acc-on && root.acc-state == 2: NavItem {
+                            icon: Icons.user;
+                            text: root.acc-email;
+                            clicked => {
+                                root.page = "settings";
+                                set-fl.content-y = 0; // раздел аккаунта — самый верх настроек
+                            }
+                        }
+
                         NavItem {
                             icon: Icons.info;
                             text: @tr("О программе");
@@ -2997,7 +3007,7 @@ export component AppWindow inherits Window {
                             }
 
                             for f in [
-                                { t: @tr("Всё локально"), d: @tr("Плейлисты, история, статистика и настройки хранятся только у тебя на компьютере. Никаких аккаунтов, регистраций, подписок и телеметрии.") },
+                                { t: @tr("Без слежки"), d: @tr("История, статистика и настройки хранятся у тебя на компьютере. Плейлисты — в твоём аккаунте, одинаковые на всех компах. Никаких подписок и телеметрии.") },
                                 { t: @tr("Все сервисы в одном месте"), d: @tr("Поиск сразу по YouTube Music, SoundCloud и Яндекс Музыке. Импорт плейлистов и альбомов из Spotify, Apple Music, YouTube Music, SoundCloud и Яндекса — одной ссылкой или QR-кодом.") },
                                 { t: @tr("Твои файлы рядом со стримингом"), d: @tr("mp3, flac, ogg и m4a из твоих папок играют наравне со стримингом и живут в тех же плейлистах.") },
                                 { t: @tr("Главная под тебя"), d: @tr("Каждый день свежие миксы по тому, что ты слушаешь: твой микс, миксы по любимым артистам и открытия — то, чего ты ещё не слышал.") },
@@ -3482,107 +3492,13 @@ export component AppWindow inherits Window {
                                 font-weight: 800;
                             }
 
-                            if root.acc-on: VerticalLayout {
+                            if root.acc-on && root.acc-state == 2: VerticalLayout {
                                 spacing: 10px;
                                 Text {
                                     text: @tr("Аккаунт");
                                     color: Theme.text;
                                     font-size: 15px;
                                     font-weight: 700;
-                                }
-
-                                if root.acc-state == 0: VerticalLayout {
-                                    spacing: 10px;
-                                    Text {
-                                        text: @tr("Войди, и плейлисты будут одинаковые на всех твоих компьютерах. Без аккаунта всё работает как раньше.");
-                                        color: Theme.dim;
-                                        font-size: 13px;
-                                        wrap: word-wrap;
-                                    }
-
-                                    HorizontalLayout {
-                                        spacing: 10px;
-                                        acc-mail := Field {
-                                            placeholder: @tr("Почта");
-                                        }
-
-                                        acc-pw := Field {
-                                            placeholder: @tr("Пароль");
-                                            password: true;
-                                            accepted(_) => {
-                                                root.acc-login(acc-mail.text, acc-pw.text);
-                                            }
-                                        }
-                                    }
-
-                                    HorizontalLayout {
-                                        spacing: 10px;
-                                        alignment: start;
-                                        Pill {
-                                            text: @tr("Войти");
-                                            enabled: !root.acc-busy;
-                                            clicked => {
-                                                root.acc-login(acc-mail.text, acc-pw.text);
-                                            }
-                                        }
-
-                                        Pill {
-                                            text: @tr("Создать аккаунт");
-                                            primary: false;
-                                            enabled: !root.acc-busy;
-                                            clicked => {
-                                                root.acc-register(acc-mail.text, acc-pw.text);
-                                            }
-                                        }
-
-                                        Pill {
-                                            text: @tr("Забыл пароль");
-                                            primary: false;
-                                            enabled: !root.acc-busy;
-                                            clicked => {
-                                                root.acc-reset(acc-mail.text);
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if root.acc-state == 1: VerticalLayout {
-                                    spacing: 10px;
-                                    Text {
-                                        text: @tr("Подтверди почту {}: открой ссылку из письма. Плейлисты начнут синхронизироваться сразу после этого.", root.acc-email);
-                                        color: Theme.dim;
-                                        font-size: 13px;
-                                        wrap: word-wrap;
-                                    }
-
-                                    HorizontalLayout {
-                                        spacing: 10px;
-                                        alignment: start;
-                                        Pill {
-                                            text: @tr("Я подтвердил");
-                                            enabled: !root.acc-busy;
-                                            clicked => {
-                                                root.acc-check();
-                                            }
-                                        }
-
-                                        Pill {
-                                            text: @tr("Отправить ещё раз");
-                                            primary: false;
-                                            enabled: !root.acc-busy;
-                                            clicked => {
-                                                root.acc-resend();
-                                            }
-                                        }
-
-                                        Pill {
-                                            text: @tr("Выйти");
-                                            primary: false;
-                                            clicked => {
-                                                root.acc-logout();
-                                            }
-                                        }
-                                    }
                                 }
 
                                 if root.acc-state == 2: HorizontalLayout {
@@ -5862,6 +5778,149 @@ export component AppWindow inherits Window {
                             root.setup-done();
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // вход обязателен: без аккаунта плеер дальше не пускает, плейлисты живут на сервере
+    if root.acc-on && root.acc-state != 2: Rectangle {
+        background: #07060bf7;
+        TouchArea { }
+
+        Rectangle {
+            width: min(520px, root.width - 40px);
+            height: min(gate-lay.preferred-height, root.height - 40px);
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: #120f1e;
+            border-radius: 20px;
+            border-width: 1px;
+            border-color: Theme.c1.transparentize(0.7);
+            drop-shadow-blur: 40px;
+            drop-shadow-color: Theme.c1.transparentize(0.7);
+            gate-lay := VerticalLayout {
+                padding: 28px;
+                spacing: 12px;
+                Text {
+                    text: root.acc-state == 0 ? @tr("Вход в BlackHole") : @tr("Подтверди почту");
+                    color: Theme.text;
+                    font-size: 24px;
+                    font-weight: 800;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    for l in [{ code: "ru", name: "Русский" }, { code: "en", name: "English" }, { code: "uk", name: "Українська" }]: Chip {
+                        text: l.name;
+                        accent: Theme.soft1;
+                        active: root.lang == l.code;
+                        clicked => {
+                            root.set-lang(l.code);
+                        }
+                    }
+                }
+
+                if root.acc-state == 0: VerticalLayout {
+                    spacing: 10px;
+                    Text {
+                        text: @tr("Плейлисты хранятся в аккаунте и одинаковые на всех твоих компьютерах.");
+                        color: Theme.dim;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        acc-mail := Field {
+                            placeholder: @tr("Почта");
+                        }
+
+                        acc-pw := Field {
+                            placeholder: @tr("Пароль");
+                            password: true;
+                            accepted(_) => {
+                                root.acc-login(acc-mail.text, acc-pw.text);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        Pill {
+                            text: @tr("Войти");
+                            enabled: !root.acc-busy;
+                            clicked => {
+                                root.acc-login(acc-mail.text, acc-pw.text);
+                            }
+                        }
+
+                        Pill {
+                            text: @tr("Создать аккаунт");
+                            primary: false;
+                            enabled: !root.acc-busy;
+                            clicked => {
+                                root.acc-register(acc-mail.text, acc-pw.text);
+                            }
+                        }
+
+                        Pill {
+                            text: @tr("Забыл пароль");
+                            primary: false;
+                            enabled: !root.acc-busy;
+                            clicked => {
+                                root.acc-reset(acc-mail.text);
+                            }
+                        }
+                    }
+                }
+
+                if root.acc-state == 1: VerticalLayout {
+                    spacing: 10px;
+                    Text {
+                        text: @tr("Подтверди почту {}: открой ссылку из письма. Плейлисты начнут синхронизироваться сразу после этого.", root.acc-email);
+                        color: Theme.dim;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        Pill {
+                            text: @tr("Я подтвердил");
+                            enabled: !root.acc-busy;
+                            clicked => {
+                                root.acc-check();
+                            }
+                        }
+
+                        Pill {
+                            text: @tr("Отправить ещё раз");
+                            primary: false;
+                            enabled: !root.acc-busy;
+                            clicked => {
+                                root.acc-resend();
+                            }
+                        }
+
+                        Pill {
+                            text: @tr("Выйти");
+                            primary: false;
+                            clicked => {
+                                root.acc-logout();
+                            }
+                        }
+                    }
+                }
+
+                if root.acc-busy || root.acc-msg != "": Text {
+                    text: root.acc-busy ? @tr("Секунду…") : root.acc-msg;
+                    color: Theme.dim;
+                    font-size: 13px;
+                    wrap: word-wrap;
                 }
             }
         }

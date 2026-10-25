@@ -254,7 +254,9 @@ struct App {
     home_quick_model: Rc<VecModel<TrackItem>>,
     save_timer: Timer,
     cloud_timer: Timer,
+    push_timer: Timer,
     syncing: bool,
+    cloud_loaded: bool, // плейлисты аккаунта уже пришли с сервера
 }
 
 thread_local! {
@@ -889,8 +891,17 @@ impl App {
         });
     }
 
-    fn save(&self) {
+    fn save(&mut self) {
+        for p in self.store.playlists.iter().filter(|p| !p.cover.is_empty()) {
+            self.store.pl_covers.insert(p.name.clone(), p.cover.clone());
+        }
         self.store.save();
+        // плейлисты на диск не пишутся — правку через пару секунд отправляем на сервер
+        if self.cloud_loaded && cloud::dirty(&self.store.playlists) {
+            self.push_timer.start(TimerMode::SingleShot, Duration::from_secs(2), || {
+                with(|a| a.cloud_sync(false));
+            });
+        }
     }
 
     // ── поиск ──
@@ -1353,8 +1364,19 @@ impl App {
 
     // ── аккаунт и плейлисты в облаке ──
 
-    fn acc_refresh_ui(&self) {
+    fn acc_refresh_ui(&mut self) {
         let a = cloud::account();
+        if self.cloud_loaded && !(a.signed_in() && a.verified) {
+            // вышли (или сессия кончилась) — плейлисты этого аккаунта на экране больше не показываем
+            self.cloud_loaded = false;
+            self.store.playlists.clear();
+            self.open_pl = None;
+            self.refresh_playlists();
+            self.refresh_home();
+            if self.ui.get_page() == "playlist" {
+                self.ui.set_page("search".into());
+            }
+        }
         self.ui.set_acc_on(cloud::cfg().is_some());
         self.ui.set_acc_state(if !a.signed_in() { 0 } else if !a.verified { 1 } else { 2 });
         self.ui.set_acc_email(a.email.into());
@@ -1407,14 +1429,21 @@ impl App {
         self.ui.set_acc_syncing(true);
         let local = self.store.playlists.clone();
         let snap = cloud::hashes(&local);
+        let first = !self.cloud_loaded;
         std::thread::spawn(move || {
-            let r = cloud::sync(&c, &local);
+            let r = if first { cloud::load(&c) } else { cloud::sync(&c, &local) };
             post(move |a| {
                 a.syncing = false;
                 a.ui.set_acc_syncing(false);
                 match r {
                     // за время запроса плейлисты поправили — результат устарел, сливаем заново
-                    Ok(_) if cloud::hashes(&a.store.playlists) != snap => a.cloud_sync(manual),
+                    Ok(_) if !first && cloud::hashes(&a.store.playlists) != snap => a.cloud_sync(manual),
+                    Ok(s) if first => {
+                        a.cloud_loaded = true;
+                        cloud::update(|acc| acc.base = s.base);
+                        a.apply_cloud(s.playlists);
+                        a.ui.set_acc_msg("".into());
+                    }
                     Ok(s) => {
                         cloud::update(|acc| acc.base = s.base);
                         if cloud::hashes(&s.playlists) != snap {
@@ -1439,7 +1468,10 @@ impl App {
     }
 
     /// Плейлисты пришли из облака: заменить свои, открытый плейлист остаётся открытым
-    fn apply_cloud(&mut self, pls: Vec<Playlist>) {
+    fn apply_cloud(&mut self, mut pls: Vec<Playlist>) {
+        for p in pls.iter_mut().filter(|p| p.cover.is_empty()) {
+            p.cover = self.store.pl_covers.get(&p.name).filter(|c| std::path::Path::new(c).exists()).cloned().unwrap_or_default();
+        }
         let open = self.open_pl.and_then(|i| self.store.playlists.get(i)).map(|p| p.name.clone());
         for p in self.store.playlists.iter().filter(|p| !p.cover.is_empty() && !pls.iter().any(|n| n.cover == p.cover)) {
             let _ = std::fs::remove_file(&p.cover); // плейлист удалили на другом компьютере — его обложка тут больше не нужна
@@ -1462,6 +1494,7 @@ impl App {
         let p = self.store.playlists.remove(i);
         if !p.cover.is_empty() {
             let _ = std::fs::remove_file(&p.cover);
+            self.store.pl_covers.remove(&p.name);
         }
         self.save();
         self.refresh_playlists();
@@ -3170,7 +3203,13 @@ fn main() -> Result<(), slint::PlatformError> {
         return Ok(());
     };
     let ui = AppWindow::new()?;
-    let store = Store::load();
+    let mut store = Store::load();
+    if cloud::cfg().is_some() {
+        // плейлисты теперь в аккаунте: старые с диска откладываем до первого входа и в data.json больше не пишем
+        model::CLOUD.store(true, std::sync::atomic::Ordering::Relaxed);
+        cloud::stash_local(&store.playlists);
+        store.playlists.clear();
+    }
 
     let player = Player::spawn(store.settings.volume as f64 * 100.0, |ev| post(move |a| a.on_ev(ev)))
         .map_err(|e| eprintln!("{e:#}"))
@@ -3337,7 +3376,9 @@ fn main() -> Result<(), slint::PlatformError> {
         home_quick_model: home_quick_model.clone(),
         save_timer: Timer::default(),
         cloud_timer: Timer::default(),
+        push_timer: Timer::default(),
         syncing: false,
+        cloud_loaded: false,
     };
     APP.with(|a| *a.borrow_mut() = Some(app));
     with(|a| a.apply_settings());
@@ -3831,10 +3872,16 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| a.cloud_sync(true));
     });
     ui.on_acc_logout(|| {
+        // неотправленные правки — на сервер, пока ещё есть сессия
+        with(|a| {
+            if let (Some(c), true) = (cloud::cfg(), a.cloud_loaded && cloud::dirty(&a.store.playlists)) {
+                let _ = cloud::sync(&c, &a.store.playlists);
+            }
+        });
         cloud::sign_out();
         with(|a| {
             a.acc_refresh_ui();
-            a.ui.set_acc_msg(tr!("Вышел. Плейлисты остались на этом компьютере", "Signed out. Playlists stay on this computer", "Вийшов. Плейлисти лишилися на цьому комп'ютері").into());
+            a.ui.set_acc_msg(tr!("Вышел. Плейлисты остались в аккаунте", "Signed out. Playlists stay in your account", "Вийшов. Плейлисти лишилися в акаунті").into());
         });
     });
     ui.on_cloud_sync(|| {
@@ -4005,6 +4052,14 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     });
     ui.run()?;
+    // закрыли плеер — неотправленные правки плейлистов на сервер
+    with(|a| {
+        if let (Some(c), true) = (cloud::cfg(), a.cloud_loaded && cloud::dirty(&a.store.playlists)) {
+            if let Ok(s) = cloud::sync(&c, &a.store.playlists) {
+                cloud::update(|acc| acc.base = s.base);
+            }
+        }
+    });
     with(|a| {
         a.save_last();
         a.stats.save();

@@ -118,8 +118,13 @@ impl Default for Settings {
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Store {
+    /// с аккаунтом плейлисты живут на сервере и в data.json не пишутся (см. CLOUD)
+    #[serde(skip_serializing_if = "in_cloud")]
     pub playlists: Vec<Playlist>,
     pub settings: Settings,
+    /// свои обложки плейлистов по имени: плейлисты приходят с сервера без них (картинка — файл на этом компьютере)
+    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub pl_covers: std::collections::HashMap<String, String>,
     /// что играло при закрытии: при запуске появляется в плеере (на паузе) вместо «Тишины»
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last: Option<Last>,
@@ -133,6 +138,13 @@ pub struct Last {
     pub played: Vec<Track>,
     pub upnext: Vec<Track>,
     pub source: Vec<Track>,
+}
+
+/// Плеер собран с Firebase: плейлисты хранятся в аккаунте, а не на диске
+pub static CLOUD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn in_cloud(_: &Vec<Playlist>) -> bool {
+    CLOUD.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 impl Store {

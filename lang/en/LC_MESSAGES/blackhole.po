@@ -809,8 +809,8 @@ msgstr "{} GB"
 msgid "Очистить · {}"
 msgstr "Clear · {}"
 
-msgid "Плейлисты, история, статистика и настройки хранятся только у тебя на компьютере. Никаких аккаунтов, регистраций, подписок и телеметрии."
-msgstr "Playlists, history, stats and settings live only on your computer. No accounts, sign-ups, subscriptions or telemetry."
+msgid "Плейлисты, история, статистика и настройки хранятся у тебя на компьютере. Аккаунт — по желанию, только чтобы плейлисты были одинаковые на всех компах. Никаких подписок и телеметрии."
+msgstr "Playlists, history, stats and settings live on your computer. An account is optional, only to keep playlists the same on all your computers. No subscriptions or telemetry."
 
 msgid "Поиск сразу по YouTube Music, SoundCloud и Яндекс Музыке. Импорт плейлистов и альбомов из Spotify, Apple Music, YouTube Music, SoundCloud и Яндекса — одной ссылкой или QR-кодом."
 msgstr "Search YouTube Music, SoundCloud and Yandex Music at once. Import playlists and albums from Spotify, Apple Music, YouTube Music, SoundCloud and Yandex with one link or a QR code."
@@ -898,3 +898,21 @@ msgstr "One sec…"
 
 msgid "Синхронизировать плейлисты"
 msgstr "Sync playlists"
+
+msgid "Войти в аккаунт"
+msgstr "Sign in"
+
+msgid "История, статистика и настройки хранятся у тебя на компьютере. Плейлисты — в твоём аккаунте, одинаковые на всех компах. Никаких подписок и телеметрии."
+msgstr "History, stats and settings live on your computer. Playlists live in your account, the same on every computer. No subscriptions or telemetry."
+
+msgid "Подтверди почту"
+msgstr "Confirm your email"
+
+msgid "Плейлисты хранятся в аккаунте и одинаковые на всех твоих компьютерах."
+msgstr "Playlists live in your account and are the same on all your computers."
+
+msgid "Вход в BlackHole"
+msgstr "Sign in to BlackHole"
+
+msgid "Без слежки"
+msgstr "No tracking"

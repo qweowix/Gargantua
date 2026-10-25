@@ -261,6 +261,51 @@ pub fn sync(c: &Cfg, local: &[Playlist]) -> Result<Synced> {
     bail!("облако всё время меняется, попробую позже")
 }
 
+fn stash_path() -> std::path::PathBuf {
+    Store::dir().join("playlists-local.json")
+}
+
+/// Плейлисты, что жили в data.json до аккаунтов: откладываем в файл, при первом входе они уедут в облако
+pub fn stash_local(pls: &[Playlist]) {
+    if !pls.is_empty() && !stash_path().exists() {
+        let _ = std::fs::create_dir_all(Store::dir());
+        let _ = std::fs::write(stash_path(), serde_json::to_vec_pretty(pls).unwrap_or_default());
+    }
+}
+
+/// Первая загрузка после входа: что в облаке, то и наше. Отложенные старые плейлисты доливаются в облако
+/// (слиянием, ничего облачного не теряя), файл после этого переименовывается в .uploaded.json — копия на всякий
+pub fn load(c: &Cfg) -> Result<Synced> {
+    let a = account();
+    if !a.verified {
+        bail!("NOT_VERIFIED");
+    }
+    let id = id_token(c, false)?;
+    let old: Vec<Playlist> = std::fs::read(stash_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    for _ in 0..3 {
+        let (remote, ut) = match pull(c, &a.uid, &id)? {
+            Some((p, t)) => (p, Some(t)),
+            None => (vec![], None),
+        };
+        let pls = if old.is_empty() { remote.clone() } else { merge(&old, &remote, &HashMap::new()) };
+        if hashes(&pls) != hashes(&remote) && push(c, &a.uid, &id, &pls, ut.as_deref())?.is_none() {
+            continue;
+        }
+        if !old.is_empty() {
+            let _ = std::fs::rename(stash_path(), stash_path().with_extension("uploaded.json"));
+        }
+        let base = hashes(&pls).into_iter().collect();
+        return Ok(Synced { playlists: pls, base });
+    }
+    bail!("облако всё время меняется, попробую позже")
+}
+
+/// Есть правки, которых нет в облаке
+pub fn dirty(pls: &[Playlist]) -> bool {
+    let base = account().base;
+    pls.len() != base.len() || hashes(pls).iter().any(|(n, h)| base.get(n) != Some(h))
+}
+
 /// Своя обложка — файл на этом компьютере, в облако не едет
 fn strip(p: &Playlist) -> Playlist {
     Playlist { cover: String::new(), ..p.clone() }
