@@ -489,7 +489,8 @@ fn acc_err(e: &anyhow::Error) -> String {
         "EMAIL_EXISTS" => tr!("На эту почту уже есть аккаунт — просто войди", "This email already has an account — just sign in", "На цю пошту вже є акаунт — просто увійди"),
         "INVALID_LOGIN_CREDENTIALS" | "INVALID_PASSWORD" | "EMAIL_NOT_FOUND" => tr!("Неверная почта или пароль", "Wrong email or password", "Невірна пошта або пароль"),
         "WEAK_PASSWORD" => tr!("Пароль слишком короткий: нужно от 6 символов", "Password is too short: at least 6 characters", "Пароль закороткий: потрібно від 6 символів"),
-        "INVALID_EMAIL" | "MISSING_EMAIL" => tr!("Это не похоже на почту", "That doesn't look like an email", "Це не схоже на пошту"),
+        "MISSING_EMAIL" => tr!("Введи почту", "Enter your email", "Введи пошту"),
+        "INVALID_EMAIL" => tr!("Это не похоже на почту", "That doesn't look like an email", "Це не схоже на пошту"),
         "MISSING_PASSWORD" => tr!("Введи пароль", "Enter a password", "Введи пароль"),
         "TOO_MANY_ATTEMPTS_TRY_LATER" => tr!("Слишком много попыток, подожди немного", "Too many attempts, wait a bit", "Забагато спроб, зачекай трохи"),
         "NETWORK" => tr!("Нет связи с сервером", "Can't reach the server", "Немає зв'язку з сервером"),
@@ -1378,7 +1379,11 @@ impl App {
             }
         }
         self.ui.set_acc_on(cloud::cfg().is_some());
-        self.ui.set_acc_state(if !a.signed_in() { 0 } else if !a.verified { 1 } else { 2 });
+        let state = if !a.signed_in() { 0 } else if !a.verified { 1 } else { 2 };
+        self.ui.set_acc_state(state);
+        if state != 0 {
+            self.ui.set_acc_reg(false); // вышел потом — окно снова начинается со входа
+        }
         self.ui.set_acc_email(a.email.into());
     }
 

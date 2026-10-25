@@ -916,3 +916,24 @@ msgstr "Sign in to BlackHole"
 
 msgid "Без слежки"
 msgstr "No tracking"
+
+msgid "Почта и пароль от 6 символов. На почту придёт письмо со ссылкой для подтверждения."
+msgstr "Email and a password of at least 6 characters. You'll get an email with a confirmation link."
+
+msgid "Пароль ещё раз"
+msgstr "Repeat password"
+
+msgid "Пароли не совпадают"
+msgstr "Passwords don't match"
+
+msgid "Уже есть аккаунт?"
+msgstr "Already have an account?"
+
+msgid "Нет аккаунта?"
+msgstr "No account?"
+
+msgid "Зарегистрироваться"
+msgstr "Sign up"
+
+msgid "Регистрация"
+msgstr "Sign up"

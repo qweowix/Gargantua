@@ -1559,7 +1559,9 @@ export component AppWindow inherits Window {
     in property <bool> acc-on; // Firebase задан при сборке — иначе аккаунтов нет совсем
     in property <int> acc-state;
     in property <string> acc-email;
-    in property <string> acc-msg;
+    in-out property <string> acc-msg;
+    in-out property <bool> acc-reg; // окно входа в режиме регистрации
+    in-out property <string> acc-pw2; // повтор пароля при регистрации
     in property <bool> acc-busy;
     in property <bool> acc-syncing;
     callback acc-login(string, string);
@@ -5803,7 +5805,7 @@ export component AppWindow inherits Window {
                 padding: 28px;
                 spacing: 12px;
                 Text {
-                    text: root.acc-state == 0 ? @tr("Вход в BlackHole") : @tr("Подтверди почту");
+                    text: root.acc-state == 1 ? @tr("Подтверди почту") : root.acc-reg ? @tr("Регистрация") : @tr("Вход в BlackHole");
                     color: Theme.text;
                     font-size: 24px;
                     font-weight: 800;
@@ -5825,31 +5827,38 @@ export component AppWindow inherits Window {
                 if root.acc-state == 0: VerticalLayout {
                     spacing: 10px;
                     Text {
-                        text: @tr("Плейлисты хранятся в аккаунте и одинаковые на всех твоих компьютерах.");
+                        text: root.acc-reg ? @tr("Почта и пароль от 6 символов. На почту придёт письмо со ссылкой для подтверждения.") : @tr("Плейлисты хранятся в аккаунте и одинаковые на всех твоих компьютерах.");
                         color: Theme.dim;
                         font-size: 13px;
                         wrap: word-wrap;
                     }
 
-                    HorizontalLayout {
-                        spacing: 10px;
-                        acc-mail := Field {
-                            placeholder: @tr("Почта");
-                        }
+                    acc-mail := Field {
+                        placeholder: @tr("Почта");
+                    }
 
-                        acc-pw := Field {
-                            placeholder: @tr("Пароль");
-                            password: true;
-                            accepted(_) => {
+                    acc-pw := Field {
+                        placeholder: @tr("Пароль");
+                        password: true;
+                        accepted(_) => {
+                            if !root.acc-reg {
                                 root.acc-login(acc-mail.text, acc-pw.text);
                             }
+                        }
+                    }
+
+                    if root.acc-reg: Field {
+                        placeholder: @tr("Пароль ещё раз");
+                        password: true;
+                        changed text => {
+                            root.acc-pw2 = self.text;
                         }
                     }
 
                     HorizontalLayout {
                         spacing: 10px;
                         alignment: start;
-                        Pill {
+                        if !root.acc-reg: Pill {
                             text: @tr("Войти");
                             enabled: !root.acc-busy;
                             clicked => {
@@ -5857,21 +5866,49 @@ export component AppWindow inherits Window {
                             }
                         }
 
-                        Pill {
-                            text: @tr("Создать аккаунт");
-                            primary: false;
-                            enabled: !root.acc-busy;
-                            clicked => {
-                                root.acc-register(acc-mail.text, acc-pw.text);
-                            }
-                        }
-
-                        Pill {
+                        if !root.acc-reg: Pill {
                             text: @tr("Забыл пароль");
                             primary: false;
                             enabled: !root.acc-busy;
                             clicked => {
                                 root.acc-reset(acc-mail.text);
+                            }
+                        }
+
+                        if root.acc-reg: Pill {
+                            text: @tr("Создать аккаунт");
+                            enabled: !root.acc-busy;
+                            clicked => {
+                                if acc-pw.text != root.acc-pw2 {
+                                    root.acc-msg = @tr("Пароли не совпадают");
+                                } else {
+                                    root.acc-register(acc-mail.text, acc-pw.text);
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 6px;
+                        Text {
+                            text: root.acc-reg ? @tr("Уже есть аккаунт?") : @tr("Нет аккаунта?");
+                            color: Theme.dim;
+                            font-size: 13px;
+                        }
+
+                        Text {
+                            text: root.acc-reg ? @tr("Войти") : @tr("Зарегистрироваться");
+                            color: reg-ta.has-hover ? Theme.pale1 : Theme.soft1;
+                            font-size: 13px;
+                            font-weight: 700;
+                            reg-ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.acc-reg = !root.acc-reg;
+                                    root.acc-pw2 = "";
+                                    root.acc-msg = "";
+                                }
                             }
                         }
                     }

@@ -176,6 +176,9 @@ fn ui() {
     ui.set_acc_on(true);
     ui.set_acc_msg("Неверная почта или пароль".into());
     snap(&win, "05a-account");
+    ui.set_acc_reg(true);
+    snap(&win, "05a-account-reg");
+    ui.set_acc_reg(false);
     ui.set_acc_state(1);
     ui.set_acc_email("qweowix@example.com".into());
     ui.set_acc_msg("".into());
