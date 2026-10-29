@@ -12,6 +12,8 @@
 //!   <трек> = <yt|sc|sp|ya> id название артист длительность [url] [обложка] [snip]
 //! url и обложку пишем только когда их нельзя восстановить по id (SoundCloud, обложки Яндекса).
 //! BHPL2 — 1 QR вместо десятков: получатель сам подтягивает плейлист по ссылке.
+//! BHPL3 — <название>, #<id>: сам плейлист (BHPL1/2, сжатый) лежит в облаке в shared/<id>. Так делится всё,
+//! что не влезло в один код, если вошёл в аккаунт; без аккаунта — по-старому, несколько QR.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -25,6 +27,8 @@ use crate::model::{Playlist, Src, Track};
 pub enum Shared {
     Full { name: String, tracks: Vec<Track> },
     Linked { name: String, url: String, removed: Vec<String>, added: Vec<Track> },
+    /// плейлист лежит в облаке, наружу из decode_files не выходит
+    Cloud { id: String },
 }
 use crate::spotify;
 
@@ -164,13 +168,35 @@ fn deserialize(text: &str) -> Result<Shared> {
             }
             Ok(Shared::Linked { name, url, removed, added })
         }
-        _ => bail!("это не плейлист BlackHole"),
+        Some("BHPL3") => Ok(Shared::Cloud { id: lines.next().and_then(|l| l.strip_prefix('#')).context("QR повреждён")?.to_string() }),
+        _ => bail!("это не плейлист Gargantua"),
     }
 }
 
-/// Плейлист → тексты QR-кодов (один или несколько)
+/// Тексты QR для «поделиться»: если плейлист не влезает в один код и есть аккаунт — один облачный QR.
+/// Ходит в сеть, звать не из UI-потока
+pub fn codes(pl: &Playlist) -> Vec<String> {
+    let local = encode(pl);
+    if local.len() == 1 {
+        return local;
+    }
+    let Some(c) = crate::cloud::cfg().filter(|_| crate::cloud::account().signed_in()) else { return local };
+    match crate::cloud::share(&c, &pl.name, &miniz_oxide::deflate::compress_to_vec(serialize(pl).as_bytes(), 9)) {
+        Ok(id) => pack(&format!("BHPL3\n{}\n#{id}\n", clean(&pl.name))),
+        Err(e) => {
+            eprintln!("qr cloud: {e:#}");
+            local
+        }
+    }
+}
+
+/// Плейлист → тексты QR-кодов (один или несколько), без сети
 pub fn encode(pl: &Playlist) -> Vec<String> {
-    let packed = miniz_oxide::deflate::compress_to_vec(serialize(pl).as_bytes(), 9);
+    pack(&serialize(pl))
+}
+
+fn pack(text: &str) -> Vec<String> {
+    let packed = miniz_oxide::deflate::compress_to_vec(text.as_bytes(), 9);
     let data = b45_encode(&packed);
     // id набора — чтобы не склеить куски от разных плейлистов
     let set = b45_encode(&(packed.len() as u32 ^ packed.iter().fold(0u32, |h, &b| h.rotate_left(5) ^ b as u32)).to_le_bytes())
@@ -234,7 +260,7 @@ fn decode_texts(found: &[String]) -> Result<Shared> {
         e.1.insert(i, data.to_string());
     }
     let Some((n, parts)) = sets.into_values().max_by_key(|(_, p)| p.len()) else {
-        bail!("это не QR-код плейлиста BlackHole");
+        bail!("это не QR-код плейлиста Gargantua");
     };
     if parts.len() < n {
         let have: Vec<String> = parts.keys().map(|k| k.to_string()).collect();
@@ -242,7 +268,23 @@ fn decode_texts(found: &[String]) -> Result<Shared> {
     }
     let data: String = parts.into_values().collect();
     let packed = b45_decode(&data).context("QR повреждён")?;
-    let text = miniz_oxide::inflate::decompress_to_vec(&packed).map_err(|_| anyhow::anyhow!("QR повреждён"))?;
+    match unpack(&packed)? {
+        Shared::Cloud { id } => {
+            let c = crate::cloud::cfg().context("облако не настроено")?;
+            if !crate::cloud::account().signed_in() {
+                bail!("плейлист в облаке: войди в аккаунт, чтобы его открыть");
+            }
+            match unpack(&crate::cloud::fetch_shared(&c, &id)?)? {
+                Shared::Cloud { .. } => bail!("QR повреждён"),
+                s => Ok(s),
+            }
+        }
+        s => Ok(s),
+    }
+}
+
+fn unpack(packed: &[u8]) -> Result<Shared> {
+    let text = miniz_oxide::inflate::decompress_to_vec(packed).map_err(|_| anyhow::anyhow!("QR повреждён"))?;
     deserialize(&String::from_utf8_lossy(&text))
 }
 
@@ -306,6 +348,15 @@ mod tests {
         assert_eq!(removed, vec!["sp:sp00000000000000000000", "sp:sp00000000000000000001"]);
         assert_eq!(added.len(), 1);
         assert_eq!(added[0].id, "newvideo001");
+    }
+
+    #[test]
+    fn cloud_code_parses() {
+        let codes = pack("BHPL3\nЛюбимые\n#ABC123DEF456\n");
+        assert_eq!(codes.len(), 1);
+        let packed = b45_decode(codes[0].splitn(4, ':').nth(3).unwrap()).unwrap();
+        let Shared::Cloud { id } = unpack(&packed).unwrap() else { panic!() };
+        assert_eq!(id, "ABC123DEF456");
     }
 
     #[test]

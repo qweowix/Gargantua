@@ -125,8 +125,8 @@ msgstr "Засмоктати"
 msgid "Добавить по QR-коду"
 msgstr "Додати за QR-кодом"
 
-msgid "• Spotify: open.spotify.com/playlist/… или /album/…\n• Apple Music: music.apple.com/…/playlist/… или /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/юзер/sets/…\n• Яндекс Музыка: music.yandex.ru/users/…/playlists/… или /album/…\n• QR-код: картинка или фото QR, которым поделились из BlackHole (можно выбрать сразу все части)"
-msgstr "• Spotify: open.spotify.com/playlist/… або /album/…\n• Apple Music: music.apple.com/…/playlist/… або /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/юзер/sets/…\n• Яндекс Музика: music.yandex.ru/users/…/playlists/… або /album/…\n• QR-код: картинка або фото QR, яким поділилися з BlackHole (можна вибрати одразу всі частини)"
+msgid "• Spotify: open.spotify.com/playlist/… или /album/…\n• Apple Music: music.apple.com/…/playlist/… или /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/юзер/sets/…\n• Яндекс Музыка: music.yandex.ru/users/…/playlists/… или /album/…\n• QR-код: картинка или фото QR, которым поделились из Gargantua (можно выбрать сразу все части)"
+msgstr "• Spotify: open.spotify.com/playlist/… або /album/…\n• Apple Music: music.apple.com/…/playlist/… або /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/юзер/sets/…\n• Яндекс Музика: music.yandex.ru/users/…/playlists/… або /album/…\n• QR-код: картинка або фото QR, яким поділилися з Gargantua (можна вибрати одразу всі частини)"
 
 msgid "версия {}"
 msgstr "версія {}"
@@ -911,8 +911,8 @@ msgstr "Підтверди пошту"
 msgid "Плейлисты хранятся в аккаунте и одинаковые на всех твоих компьютерах."
 msgstr "Плейлисти зберігаються в акаунті й однакові на всіх твоїх комп'ютерах."
 
-msgid "Вход в BlackHole"
-msgstr "Вхід у BlackHole"
+msgid "Вход в Gargantua"
+msgstr "Вхід у Gargantua"
 
 msgid "Без слежки"
 msgstr "Без стеження"
@@ -943,3 +943,51 @@ msgstr "Плейлисти зберігаються в акаунті й одн�
 
 msgid "Сменить пароль"
 msgstr "Змінити пароль"
+
+msgid "Перевод текста"
+msgstr "Переклад тексту"
+
+msgid "Растворение у краёв: выкл"
+msgstr "Розчинення біля країв: вимк"
+
+msgid "Растворение у краёв: {} px"
+msgstr "Розчинення біля країв: {} px"
+
+msgid "Строки текста плавно гаснут у верха и низа, а не обрезаются. Ползунок до упора влево — выключить."
+msgstr "Рядки тексту плавно згасають біля верху й низу, а не обрізаються. Повзунок до упору вліво — вимкнути."
+
+msgid "Убрать из любимых"
+msgstr "Прибрати з улюблених"
+
+msgid "В любимые"
+msgstr "В улюблені"
+
+msgid "Лайкнуть все треки"
+msgstr "Вподобати всі треки"
+
+msgid "На телефон"
+msgstr "На телефон"
+
+msgid "{} · играет на «{}»"
+msgstr "{} · грає на «{}»"
+
+msgid "Играет на «{}»"
+msgstr "Грає на «{}»"
+
+msgid "Устройства"
+msgstr "Пристрої"
+
+msgid "Где играть"
+msgstr "Де грати"
+
+msgid "Все устройства твоего аккаунта, где открыт Gargantua"
+msgstr "Усі пристрої твого акаунта, де відкритий Gargantua"
+
+msgid "звук тут"
+msgstr "звук тут"
+
+msgid "это устройство"
+msgstr "цей пристрій"
+
+msgid "Повтор трека"
+msgstr "Повтор треку"

@@ -3,6 +3,7 @@
 mod apple;
 mod cache;
 mod cloud;
+mod connect;
 mod covers;
 mod discord;
 mod download;
@@ -45,27 +46,32 @@ slint::include_modules!();
 static LANG: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 macro_rules! tr {
-    ($ru:literal, $en:literal, $uk:literal $(, $a:expr)* $(,)?) => {
+    ($ru:literal, $en:literal, $uk:literal, $sk:literal $(, $a:expr)* $(,)?) => {
         match LANG.load(Ordering::Relaxed) {
             1 => format!($en $(, $a)*),
             2 => format!($uk $(, $a)*),
+            3 => format!($sk $(, $a)*),
             _ => format!($ru $(, $a)*),
         }
     };
 }
 
+mod remote;
+
 fn deps_text() -> String {
     let ok = |n: &str| match (util::find_bin(n).is_some(), LANG.load(Ordering::Relaxed)) {
         (true, 1) => "found ✓",
         (true, 2) => "є ✓",
+        (true, 3) => "je ✓",
         (true, _) => "есть ✓",
         (false, 1) => "NOT FOUND ✗",
         (false, 2) => "НЕ ЗНАЙДЕНО ✗",
+        (false, 3) => "NENÁJDENÉ ✗",
         (false, _) => "НЕ НАЙДЕН ✗",
     };
     tr!(
         "mpv: {}   ·   yt-dlp: {}\nОба нужны: mpv играет звук, yt-dlp достаёт потоки.",
-        "mpv: {}   ·   yt-dlp: {}\nBoth are required: mpv plays the audio, yt-dlp fetches the streams.", "mpv: {}   ·   yt-dlp: {}\nПотрібні обидва: mpv грає звук, yt-dlp дістає потоки.",
+        "mpv: {}   ·   yt-dlp: {}\nBoth are required: mpv plays the audio, yt-dlp fetches the streams.", "mpv: {}   ·   yt-dlp: {}\nПотрібні обидва: mpv грає звук, yt-dlp дістає потоки.", "mpv: {}   ·   yt-dlp: {}\nPotrebné sú oba: mpv prehráva zvuk, yt-dlp získava streamy.",
         ok("mpv"),
         ok("yt-dlp")
     )
@@ -89,6 +95,9 @@ const THEMES: i32 = 15; // столько тем в Theme (ui/app.slint); сле
 // геометрия строк lyrics: должна совпадать с ui/app.slint (LyrRow height / spacing)
 const LYR_ROW_H: f32 = 56.0;
 const LYR_GAP: f32 = 28.0;
+/// перевод под строкой: шрифт 0.55 от строки, межстрочный 1.45 (как в LyricLine)
+const TR_SCALE: f32 = 0.55;
+const TR_ROW_H: f32 = 36.0 * TR_SCALE * 1.45;
 // бэк-вокал мельче: шрифт 22 против 36, ряд и отступ над ним меньше
 const BG_SCALE: f32 = 22.0 / 36.0;
 const BG_GAP: f32 = 6.0;
@@ -107,6 +116,7 @@ struct LyrData {
     dots: Vec<bool>,
     cur: i32,
     cur_at: Instant, // когда сменилась текущая строка — заготовку букв следующей делаем после прокрутки
+    tr: HashMap<String, String>, // перевод: текст строки → перевод на язык интерфейса
 }
 
 /// Открытый альбом или "все песни" артиста
@@ -177,7 +187,7 @@ struct App {
     lyr_deadline: Timer,
     was_fullscreen: bool,
     shuffle: bool,
-    repeat: bool,
+    repeat: u8, // 0 — выкл, 1 — вся очередь, 2 — один трек (как на телефоне)
     stream_cache: HashMap<String, (String, Instant)>,
     inflight: HashSet<String>, // что сейчас предзагружается — чтобы не резолвить дважды
     prefetched: bool,
@@ -222,6 +232,7 @@ struct App {
     xf: Option<(Player, Instant)>, // кто гаснет и с какого момента
     xf_timer: Timer,
     stats: stats::Stats,
+    stats_others: stats::Stats, // доли других устройств аккаунта — показываем сумму
     listen_at: Option<Instant>, // последний опрос, когда звук шёл — время между опросами идёт в статистику
     listened: f64,              // сколько секунд дослушан текущий трек (прослушивание считается с 30 с)
     stats_saved: Instant,
@@ -257,6 +268,13 @@ struct App {
     push_timer: Timer,
     syncing: bool,
     cloud_loaded: bool, // плейлисты аккаунта уже пришли с сервера
+    // Connect: одна сессия на все устройства аккаунта (см. remote.rs)
+    conn_live: bool,
+    conn_timer: Timer,
+    conn_pub: remote::Published,
+    conn_adopted: String,           // какую передачу сессии сюда уже подхватили
+    mirror: Option<connect::State>, // звук на другом устройстве — тут его сессия
+    conn_held: Option<remote::Held>,
 }
 
 thread_local! {
@@ -376,7 +394,7 @@ fn find_all_on_yt(wants: &[Track]) -> Vec<Option<(Track, bool)>> {
                 let r = ytmusic::find_same(w).or_else(|_| ytmusic::find_same(w));
                 found.lock().unwrap()[i] = r.ok().flatten();
                 let k = done.fetch_add(1, Ordering::Relaxed) + 1;
-                post(move |a| a.ui.set_import_status(tr!("Ищу треки на YT Music: {}/{}", "Finding tracks on YT Music: {}/{}", "Шукаю треки на YT Music: {}/{}", k, n).into()));
+                post(move |a| a.ui.set_import_status(tr!("Ищу треки на YT Music: {}/{}", "Finding tracks on YT Music: {}/{}", "Шукаю треки на YT Music: {}/{}", "Hľadám skladby na YT Music: {}/{}", k, n).into()));
             });
         }
     });
@@ -470,9 +488,9 @@ fn key_name(text: &str, ctrl: bool, alt: bool, shift: bool, meta: bool) -> Optio
 fn fmt_long(ms: u64) -> String {
     let m = ms / 60_000;
     match (m / 60, m % 60) {
-        (0, m) => tr!("{} мин", "{} min", "{} хв", m),
-        (h, 0) => tr!("{} ч", "{} h", "{} год", h),
-        (h, m) => tr!("{} ч {} мин", "{} h {} min", "{} год {} хв", h, m),
+        (0, m) => tr!("{} мин", "{} min", "{} хв", "{} min", m),
+        (h, 0) => tr!("{} ч", "{} h", "{} год", "{} h", h),
+        (h, m) => tr!("{} ч {} мин", "{} h {} min", "{} год {} хв", "{} h {} min", h, m),
     }
 }
 
@@ -481,24 +499,39 @@ fn same_song(t: &Track) -> String {
     format!("{}|{}", t.title.to_lowercase(), first_artist(&t.artist).to_lowercase())
 }
 
+/// Обложка «Любимых треков»: белое сердечко на фиолетово-розовом градиенте
+fn liked_art() -> Image {
+    const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b1d8f"/><stop offset=".5" stop-color="#7c3aed"/><stop offset="1" stop-color="#db2777"/></linearGradient></defs><rect width="240" height="240" fill="url(#g)"/><path transform="translate(70 72) scale(4.2)" fill="#fff" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>"##;
+    Image::load_from_svg_data(SVG.as_bytes()).unwrap_or_default()
+}
+
+/// Имя плейлиста для показа: любимые — «♥ Любимые» на языке интерфейса
+fn pl_name(name: &str) -> String {
+    if name == model::LIKED {
+        tr!("Любимые треки", "Liked Songs", "Улюблені треки", "Obľúbené skladby")
+    } else {
+        name.to_string()
+    }
+}
+
 /// Код ошибки Firebase → человеческий текст. Протухшая сессия — выходим из аккаунта (плейлисты остаются)
 fn acc_err(e: &anyhow::Error) -> String {
     let s = e.to_string();
     let code = s.split([' ', ':']).next().unwrap_or("");
     match code {
-        "EMAIL_EXISTS" => tr!("На эту почту уже есть аккаунт — просто войди", "This email already has an account — just sign in", "На цю пошту вже є акаунт — просто увійди"),
-        "INVALID_LOGIN_CREDENTIALS" | "INVALID_PASSWORD" | "EMAIL_NOT_FOUND" => tr!("Неверная почта или пароль", "Wrong email or password", "Невірна пошта або пароль"),
-        "WEAK_PASSWORD" => tr!("Пароль слишком короткий: нужно от 6 символов", "Password is too short: at least 6 characters", "Пароль закороткий: потрібно від 6 символів"),
-        "MISSING_EMAIL" => tr!("Введи почту", "Enter your email", "Введи пошту"),
-        "INVALID_EMAIL" => tr!("Это не похоже на почту", "That doesn't look like an email", "Це не схоже на пошту"),
-        "MISSING_PASSWORD" => tr!("Введи пароль", "Enter a password", "Введи пароль"),
-        "TOO_MANY_ATTEMPTS_TRY_LATER" => tr!("Слишком много попыток, подожди немного", "Too many attempts, wait a bit", "Забагато спроб, зачекай трохи"),
-        "NETWORK" => tr!("Нет связи с сервером", "Can't reach the server", "Немає зв'язку з сервером"),
+        "EMAIL_EXISTS" => tr!("На эту почту уже есть аккаунт — просто войди", "This email already has an account — just sign in", "На цю пошту вже є акаунт — просто увійди", "Na tento e-mail už účet existuje — stačí sa prihlásiť"),
+        "INVALID_LOGIN_CREDENTIALS" | "INVALID_PASSWORD" | "EMAIL_NOT_FOUND" => tr!("Неверная почта или пароль", "Wrong email or password", "Невірна пошта або пароль", "Nesprávny e-mail alebo heslo"),
+        "WEAK_PASSWORD" => tr!("Пароль слишком короткий: нужно от 6 символов", "Password is too short: at least 6 characters", "Пароль закороткий: потрібно від 6 символів", "Heslo je príliš krátke: aspoň 6 znakov"),
+        "MISSING_EMAIL" => tr!("Введи почту", "Enter your email", "Введи пошту", "Zadaj e-mail"),
+        "INVALID_EMAIL" => tr!("Это не похоже на почту", "That doesn't look like an email", "Це не схоже на пошту", "Toto nevyzerá ako e-mail"),
+        "MISSING_PASSWORD" => tr!("Введи пароль", "Enter a password", "Введи пароль", "Zadaj heslo"),
+        "TOO_MANY_ATTEMPTS_TRY_LATER" => tr!("Слишком много попыток, подожди немного", "Too many attempts, wait a bit", "Забагато спроб, зачекай трохи", "Príliš veľa pokusov, chvíľu počkaj"),
+        "NETWORK" => tr!("Нет связи с сервером", "Can't reach the server", "Немає зв'язку з сервером", "Server je nedostupný"),
         "TOKEN_EXPIRED" | "INVALID_REFRESH_TOKEN" | "USER_NOT_FOUND" | "USER_DISABLED" | "NOT_SIGNED_IN" => {
             cloud::sign_out();
-            tr!("Сессия кончилась, войди заново", "Session expired, sign in again", "Сесія скінчилася, увійди знову")
+            tr!("Сессия кончилась, войди заново", "Session expired, sign in again", "Сесія скінчилася, увійди знову", "Relácia vypršala, prihlás sa znova")
         }
-        _ => tr!("Не вышло: {}", "Failed: {}", "Не вийшло: {}", s),
+        _ => tr!("Не вышло: {}", "Failed: {}", "Не вийшло: {}", "Nevyšlo to: {}", s),
     }
 }
 
@@ -527,7 +560,12 @@ impl App {
             playing: self.current.as_ref().is_some_and(|c| c.same(t)),
             snip: t.snip,
             dl: self.dl_of(t),
+            liked: self.is_liked(t),
         }
+    }
+
+    fn is_liked(&self, t: &Track) -> bool {
+        self.store.playlists.first().is_some_and(|p| p.name == model::LIKED && p.tracks.iter().any(|x| x.same(t)))
     }
 
     fn want_cover(&mut self, url: &str) {
@@ -645,7 +683,7 @@ impl App {
                     Ok(ar) => a.show_artist(ar),
                     Err(e) => {
                         a.ui.set_artist_loading(false);
-                        a.ui.set_artist_error(tr!("Не нашёл артиста: {:#}", "Couldn't find the artist: {:#}", "Не знайшов артиста: {:#}", e).into());
+                        a.ui.set_artist_error(tr!("Не нашёл артиста: {:#}", "Couldn't find the artist: {:#}", "Не знайшов артиста: {:#}", "Interpreta som nenašiel: {:#}", e).into());
                     }
                 }
             });
@@ -722,7 +760,7 @@ impl App {
                     Ok(c) => a.show_coll(c),
                     Err(e) => {
                         a.ui.set_coll_loading(false);
-                        a.toast(&tr!("Не загрузилось: {:#}", "Couldn't load: {:#}", "Не завантажилось: {:#}", e));
+                        a.toast(&tr!("Не загрузилось: {:#}", "Couldn't load: {:#}", "Не завантажилось: {:#}", "Nenačítalo sa: {:#}", e));
                     }
                 }
             });
@@ -734,7 +772,7 @@ impl App {
         let Some(id) = ar.songs_id.clone() else { return };
         self.load_coll(move || {
             let tracks = ytmusic::all_songs(&id, &ar.name)?;
-            Ok(Coll { title: ar.name.clone(), sub: tr!("Все песни · {} треков", "All songs · {} tracks", "Усі пісні · {} треків", tracks.len()), cover: ar.photo.clone(), tracks })
+            Ok(Coll { title: ar.name.clone(), sub: tr!("Все песни · {} треков", "All songs · {} tracks", "Усі пісні · {} треків", "Všetky skladby · {} skladieb", tracks.len()), cover: ar.photo.clone(), tracks })
         });
     }
 
@@ -744,7 +782,7 @@ impl App {
             10 => {
                 let Some(m) = self.home.mixes.get(i).cloned() else { return };
                 self.push_nav();
-                let sub = tr!("{} · {} треков", "{} · {} tracks", "{} · {} треків", m.sub, m.tracks.len());
+                let sub = tr!("{} · {} треков", "{} · {} tracks", "{} · {} треків", "{} · {} skladieb", m.sub, m.tracks.len());
                 return self.show_coll(Coll { title: m.title, sub, cover: m.cover, tracks: m.tracks });
             }
             11 => return self.play_queue(self.home_recent.clone(), i),
@@ -783,14 +821,13 @@ impl App {
     fn artist_play(&mut self, shuffle: bool) {
         let Some(ar) = self.artist.clone() else { return };
         if shuffle {
-            self.shuffle = true;
-            self.ui.set_shuffle(true);
+            self.set_shuffle(true);
         }
         let Some(id) = ar.songs_id.clone() else {
             let i = if shuffle { rand_below(ar.top.len()) } else { 0 };
             return self.play_queue(ar.top, i);
         };
-        self.toast(&tr!("Загружаю песни {}…", "Loading {} songs…", "Завантажую пісні {}…", ar.name));
+        self.toast(&tr!("Загружаю песни {}…", "Loading {} songs…", "Завантажую пісні {}…", "Načítavam skladby {}…", ar.name));
         std::thread::spawn(move || {
             let r = ytmusic::all_songs(&id, &ar.name);
             post(move |a| match r {
@@ -807,6 +844,7 @@ impl App {
         let code = match lang {
             "en" => 1,
             "uk" => 2,
+            "sk" => 3,
             _ => 0,
         };
         LANG.store(code, Ordering::Relaxed);
@@ -814,11 +852,20 @@ impl App {
         if let Err(e) = slint::select_bundled_translation(match code {
             1 => "en",
             2 => "uk",
+            3 => "sk",
             _ => "",
         }) {
             eprintln!("перевод: {e}");
         }
         self.ui.set_lang(lang.into());
+        // перевод текста был на прошлый язык — переводим заново
+        if let Some(d) = &mut self.lyr {
+            if !d.tr.is_empty() {
+                d.tr.clear();
+                self.layout_lyrics();
+                self.lyr_translate(false);
+            }
+        }
         self.ui.set_deps(deps_text().into());
         let presets: Vec<slint::SharedString> = fx::PRESETS
             .iter()
@@ -1001,7 +1048,7 @@ impl App {
                             a.rebuild_view();
                             // Яндекс за пределами РФ/СНГ отвечает 451 — это не ошибка плеера
                             let region = e.to_string().contains("регионе");
-                            a.set_status(i, &if region { tr!("недоступна в регионе", "unavailable in your region", "недоступна в регіоні") } else { tr!("ошибка", "error", "помилка") });
+                            a.set_status(i, &if region { tr!("недоступна в регионе", "unavailable in your region", "недоступна в регіоні", "nedostupné vo tvojom regióne") } else { tr!("ошибка", "error", "помилка", "chyba") });
                         }
                     }
                 });
@@ -1026,16 +1073,90 @@ impl App {
 
     fn refresh_playlists(&self) {
         let items: Vec<PlItem> =
-            self.store.playlists.iter().map(|p| PlItem { name: p.name.as_str().into(), count: p.tracks.len() as i32 }).collect();
+            self.store.playlists.iter().map(|p| PlItem { name: pl_name(&p.name).into(), count: p.tracks.len() as i32, liked: p.name == model::LIKED }).collect();
         self.pls_model.set_vec(items);
         self.ui.set_open_pl(self.open_pl.map_or(-1, |i| i as i32));
+        self.update_liked();
+    }
+
+    /// «Любимые треки» есть всегда и стоят первыми (открытый плейлист при этом не теряем)
+    fn ensure_liked(&mut self) {
+        let open = self.open_pl.and_then(|i| self.store.playlists.get(i)).map(|p| p.name.clone());
+        match self.store.playlists.iter().position(|p| p.name == model::LIKED) {
+            Some(0) => return,
+            Some(i) => {
+                let p = self.store.playlists.remove(i);
+                self.store.playlists.insert(0, p);
+            }
+            None => self.store.playlists.insert(0, Playlist { name: model::LIKED.to_string(), ..Default::default() }),
+        }
+        self.open_pl = open.and_then(|n| self.store.playlists.iter().position(|p| p.name == n));
+    }
+
+    /// ♥ в панели плеера — в любимых ли играющий трек
+    fn update_liked(&self) {
+        let on = self.current.as_ref().is_some_and(|c| self.store.playlists.iter().any(|p| p.name == model::LIKED && p.tracks.iter().any(|t| t.same(c))));
+        self.ui.set_cur_liked(on);
+    }
+
+    /// ♥: играющий трек в любимые (свежие сверху) или обратно. Плейлист любимых создаётся при первом сердечке
+    fn toggle_like(&mut self) {
+        let Some(t) = self.current.clone() else { return };
+        self.like_track(t);
+    }
+
+    /// ♥ у строки трека — не запуская его
+    fn like_at(&mut self, idx: usize, kind: i32) {
+        if let Some(t) = self.track_at(kind, idx) {
+            self.like_track(t);
+        }
+    }
+
+    /// ♥ всем трекам открытого плейлиста (кто уже в любимых — остаётся на своём месте)
+    fn like_all(&mut self) {
+        let Some(pl) = self.open_pl.and_then(|i| self.store.playlists.get(i)).filter(|p| p.name != model::LIKED) else { return };
+        let new: Vec<Track> = pl.tracks.iter().filter(|t| !self.is_liked(t)).cloned().collect();
+        if new.is_empty() {
+            return self.toast(&tr!("Тут всё уже в любимых", "Everything here is already liked", "Тут усе вже в улюблених", "Všetko tu už je v obľúbených"));
+        }
+        self.ensure_liked();
+        let n = new.len();
+        let liked = &mut self.store.playlists[0].tracks;
+        liked.splice(0..0, new);
+        self.liked_changed();
+        self.toast(&tr!("В любимые: {} треков ♥", "Liked {} tracks ♥", "В улюблені: {} треків ♥", "Do obľúbených: {} skladieb ♥", n));
+    }
+
+    fn like_track(&mut self, t: Track) {
+        self.ensure_liked();
+        let i = 0;
+        let p = &mut self.store.playlists[i];
+        let msg = if let Some(j) = p.tracks.iter().position(|x| x.same(&t)) {
+            p.tracks.remove(j);
+            tr!("Убрал из любимых", "Removed from Liked", "Прибрав з улюблених", "Odobrané z obľúbených")
+        } else {
+            p.tracks.insert(0, t);
+            tr!("В любимых ♥", "Added to Liked ♥", "В улюблених ♥", "V obľúbených ♥")
+        };
+        self.liked_changed();
+        self.toast(&msg);
+    }
+
+    /// любимые поменялись: сохранить, обновить список плейлистов, сердечки в строках и открытый плейлист
+    fn liked_changed(&mut self) {
+        self.save();
+        self.refresh_playlists();
+        self.mark_playing();
+        if self.open_pl == Some(0) {
+            self.open_playlist(0);
+        }
     }
 
     fn open_playlist(&mut self, i: usize) {
         let Some(pl) = self.store.playlists.get(i) else { return };
-        self.ui.set_pl_title(pl.name.as_str().into());
+        self.ui.set_pl_title(pl_name(&pl.name).into());
         self.ui.set_pl_desc(pl.desc.as_str().into());
-        let cover = (!pl.cover.is_empty()).then(|| Image::load_from_path(std::path::Path::new(&pl.cover)).ok()).flatten();
+        let cover = if pl.name == model::LIKED { Some(liked_art()) } else { (!pl.cover.is_empty()).then(|| Image::load_from_path(std::path::Path::new(&pl.cover)).ok()).flatten() };
         self.ui.set_pl_has_cover(cover.is_some());
         self.ui.set_pl_cover(cover.unwrap_or_default());
         if self.open_pl != Some(i) {
@@ -1054,7 +1175,18 @@ impl App {
     /// Строки открытого плейлиста по поиску и сортировке. Поиск понимает и транслит: «skryptonit» найдёт «Скриптонит»
     fn pl_rebuild(&mut self) {
         let Some(pl) = self.open_pl.and_then(|i| self.store.playlists.get(i)) else { return };
-        let q = self.pl_query.trim().to_lowercase();
+        let view = self.pl_order(&self.pl_query);
+        let tr = &pl.tracks;
+        let items: Vec<TrackItem> = view.iter().map(|&j| self.item(&tr[j])).collect();
+        self.ui.set_pl_total(tr.len() as i32);
+        self.pl_view = view;
+        self.pl_model.set_vec(items);
+    }
+
+    /// Номера треков открытого плейлиста: найденные по запросу (пустой — все) в выбранной сортировке
+    fn pl_order(&self, query: &str) -> Vec<usize> {
+        let Some(pl) = self.open_pl.and_then(|i| self.store.playlists.get(i)) else { return vec![] };
+        let q = query.trim().to_lowercase();
         let ql = ytmusic::latin(&q);
         let mut view: Vec<usize> = (0..pl.tracks.len())
             .filter(|&j| {
@@ -1071,10 +1203,17 @@ impl App {
             4 => view.sort_by_key(|&j| tr[j].dur),
             _ => {}
         }
-        let items: Vec<TrackItem> = view.iter().map(|&j| self.item(&tr[j])).collect();
-        self.ui.set_pl_total(tr.len() as i32);
-        self.pl_view = view;
-        self.pl_model.set_vec(items);
+        view
+    }
+
+    /// Трек из плейлиста: поиск только помогает его найти — в очередь идёт весь плейлист в его сортировке
+    fn play_pl(&mut self, i: usize) {
+        let Some(&j) = self.pl_view.get(i) else { return };
+        let Some(pl) = self.open_pl.and_then(|p| self.store.playlists.get(p)) else { return };
+        let all = self.pl_order("");
+        let at = all.iter().position(|&k| k == j).unwrap_or(0);
+        let q = all.iter().map(|&k| pl.tracks[k].clone()).collect();
+        self.play_queue(q, at);
     }
 
     /// Треки открытого плейлиста в том порядке, как их видно
@@ -1085,6 +1224,9 @@ impl App {
 
     fn edit_playlist(&mut self) {
         let Some(pl) = self.open_pl.and_then(|i| self.store.playlists.get(i)) else { return };
+        if pl.name == model::LIKED {
+            return self.toast(&tr!("Любимые не переименовать — по имени их узнаёт и телефон", "Liked can't be renamed — your phone finds it by name", "Улюблені не перейменувати — за назвою їх знаходить і телефон", "Obľúbené sa nedajú premenovať — telefón ich spoznáva podľa názvu"));
+        }
         self.ui.set_edit_name(pl.name.as_str().into());
         self.ui.set_edit_desc(pl.desc.as_str().into());
         self.ui.set_modal(7);
@@ -1105,7 +1247,7 @@ impl App {
     }
 
     fn unique_name(&self, base: &str) -> String {
-        let base = if base.trim().is_empty() { tr!("Плейлист {}", "Playlist {}", "Плейлист {}", self.store.playlists.len() + 1) } else { base.trim().to_string() };
+        let base = if base.trim().is_empty() { tr!("Плейлист {}", "Playlist {}", "Плейлист {}", "Playlist {}", self.store.playlists.len() + 1) } else { base.trim().to_string() };
         let mut name = base.clone();
         let mut n = 2;
         while self.store.playlists.iter().any(|p| p.name == name) {
@@ -1168,16 +1310,16 @@ impl App {
                 let fresh: Vec<&Track> = v.iter().filter(|t| self.dl_of(t) == 0).collect();
                 let dir = self.dl_dir().display().to_string();
                 match fresh.as_slice() {
-                    [] => return self.toast(&tr!("Уже скачано", "Already downloaded", "Вже завантажено")),
+                    [] => return self.toast(&tr!("Уже скачано", "Already downloaded", "Вже завантажено", "Už stiahnuté")),
                     [t] => (
-                        tr!("Скачать в mp3?", "Download as mp3?", "Завантажити в mp3?"),
-                        tr!("«{} — {}» сохранится в {}", "“{} — {}” will be saved to {}", "«{} — {}» збережеться в {}", t.artist, t.title, dir),
-                        tr!("Скачать", "Download", "Завантажити"),
+                        tr!("Скачать в mp3?", "Download as mp3?", "Завантажити в mp3?", "Stiahnuť ako mp3?"),
+                        tr!("«{} — {}» сохранится в {}", "“{} — {}” will be saved to {}", "«{} — {}» збережеться в {}", "„{} — {}“ sa uloží do {}", t.artist, t.title, dir),
+                        tr!("Скачать", "Download", "Завантажити", "Stiahnuť"),
                     ),
                     all => (
-                        tr!("Скачать {} треков?", "Download {} tracks?", "Завантажити {} треків?", all.len()),
-                        tr!("Они сохранятся в {}. Уже скачанные пропущу.", "They'll be saved to {}. Already downloaded ones are skipped.", "Вони збережуться в {}. Вже завантажені пропущу.", dir),
-                        tr!("Скачать", "Download", "Завантажити"),
+                        tr!("Скачать {} треков?", "Download {} tracks?", "Завантажити {} треків?", "Stiahnuť {} skladieb?", all.len()),
+                        tr!("Они сохранятся в {}. Уже скачанные пропущу.", "They'll be saved to {}. Already downloaded ones are skipped.", "Вони збережуться в {}. Вже завантажені пропущу.", "Uložia sa do {}. Už stiahnuté preskočím.", dir),
+                        tr!("Скачать", "Download", "Завантажити", "Stiahnuť"),
                     ),
                 }
             }
@@ -1185,15 +1327,15 @@ impl App {
                 let Some(pl) = self.open_pl.and_then(|p| self.store.playlists.get(p)) else { return };
                 let Some(t) = pl.tracks.get(*i) else { return };
                 (
-                    tr!("Убрать из плейлиста?", "Remove from the playlist?", "Прибрати з плейлиста?"),
-                    tr!("«{}» пропадёт из «{}».", "“{}” will be removed from “{}”.", "«{}» зникне з «{}».", t.title, pl.name),
-                    tr!("Убрать", "Remove", "Прибрати"),
+                    tr!("Убрать из плейлиста?", "Remove from the playlist?", "Прибрати з плейлиста?", "Odstrániť z playlistu?"),
+                    tr!("«{}» пропадёт из «{}».", "“{}” will be removed from “{}”.", "«{}» зникне з «{}».", "„{}“ zmizne z „{}“.", t.title, pl.name),
+                    tr!("Убрать", "Remove", "Прибрати", "Odstrániť"),
                 )
             }
             Confirm::Radio(t) => (
-                tr!("Включить радио?", "Start a radio?", "Увімкнути радіо?"),
-                tr!("Очередь заменится треками, похожими на «{}».", "The queue will be replaced with tracks like “{}”.", "Черга заміниться треками, схожими на «{}».", t.title),
-                tr!("Включить", "Start", "Увімкнути"),
+                tr!("Включить радио?", "Start a radio?", "Увімкнути радіо?", "Zapnúť rádio?"),
+                tr!("Очередь заменится треками, похожими на «{}».", "The queue will be replaced with tracks like “{}”.", "Черга заміниться треками, схожими на «{}».", "Front sa nahradí skladbami podobnými „{}“.", t.title),
+                tr!("Включить", "Start", "Увімкнути", "Zapnúť"),
             ),
         };
         self.ui.set_confirm_title(title.into());
@@ -1217,12 +1359,12 @@ impl App {
     fn download(&mut self, tracks: Vec<Track>) {
         let fresh: Vec<Track> = tracks.into_iter().filter(|t| self.dl_of(t) == 0).collect();
         if fresh.is_empty() {
-            self.toast(&tr!("Уже скачано", "Already downloaded", "Вже завантажено"));
+            self.toast(&tr!("Уже скачано", "Already downloaded", "Вже завантажено", "Už stiahnuté"));
             return;
         }
         let msg = match fresh.len() {
-            1 => tr!("Качаю «{}»", "Downloading “{}”", "Завантажую «{}»", fresh[0].title),
-            n => tr!("Качаю {} треков", "Downloading {} tracks", "Завантажую {} треків", n),
+            1 => tr!("Качаю «{}»", "Downloading “{}”", "Завантажую «{}»", "Sťahujem „{}“", fresh[0].title),
+            n => tr!("Качаю {} треков", "Downloading {} tracks", "Завантажую {} треків", "Sťahujem {} skladieb", n),
         };
         for t in fresh {
             self.dl_busy.insert(key(&t));
@@ -1256,12 +1398,12 @@ impl App {
                                 a.show_local();
                             }
                             if a.dl_queue.is_empty() && a.dl_active == 0 {
-                                a.toast(&tr!("Скачано: «{}»", "Downloaded “{}”", "Завантажено: «{}»", t.title));
+                                a.toast(&tr!("Скачано: «{}»", "Downloaded “{}”", "Завантажено: «{}»", "Stiahnuté: „{}“", t.title));
                             }
                         }
                         Err(e) => {
                             eprintln!("скачивание {}: {e:#}", t.title);
-                            a.toast(&tr!("Не скачалось «{}»: {}", "Couldn't download “{}”: {}", "Не завантажилось «{}»: {}", t.title, e));
+                            a.toast(&tr!("Не скачалось «{}»: {}", "Couldn't download “{}”: {}", "Не завантажилось «{}»: {}", "Nestiahlo sa „{}“: {}", t.title, e));
                         }
                     }
                     a.mark_playing();
@@ -1273,7 +1415,7 @@ impl App {
     }
 
     fn pick_dl_dir(&mut self) {
-        let title = tr!("Куда качать музыку", "Where to save music", "Куди завантажувати музику");
+        let title = tr!("Куда качать музыку", "Where to save music", "Куди завантажувати музику", "Kam sťahovať hudbu");
         let start = self.dl_dir();
         std::thread::spawn(move || {
             let d = rfd::FileDialog::new().set_title(&title).set_directory(&start).pick_folder();
@@ -1298,12 +1440,12 @@ impl App {
     fn add_to(&mut self, pl: usize) {
         self.ui.set_modal(0);
         let Some(t) = self.add_target.take() else { return };
-        let Some(p) = self.store.playlists.get_mut(pl) else { return };
+        let Some(p) = self.store.playlists.get_mut(pl).filter(|p| p.name != model::LIKED) else { return }; // в любимые — только сердечком
         let msg = if p.tracks.iter().any(|x| x.same(&t)) {
-            tr!("Уже есть в «{}»", "Already in “{}”", "Вже є в «{}»", p.name)
+            tr!("Уже есть в «{}»", "Already in “{}”", "Вже є в «{}»", "Už je v „{}“", p.name)
         } else {
             p.tracks.push(t);
-            tr!("Закинул в «{}»", "Added to “{}”", "Закинув у «{}»", p.name)
+            tr!("Закинул в «{}»", "Added to “{}”", "Закинув у «{}»", "Pridané do „{}“", p.name)
         };
         self.save();
         self.refresh_playlists();
@@ -1331,7 +1473,7 @@ impl App {
     /// исходный файл потом можно удалить или переместить
     fn pick_pl_cover(&mut self) {
         let Some(i) = self.open_pl else { return };
-        let title = tr!("Обложка плейлиста", "Playlist cover", "Обкладинка плейлиста");
+        let title = tr!("Обложка плейлиста", "Playlist cover", "Обкладинка плейлиста", "Obal playlistu");
         std::thread::spawn(move || {
             let Some(file) = rfd::FileDialog::new().set_title(&title).add_filter("Images", &["png", "jpg", "jpeg", "webp"]).pick_file() else { return };
             let r = (|| -> Result<std::path::PathBuf> {
@@ -1358,7 +1500,7 @@ impl App {
                         a.open_playlist(i);
                     }
                 }
-                Err(e) => a.toast(&tr!("Не вышло: {:#}", "Failed: {:#}", "Не вийшло: {:#}", e)),
+                Err(e) => a.toast(&tr!("Не вышло: {:#}", "Failed: {:#}", "Не вийшло: {:#}", "Nevyšlo to: {:#}", e)),
             });
         });
     }
@@ -1416,7 +1558,7 @@ impl App {
         let acc = cloud::account();
         if !acc.signed_in() {
             if manual {
-                self.toast(&tr!("Сначала войди в аккаунт в настройках", "Sign in to your account in settings first", "Спершу увійди в акаунт у налаштуваннях"));
+                self.toast(&tr!("Сначала войди в аккаунт в настройках", "Sign in to your account in settings first", "Спершу увійди в акаунт у налаштуваннях", "Najprv sa v nastaveniach prihlás do účtu"));
             }
             return;
         }
@@ -1429,7 +1571,7 @@ impl App {
                 Ok(if cloud::check_verified(c, l)? || !manual {
                     String::new()
                 } else {
-                    tr!("Почта ещё не подтверждена", "Email isn't confirmed yet", "Пошту ще не підтверджено")
+                    tr!("Почта ещё не подтверждена", "Email isn't confirmed yet", "Пошту ще не підтверджено", "E-mail ešte nie je potvrdený")
                 })
             });
             return;
@@ -1439,9 +1581,21 @@ impl App {
         let local = self.store.playlists.clone();
         let snap = cloud::hashes(&local);
         let first = !self.cloud_loaded;
+        let own = self.stats.clone();
         std::thread::spawn(move || {
             let r = if first { cloud::load(&c) } else { cloud::sync(&c, &local) };
+            // статистика аккаунта: своя доля — в облако, чужие — к себе. Ошибка тут плейлистам не мешает
+            let others = cloud::sync_stats(&c, &own).map_err(|e| eprintln!("stats sync: {e:#}")).ok();
             post(move |a| {
+                if r.is_ok() {
+                    a.conn_start(); // аккаунт живой — подключаемся к общей сессии устройств
+                }
+                if let Some(o) = others {
+                    a.stats_others = o;
+                    if a.ui.get_page() == "stats" {
+                        a.open_stats();
+                    }
+                }
                 a.syncing = false;
                 a.ui.set_acc_syncing(false);
                 match r {
@@ -1458,9 +1612,9 @@ impl App {
                         if cloud::hashes(&s.playlists) != snap {
                             a.apply_cloud(s.playlists);
                         }
-                        a.ui.set_acc_msg(tr!("Синхронизировано в {}", "Synced at {}", "Синхронізовано о {}", stats::hm()).into());
+                        a.ui.set_acc_msg(tr!("Синхронизировано в {}", "Synced at {}", "Синхронізовано о {}", "Synchronizované o {}", stats::hm()).into());
                         if manual {
-                            a.toast(&tr!("Плейлисты синхронизированы", "Playlists synced", "Плейлисти синхронізовано"));
+                            a.toast(&tr!("Плейлисты синхронизированы", "Playlists synced", "Плейлисти синхронізовано", "Playlisty synchronizované"));
                         }
                     }
                     Err(e) => {
@@ -1487,6 +1641,7 @@ impl App {
         }
         self.store.playlists = pls;
         self.open_pl = open.and_then(|n| self.store.playlists.iter().position(|p| p.name == n));
+        self.ensure_liked();
         self.save();
         self.refresh_playlists();
         self.refresh_home();
@@ -1499,6 +1654,9 @@ impl App {
     }
 
     fn delete_playlist(&mut self) {
+        if self.open_pl.and_then(|i| self.store.playlists.get(i)).is_some_and(|p| p.name == model::LIKED) {
+            return self.toast(&tr!("Любимые не удалить — сними сердечки с треков", "Liked can't be deleted — unheart the tracks instead", "Улюблені не видалити — зніми сердечка з треків", "Obľúbené sa nedajú zmazať — zruš srdiečka pri skladbách"));
+        }
         let Some(i) = self.open_pl.take() else { return };
         let p = self.store.playlists.remove(i);
         if !p.cover.is_empty() {
@@ -1508,7 +1666,7 @@ impl App {
         self.save();
         self.refresh_playlists();
         self.ui.set_page("search".into());
-        self.toast(&tr!("«{}» улетел за горизонт событий", "“{}” fell past the event horizon", "«{}» полетів за горизонт подій", p.name));
+        self.toast(&tr!("«{}» улетел за горизонт событий", "“{}” fell past the event horizon", "«{}» полетів за горизонт подій", "„{}“ odletel za horizont udalostí", p.name));
     }
 
     /// idx — настоящий индекс в плейлисте (не строка на экране: там поиск и сортировка)
@@ -1532,7 +1690,7 @@ impl App {
                 tr!(
                     "Это не похоже на ссылку Spotify / Apple Music / YouTube Music / SoundCloud / Яндекс Музыки",
                     "That doesn't look like a Spotify / Apple Music / YouTube Music / SoundCloud / Yandex Music link",
-                    "Це не схоже на посилання Spotify / Apple Music / YouTube Music / SoundCloud / Яндекс Музики"
+                    "Це не схоже на посилання Spotify / Apple Music / YouTube Music / SoundCloud / Яндекс Музики", "Toto nevyzerá ako odkaz na Spotify / Apple Music / YouTube Music / SoundCloud / Yandex Music"
                 )
                 .into(),
             );
@@ -1594,7 +1752,7 @@ impl App {
         if missing > 0 {
             let s = self.ui.get_import_status().to_string();
             self.ui.set_import_status(
-                tr!("{}. Не нашлось на YT Music: {}", "{}. Not found on YT Music: {}", "{}. Не знайшлося на YT Music: {}", s, missing).into(),
+                tr!("{}. Не нашлось на YT Music: {}", "{}. Not found on YT Music: {}", "{}. Не знайшлося на YT Music: {}", "{}. Na YT Music sa nenašlo: {}", s, missing).into(),
             );
         }
     }
@@ -1625,12 +1783,12 @@ impl App {
                 self.store.playlists.push(Playlist { name: name.clone(), tracks, source, ..Default::default() });
                 self.save();
                 self.ui.set_import_url("".into());
-                self.ui.set_import_status(tr!("Готово: «{}», {} треков", "Done: “{}”, {} tracks", "Готово: «{}», {} треків", name, n).into());
-                self.toast(&tr!("Засосал «{}» — {} треков", "Sucked in “{}” — {} tracks", "Засмоктав «{}» — {} треків", name, n));
+                self.ui.set_import_status(tr!("Готово: «{}», {} треков", "Done: “{}”, {} tracks", "Готово: «{}», {} треків", "Hotovo: „{}“, {} skladieb", name, n).into());
+                self.toast(&tr!("Засосал «{}» — {} треков", "Sucked in “{}” — {} tracks", "Засмоктав «{}» — {} треків", "Vcucnuté „{}“ — {} skladieb", name, n));
                 self.open_playlist(self.store.playlists.len() - 1);
             }
-            Ok(_) => self.ui.set_import_status(tr!("Плейлист пустой или приватный", "The playlist is empty or private", "Плейлист порожній або приватний").into()),
-            Err(e) => self.ui.set_import_status(tr!("Не вышло: {:#}", "Failed: {:#}", "Не вийшло: {:#}", e).into()),
+            Ok(_) => self.ui.set_import_status(tr!("Плейлист пустой или приватный", "The playlist is empty or private", "Плейлист порожній або приватний", "Playlist je prázdny alebo súkromný").into()),
+            Err(e) => self.ui.set_import_status(tr!("Не вышло: {:#}", "Failed: {:#}", "Не вийшло: {:#}", "Nevyšlo to: {:#}", e).into()),
         }
     }
 
@@ -1638,7 +1796,7 @@ impl App {
     fn import_qr(&mut self) {
         self.ui.set_importing(true);
         self.ui.set_import_status("".into());
-        let title = tr!("Картинки с QR-кодом плейлиста", "Images with the playlist QR code", "Картинки з QR-кодом плейлиста");
+        let title = tr!("Картинки с QR-кодом плейлиста", "Images with the playlist QR code", "Картинки з QR-кодом плейлиста", "Obrázky s QR kódom playlistu");
         std::thread::spawn(move || {
             let files = rfd::FileDialog::new().set_title(&title).add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp"]).pick_files();
             post(move |a| match files {
@@ -1647,6 +1805,7 @@ impl App {
                     std::thread::spawn(move || {
                         let r = qr::decode_files(&files).and_then(|shared| match shared {
                             qr::Shared::Full { name, tracks } => Ok((name, tracks, None)),
+                            qr::Shared::Cloud { .. } => anyhow::bail!("QR повреждён"),
                             // по ссылке подтягиваем свежий плейлист и накатываем правки отправителя
                             qr::Shared::Linked { name, url, removed, added } => {
                                 let (_, mut tracks) = match source_of(&url) {
@@ -1672,12 +1831,19 @@ impl App {
     fn share_playlist(&mut self) {
         let Some(pl) = self.open_pl.and_then(|i| self.store.playlists.get(i)) else { return };
         if pl.tracks.is_empty() {
-            return self.toast(&tr!("Пустой плейлист нечем делиться", "Nothing to share in an empty playlist", "Порожнім плейлистом нема чим ділитися"));
+            return self.toast(&tr!("Пустой плейлист нечем делиться", "Nothing to share in an empty playlist", "Порожнім плейлистом нема чим ділитися", "Prázdnym playlistom sa nedá zdieľať"));
         }
-        self.qr_imgs = qr::encode(pl).iter().filter_map(|c| qr::render(c, 6).map_err(|e| eprintln!("qr: {e:#}")).ok()).collect();
-        self.qr_page = 0;
-        self.show_qr_page();
-        self.ui.set_modal(4);
+        // большой плейлист уходит в облако — это сеть, поэтому в фоне
+        let pl = pl.clone();
+        std::thread::spawn(move || {
+            let imgs: Vec<_> = qr::codes(&pl).iter().filter_map(|c| qr::render(c, 6).map_err(|e| eprintln!("qr: {e:#}")).ok()).collect();
+            post(move |a| {
+                a.qr_imgs = imgs;
+                a.qr_page = 0;
+                a.show_qr_page();
+                a.ui.set_modal(4);
+            });
+        });
     }
 
     fn show_qr_page(&mut self) {
@@ -1698,17 +1864,17 @@ impl App {
                 img.save(dir.join(name)).is_ok()
             });
         if saved {
-            self.toast(&tr!("Сохранил в {}", "Saved to {}", "Зберіг у {}", dir.display()));
+            self.toast(&tr!("Сохранил в {}", "Saved to {}", "Зберіг у {}", "Uložené do {}", dir.display()));
             open_url(&dir.display().to_string());
         } else {
-            self.toast(&tr!("Не смог сохранить QR", "Couldn't save the QR code", "Не зміг зберегти QR"));
+            self.toast(&tr!("Не смог сохранить QR", "Couldn't save the QR code", "Не зміг зберегти QR", "QR kód sa nepodarilo uložiť"));
         }
     }
 
     // ── радио по треку ──
 
     fn start_radio(&mut self, t: Track) {
-        self.toast(&tr!("Собираю радио по «{}»…", "Building a radio from “{}”…", "Збираю радіо за «{}»…", t.title));
+        self.toast(&tr!("Собираю радио по «{}»…", "Building a radio from “{}”…", "Збираю радіо за «{}»…", "Skladám rádio podľa „{}“…", t.title));
         std::thread::spawn(move || {
             let r = radio_for(&t);
             post(move |a| match r {
@@ -1729,7 +1895,7 @@ impl App {
                         a.play_queue(tracks, 0);
                     }
                 }
-                Err(e) => a.toast(&tr!("Радио не собралось: {:#}", "Couldn't build a radio: {:#}", "Радіо не зібралося: {:#}", e)),
+                Err(e) => a.toast(&tr!("Радио не собралось: {:#}", "Couldn't build a radio: {:#}", "Радіо не зібралося: {:#}", "Rádio sa nepodarilo poskladať: {:#}", e)),
             });
         });
     }
@@ -1746,9 +1912,11 @@ impl App {
             for (i, t) in tracks.iter().enumerate() {
                 if let Some(mut r) = m.row_data(i) {
                     let dl = self.dl_of(t);
-                    if r.playing != is(t) || r.dl != dl {
+                    let liked = self.is_liked(t);
+                    if r.playing != is(t) || r.dl != dl || r.liked != liked {
                         r.playing = is(t);
                         r.dl = dl;
+                        r.liked = liked;
                         m.set_row_data(i, r);
                     }
                 }
@@ -1778,6 +1946,7 @@ impl App {
     fn play_now(&mut self, t: Track) {
         self.end_xfade();
         self.current = Some(t);
+        self.update_liked();
         self.retries = 0;
         self.resume_at = None;
         if self.played.len() > 500 {
@@ -1798,6 +1967,9 @@ impl App {
     /// После правки очереди следующий трек мог смениться — перезапускаем предзагрузку
     fn queue_changed(&mut self) {
         self.refresh_queue();
+        if self.conn_queue(false) {
+            return; // очередь живёт на устройстве со звуком
+        }
         self.prefetched = false;
         if self.pos > 1.0 {
             self.prefetch();
@@ -1806,9 +1978,13 @@ impl App {
 
     fn start(&mut self) {
         let Some(t) = self.current.clone() else { return };
+        // звук на другом устройстве — включаем там, с этой очередью
+        if self.conn_queue(true) {
+            return;
+        }
         self.restored = false;
         let Some(player) = self.player.clone() else {
-            self.toast(&tr!("mpv не найден — играть нечем", "mpv not found — nothing to play with", "mpv не знайдено — нема чим грати"));
+            self.toast(&tr!("mpv не найден — играть нечем", "mpv not found — nothing to play with", "mpv не знайдено — нема чим грати", "mpv sa nenašlo — nie je čím hrať"));
             return;
         };
         let ui = &self.ui;
@@ -1826,6 +2002,7 @@ impl App {
         ui.set_dur_text(fmt_dur(t.dur).into());
         self.want_cover(&t.cover);
         self.current = Some(t.clone());
+        self.update_liked();
         self.pos = 0.0;
         self.lyr_shown = 0.0;
         self.prefetched = false;
@@ -1884,9 +2061,9 @@ impl App {
         self.fail_streak += 1;
         let bot = e.contains(util::BOT);
         let msg = if bot {
-            tr!("YouTube просит доказать, что ты не бот. Включи «Куки YouTube» в настройках", "YouTube wants proof you're not a bot. Turn on “YouTube cookies” in settings", "YouTube просить довести, що ти не бот. Увімкни «Куки YouTube» у налаштуваннях")
+            tr!("YouTube просит доказать, что ты не бот. Включи «Куки YouTube» в настройках", "YouTube wants proof you're not a bot. Turn on “YouTube cookies” in settings", "YouTube просить довести, що ти не бот. Увімкни «Куки YouTube» у налаштуваннях", "YouTube chce dôkaz, že nie si bot. Zapni „Cookies YouTube“ v nastaveniach")
         } else {
-            tr!("Не играет: {}", "Can't play: {}", "Не грає: {}", e)
+            tr!("Не играет: {}", "Can't play: {}", "Не грає: {}", "Nehrá: {}", e)
         };
         if self.fail_streak >= 3 || (bot && self.store.settings.cookies.is_empty()) {
             self.fail_streak = 0;
@@ -1899,7 +2076,10 @@ impl App {
     }
 
     fn advance(&mut self) {
-        if self.upnext.is_empty() && self.repeat && !self.source.is_empty() {
+        if self.conn_cmd("next", serde_json::Value::Null) {
+            return;
+        }
+        if self.upnext.is_empty() && self.repeat > 0 && !self.source.is_empty() {
             self.upnext = if self.shuffle { shuffled(self.source.clone()) } else { self.source.clone() };
         }
         if self.upnext.is_empty() {
@@ -1968,6 +2148,9 @@ impl App {
     }
 
     fn prev(&mut self) {
+        if self.conn_cmd("prev", serde_json::Value::Null) {
+            return;
+        }
         // как везде: если трек уже играет больше 3 с — "назад" перематывает его в начало
         if self.pos > 3.0 {
             return self.seek_abs(0.0);
@@ -2076,6 +2259,7 @@ impl App {
             m.playback(false, pos, true);
         }
         self.current = Some(t);
+        self.update_liked();
         self.restored = true;
         self.mark_playing();
     }
@@ -2092,6 +2276,9 @@ impl App {
     }
 
     fn toggle(&mut self) {
+        if self.conn_cmd("toggle", serde_json::Value::Null) {
+            return;
+        }
         if self.restored {
             // трек из прошлого запуска: грузим и продолжаем с того же места
             self.resume_at = Some(self.pos).filter(|p| *p > 1.0);
@@ -2117,6 +2304,11 @@ impl App {
     }
 
     fn seek_abs(&mut self, s: f64) {
+        if self.conn_cmd("seek", serde_json::json!(s)) {
+            self.pos = s;
+            self.pos_at = Instant::now();
+            return;
+        }
         self.end_xfade();
         if let Some(p) = &self.player {
             p.send(Cmd::Seek(s));
@@ -2155,7 +2347,7 @@ impl App {
                 self.ui.set_loading(loading);
                 self.count_listen(!loading && !paused);
                 if loading && self.load_started.elapsed() > LOAD_TIMEOUT {
-                    self.toast(&tr!("Поток не грузится — пропускаю", "The stream won't load — skipping", "Потік не вантажиться — пропускаю"));
+                    self.toast(&tr!("Поток не грузится — пропускаю", "The stream won't load — skipping", "Потік не вантажиться — пропускаю", "Stream sa nenačítava — preskakujem"));
                     self.advance();
                     return;
                 }
@@ -2186,6 +2378,12 @@ impl App {
                 self.set_sleep(0);
                 self.advance_paused();
             }
+            // повтор трека: тот же трек заново (ссылка в кэше — без ожидания)
+            Ev::Ended(tok) if tok == cur && self.repeat == 2 => {
+                if let Some(t) = self.current.clone() {
+                    self.play_now(t);
+                }
+            }
             Ev::Ended(tok) if tok == cur => self.advance(),
             // закэшированная ссылка протухла — молча резолвим заново
             // протухшая ссылка из кэша или кривой формат от YouTube — молча перезапрашиваем поток
@@ -2201,7 +2399,7 @@ impl App {
                 self.start();
             }
             Ev::Failed(tok, e) if tok == cur && tok != 0 => self.track_failed(&e),
-            Ev::Failed(0, e) => self.toast(&tr!("Не играет: {}", "Can't play: {}", "Не грає: {}", e)),
+            Ev::Failed(0, e) => self.toast(&tr!("Не играет: {}", "Can't play: {}", "Не грає: {}", "Nehrá: {}", e)),
             _ => {}
         }
     }
@@ -2239,7 +2437,7 @@ impl App {
     /// Не готов — обычный переход: ждать yt-dlp посреди кроссфейда хуже, чем его не делать
     fn maybe_xfade(&mut self) {
         let xf = self.store.settings.xfade as f64;
-        if xf <= 0.0 || self.xf.is_some() || self.sleep_mode == 4 || self.dur < xf * 3.0 || self.pos < self.dur - xf || !self.ui.get_playing() {
+        if xf <= 0.0 || self.repeat == 2 || self.xf.is_some() || self.sleep_mode == 4 || self.dur < xf * 3.0 || self.pos < self.dur - xf || !self.ui.get_playing() {
             return;
         }
         let Some(next) = self.upnext.first() else { return };
@@ -2304,7 +2502,7 @@ impl App {
     fn show_cache_size(&self, bytes: u64) {
         let mb = bytes / (1024 * 1024);
         let s = if mb >= 1024 { format!("{:.1} ГБ", mb as f64 / 1024.0) } else { format!("{mb} МБ") };
-        self.ui.set_cache_used(if LANG.load(Ordering::Relaxed) == 1 { s.replace("ГБ", "GB").replace("МБ", "MB") } else { s }.into());
+        self.ui.set_cache_used(if matches!(LANG.load(Ordering::Relaxed), 1 | 3) { s.replace("ГБ", "GB").replace("МБ", "MB") } else { s }.into());
     }
 
     // ── главная ──
@@ -2319,10 +2517,10 @@ impl App {
         let ui = &self.ui;
         ui.set_home_hello(
             match stats::hour() {
-                5..=11 => tr!("Доброе утро", "Good morning", "Доброго ранку"),
-                12..=17 => tr!("Добрый день", "Good afternoon", "Добрий день"),
-                18..=23 => tr!("Добрый вечер", "Good evening", "Добрий вечір"),
-                _ => tr!("Доброй ночи", "Good night", "Доброї ночі"),
+                5..=11 => tr!("Доброе утро", "Good morning", "Доброго ранку", "Dobré ráno"),
+                12..=17 => tr!("Добрый день", "Good afternoon", "Добрий день", "Dobrý deň"),
+                18..=23 => tr!("Добрый вечер", "Good evening", "Добрий вечір", "Dobrý večer"),
+                _ => tr!("Доброй ночи", "Good night", "Доброї ночі", "Dobrú noc"),
             }
             .into(),
         );
@@ -2333,7 +2531,7 @@ impl App {
         self.home_quick = src.into_iter().take(8).collect();
         let quick: Vec<TrackItem> = self.home_quick.iter().map(|t| self.item(t)).collect();
         self.home_quick_model.set_vec(quick);
-        self.home_recent = self.stats.recent(12).into_iter().map(|t| t.track.clone()).collect();
+        self.home_recent = self.stats.with(&self.stats_others).recent(12).into_iter().map(|t| t.track.clone()).collect();
         let recent: Vec<Card> = self.home_recent.iter().map(|t| self.card_of(&t.title, &t.artist, &t.cover)).collect();
         self.home_recent_model.set_vec(recent);
         let pls: Vec<(usize, Card)> = self
@@ -2342,10 +2540,10 @@ impl App {
             .iter()
             .enumerate()
             .map(|(i, p)| {
-                let sub = tr!("{} треков", "{} tracks", "{} треків", p.tracks.len());
-                let own = (!p.cover.is_empty()).then(|| Image::load_from_path(std::path::Path::new(&p.cover)).ok()).flatten();
+                let sub = tr!("{} треков", "{} tracks", "{} треків", "{} skladieb", p.tracks.len());
+                let own = if p.name == model::LIKED { Some(liked_art()) } else { (!p.cover.is_empty()).then(|| Image::load_from_path(std::path::Path::new(&p.cover)).ok()).flatten() };
                 let card = match own {
-                    Some(img) => Card { title: p.name.as_str().into(), sub: sub.into(), has_cover: true, cover: img, cover_url: "".into() },
+                    Some(img) => Card { title: pl_name(&p.name).into(), sub: sub.into(), has_cover: true, cover: img, cover_url: "".into() },
                     None => self.card_of(&p.name, &sub, p.tracks.first().map_or("", |t| t.cover.as_str())),
                 };
                 (i, card)
@@ -2356,18 +2554,18 @@ impl App {
         let sim: Vec<Card> = self.home.similar.iter().map(|c| self.card(c)).collect();
         self.home_similar_model.set_vec(sim);
         self.ui.set_home_similar_to(self.home.similar_to.as_str().into());
-        self.ui.set_home_empty(self.stats.tracks.is_empty());
+        self.ui.set_home_empty(self.stats.tracks.is_empty() && self.stats_others.tracks.is_empty());
     }
 
     /// Миксы пересобираем раз в день (или по кнопке): пара запросов к YT Music в фоне
     fn build_home(&mut self, force: bool) {
-        if self.home_busy || self.stats.top_tracks(1).is_empty() || (!force && self.home.day == stats::today() && !self.home.mixes.is_empty()) {
+        let st = self.stats.with(&self.stats_others);
+        if self.home_busy || st.top_tracks(1).is_empty() || (!force && self.home.day == stats::today() && !self.home.mixes.is_empty()) {
             return;
         }
         self.home_busy = true;
         self.ui.set_home_loading(true);
-        let st = self.stats.clone();
-        let names = (tr!("Твой микс", "Your mix", "Твій мікс"), tr!("Открытия", "Discover", "Відкриття"), tr!("Микс: {}", "{} mix", "Мікс: {}", "{}"));
+        let names = (tr!("Твой микс", "Your mix", "Твій мікс", "Tvoj mix"), tr!("Открытия", "Discover", "Відкриття", "Objavy"), tr!("Микс: {}", "{} mix", "Мікс: {}", "Mix: {}", "{}"));
         std::thread::spawn(move || {
             let h = home::build(&st, radio_for, |n| ytmusic::find_artist(n).and_then(|id| ytmusic::artist(&id)).map(|a| a.similar).unwrap_or_default(), names);
             post(move |a| {
@@ -2410,7 +2608,7 @@ impl App {
 
     fn open_stats(&mut self) {
         let today = stats::today();
-        let s = &self.stats;
+        let s = &self.stats.with(&self.stats_others);
         let ui = &self.ui;
         ui.set_st_today(fmt_long(s.last(today, 1)).into());
         ui.set_st_week(fmt_long(s.last(today, 7)).into());
@@ -2422,14 +2620,14 @@ impl App {
             .map(|d| {
                 let ms = s.days.get(&d).copied().unwrap_or(0);
                 let (y, m, dd) = stats::ymd(d);
-                let what = if ms == 0 { tr!("ничего не играло", "nothing played", "нічого не грало") } else { fmt_long(ms) };
+                let what = if ms == 0 { tr!("ничего не играло", "nothing played", "нічого не грало", "nič nehralo") } else { fmt_long(ms) };
                 HeatCell { level: stats::level(ms), tip: format!("{dd:02}.{m:02}.{y} — {what}").into() }
             })
             .collect();
         let names = [
-            tr!("янв", "Jan", "січ"), tr!("фев", "Feb", "лют"), tr!("мар", "Mar", "бер"), tr!("апр", "Apr", "кві"),
-            tr!("май", "May", "тра"), tr!("июн", "Jun", "чер"), tr!("июл", "Jul", "лип"), tr!("авг", "Aug", "сер"),
-            tr!("сен", "Sep", "вер"), tr!("окт", "Oct", "жов"), tr!("ноя", "Nov", "лис"), tr!("дек", "Dec", "гру"),
+            tr!("янв", "Jan", "січ", "jan"), tr!("фев", "Feb", "лют", "feb"), tr!("мар", "Mar", "бер", "mar"), tr!("апр", "Apr", "кві", "apr"),
+            tr!("май", "May", "тра", "máj"), tr!("июн", "Jun", "чер", "jún"), tr!("июл", "Jul", "лип", "júl"), tr!("авг", "Aug", "сер", "aug"),
+            tr!("сен", "Sep", "вер", "sep"), tr!("окт", "Oct", "жов", "okt"), tr!("ноя", "Nov", "лис", "nov"), tr!("дек", "Dec", "гру", "dec"),
         ];
         // подпись месяца — над неделей, в которой он начинается
         let months: Vec<MonthMark> = (0..53)
@@ -2455,7 +2653,7 @@ impl App {
 
     /// Очередь кончается (остался последний трек) — подбираем похожие по играющему и докидываем в конец
     fn maybe_autoplay(&mut self) {
-        if !self.store.settings.autoplay || self.repeat || self.upnext.len() >= 2 {
+        if !self.store.settings.autoplay || self.repeat > 0 || self.upnext.len() >= 2 {
             return;
         }
         let Some(seed) = self.current.clone() else { return };
@@ -2467,7 +2665,7 @@ impl App {
             let r = radio_for(&seed);
             post(move |a| {
                 let Ok(tracks) = r.map_err(|e| eprintln!("дальше похожее: {e:#}")) else { return };
-                if a.repeat || a.upnext.len() >= 2 {
+                if a.repeat > 0 || a.upnext.len() >= 2 {
                     return; // пока искали, юзер сам набил очередь
                 }
                 let seen: HashSet<String> = a.played.iter().chain(&a.upnext).chain(&a.current).chain(&a.source).map(same_song).collect();
@@ -2477,7 +2675,7 @@ impl App {
                 }
                 a.upnext.extend(fresh);
                 a.queue_changed();
-                a.toast(&tr!("Дальше — похожее на «{}»", "Up next: tracks like “{}”", "Далі — схоже на «{}»", seed.title));
+                a.toast(&tr!("Дальше — похожее на «{}»", "Up next: tracks like “{}”", "Далі — схоже на «{}»", "Ďalej — podobné ako „{}“", seed.title));
             });
         });
     }
@@ -2525,7 +2723,7 @@ impl App {
                 p.send(Cmd::Volume(self.vol_at(1.0)));
             }
             self.set_sleep(0);
-            self.toast(&tr!("Спокойной ночи 🌙", "Good night 🌙", "На добраніч 🌙"));
+            self.toast(&tr!("Спокойной ночи 🌙", "Good night 🌙", "На добраніч 🌙", "Dobrú noc 🌙"));
         }
     }
 
@@ -2544,9 +2742,31 @@ impl App {
         });
     }
 
+    /// Перемешка запоминается в настройках: после перезапуска остаётся, пока её не выключат
+    fn set_shuffle(&mut self, on: bool) {
+        self.shuffle = on;
+        self.ui.set_shuffle(on);
+        if self.store.settings.shuffle != on {
+            self.store.settings.shuffle = on;
+            self.save();
+        }
+    }
+
+    fn set_repeat(&mut self, mode: u8) {
+        if self.conn_cmd("repeat", serde_json::json!(mode)) {
+            return;
+        }
+        self.repeat = mode.min(2);
+        self.ui.set_repeat(self.repeat as i32);
+    }
+
+    /// выкл → вся очередь → один трек → выкл
+    fn cycle_repeat(&mut self) {
+        self.set_repeat((self.repeat + 1) % 3);
+    }
+
     fn toggle_shuffle(&mut self) {
-        self.shuffle = !self.shuffle;
-        self.ui.set_shuffle(self.shuffle);
+        self.set_shuffle(!self.shuffle);
         // очередь сразу перестраивается: перемешанная целиком или снова по порядку
         if let Some(c) = self.current.clone() {
             self.upnext = self.build_upnext(&c);
@@ -2560,22 +2780,22 @@ impl App {
 
     fn refresh_keys(&self) {
         let names = [
-            tr!("Пауза / играть", "Pause / play", "Пауза / грати"),
-            tr!("Назад на 5 с", "Back 5 s", "Назад на 5 с"),
-            tr!("Вперёд на 5 с", "Forward 5 s", "Вперед на 5 с"),
-            tr!("Предыдущий трек", "Previous track", "Попередній трек"),
-            tr!("Следующий трек", "Next track", "Наступний трек"),
-            tr!("Громче", "Volume up", "Гучніше"),
-            tr!("Тише", "Volume down", "Тихіше"),
-            tr!("Без звука", "Mute", "Без звуку"),
-            tr!("Текст песни", "Lyrics", "Текст пісні"),
-            tr!("Перемешка", "Shuffle", "Перемішування"),
-            tr!("Повтор", "Repeat", "Повтор"),
-            tr!("Полный экран", "Fullscreen", "Повний екран"),
-            tr!("Поиск", "Search", "Пошук"),
-            tr!("Синхронизировать плейлисты", "Sync playlists", "Синхронізувати плейлисти"),
+            tr!("Пауза / играть", "Pause / play", "Пауза / грати", "Pauza / hrať"),
+            tr!("Назад на 5 с", "Back 5 s", "Назад на 5 с", "Späť o 5 s"),
+            tr!("Вперёд на 5 с", "Forward 5 s", "Вперед на 5 с", "Dopredu o 5 s"),
+            tr!("Предыдущий трек", "Previous track", "Попередній трек", "Predchádzajúca skladba"),
+            tr!("Следующий трек", "Next track", "Наступний трек", "Ďalšia skladba"),
+            tr!("Громче", "Volume up", "Гучніше", "Hlasnejšie"),
+            tr!("Тише", "Volume down", "Тихіше", "Tichšie"),
+            tr!("Без звука", "Mute", "Без звуку", "Stlmiť"),
+            tr!("Текст песни", "Lyrics", "Текст пісні", "Text piesne"),
+            tr!("Перемешка", "Shuffle", "Перемішування", "Náhodne"),
+            tr!("Повтор", "Repeat", "Повтор", "Opakovanie"),
+            tr!("Полный экран", "Fullscreen", "Повний екран", "Celá obrazovka"),
+            tr!("Поиск", "Search", "Пошук", "Hľadať"),
+            tr!("Синхронизировать плейлисты", "Sync playlists", "Синхронізувати плейлисти", "Synchronizovať playlisty"),
         ];
-        let space = tr!("Пробел", "Space", "Пробіл");
+        let space = tr!("Пробел", "Space", "Пробіл", "Medzerník");
         let binds: Vec<KeyBind> = KEYS
             .iter()
             .zip(names)
@@ -2639,10 +2859,7 @@ impl App {
                 }
             },
             "shuffle" => self.toggle_shuffle(),
-            "repeat" => {
-                self.repeat = !self.repeat;
-                self.ui.set_repeat(self.repeat);
-            }
+            "repeat" => self.cycle_repeat(),
             "lyrics" => self.set_lyrics_open(!self.ui.get_lyrics_open()),
             "sync" => self.cloud_sync(true),
             _ => {}
@@ -2730,7 +2947,7 @@ impl App {
     }
 
     fn add_music_dir(&mut self) {
-        let title = tr!("Папка с музыкой", "Music folder", "Тека з музикою");
+        let title = tr!("Папка с музыкой", "Music folder", "Тека з музикою", "Priečinok s hudbou");
         let start = dirs::audio_dir().or_else(dirs::home_dir).unwrap_or_default();
         std::thread::spawn(move || {
             let d = rfd::FileDialog::new().set_title(&title).set_directory(&start).pick_folder();
@@ -2879,9 +3096,10 @@ impl App {
         self.show_credit(f.as_ref().map(|f| &f.credit));
         match f.map(|f| f.lyr) {
             Some(lyrics::Lyrics::Synced(lines)) => {
-                self.lyr = Some(LyrData { raw: lines, words: vec![], starts: vec![], ends: vec![], fills: vec![], tops: vec![], bg: vec![], dots: vec![], cur: -2, cur_at: Instant::now() });
+                self.lyr = Some(LyrData { raw: lines, words: vec![], starts: vec![], ends: vec![], fills: vec![], tops: vec![], bg: vec![], dots: vec![], cur: -2, cur_at: Instant::now(), tr: HashMap::new() });
                 self.layout_lyrics();
                 self.ui.set_lyr_state(1);
+                self.lyr_translate(false);
             }
             Some(lyrics::Lyrics::Plain(lines)) => {
                 let v: Vec<slint::SharedString> = lines.iter().map(|l| l.as_str().into()).collect();
@@ -2900,12 +3118,12 @@ impl App {
             self.ui.set_lyr_people(Rc::new(VecModel::<Credit>::default()).into());
             return;
         };
-        let text = if c.via.is_empty() { tr!("Текст: {}", "Lyrics: {}", "Текст: {}", c.provider) } else { tr!("Текст: {} · через {}", "Lyrics: {} via {}", "Текст: {} · через {}", c.provider, c.via) };
+        let text = if c.via.is_empty() { tr!("Текст: {}", "Lyrics: {}", "Текст: {}", "Text: {}", c.provider) } else { tr!("Текст: {} · через {}", "Lyrics: {} via {}", "Текст: {} · через {}", "Text: {} · cez {}", c.provider, c.via) };
         let people: Vec<Credit> = c
             .people
             .iter()
             .map(|(role, name, url)| {
-                let role = if *role == "maker" { tr!("синк", "synced by", "синк") } else { tr!("загрузил", "uploaded by", "завантажив") };
+                let role = if *role == "maker" { tr!("синк", "synced by", "синк", "synch.") } else { tr!("загрузил", "uploaded by", "завантажив", "nahral") };
                 Credit { label: format!("{role} {name}").into(), url: url.as_str().into() }
             })
             .collect();
@@ -2913,9 +3131,48 @@ impl App {
         self.ui.set_lyr_people(Rc::new(VecModel::from(people)).into());
     }
 
+    /// Перевод текста на язык интерфейса, если он включён: одним запросом в фоне, пришёл — раскладываем
+    /// заново (переводы встают мелко под строками). manual — нажали кнопку: тогда сообщаем, если не вышло
+    fn lyr_translate(&mut self, manual: bool) {
+        let Some(d) = &self.lyr else { return };
+        if !self.store.settings.lyr_tr || !d.tr.is_empty() {
+            return;
+        }
+        let mut texts: Vec<String> = d.raw.iter().map(|l| l.text.trim().to_string()).filter(|t| !t.is_empty()).collect();
+        texts.dedup();
+        if texts.is_empty() {
+            return;
+        }
+        let lang = if self.store.settings.lang.is_empty() { "en".to_string() } else { self.store.settings.lang.clone() };
+        let tok = self.lyr_gen;
+        std::thread::spawn(move || {
+            let r = lyrics::translate(&texts, &lang);
+            post(move |a| {
+                if a.lyr_gen != tok || !a.store.settings.lyr_tr {
+                    return;
+                }
+                match r {
+                    Ok(Some(out)) => {
+                        if let Some(d) = &mut a.lyr {
+                            d.tr = texts.into_iter().zip(out).filter(|(s, t)| !t.is_empty() && s != t).collect();
+                        }
+                        a.layout_lyrics();
+                    }
+                    Ok(None) if manual => a.toast(&tr!("Текст и так на твоём языке", "Lyrics are already in your language", "Текст і так твоєю мовою", "Text už je v tvojom jazyku")),
+                    Err(e) if manual => {
+                        eprintln!("{e:#}");
+                        a.toast(&tr!("Не удалось перевести текст", "Couldn't translate the lyrics", "Не вдалося перекласти текст", "Text sa nepodarilo preložiť"));
+                    }
+                    _ => {}
+                }
+            });
+        });
+    }
+
     /// Раскладывает строки по рядам под текущую ширину колонки
     fn layout_lyrics(&mut self) {
         let wrap = self.lyr_wrap;
+        let show_tr = self.store.settings.lyr_tr;
         let Some(d) = &mut self.lyr else { return };
         let disp = lyrics::display_lines(&d.raw);
         let (mut starts, mut ends, mut fills, mut tops, mut items, mut words) = (vec![], vec![], vec![], vec![], vec![], vec![]);
@@ -2958,16 +3215,30 @@ impl App {
                     Some((w.start, w.end.max(w.start + 0.01), frac(at), frac(cursor)))
                 })
                 .collect();
+            // перевод — своими рядами мелким шрифтом, переносы под ту же ширину
+            let tr_rows: Vec<slint::SharedString> = match d.tr.get(l.text.trim()).filter(|_| show_tr && !l.dots) {
+                Some(t) => lyrics::wrap(t, (wrap as f32 / TR_SCALE) as usize).into_iter().map(Into::into).collect(),
+                None => vec![],
+            };
+            let scale = if l.bg { BG_SCALE } else { 1.0 };
             starts.push(l.start);
             ends.push(l.end);
             fills.push(l.fill_end);
             tops.push(top);
             words.push(ws);
-            items.push(LyrLine { rows: Rc::new(VecModel::from(rows.clone())).into(), top, empty: false, right: l.right, dots: l.dots, bg: l.bg });
+            items.push(LyrLine {
+                rows: Rc::new(VecModel::from(rows.clone())).into(),
+                top,
+                empty: false,
+                right: l.right,
+                dots: l.dots,
+                bg: l.bg,
+                tr: Rc::new(VecModel::from(tr_rows.clone())).into(),
+            });
             // точки проигрыша места не занимают: пока проигрыш идёт, UI раздвигает строки под ними
             // (lyr-dots-open), а в остальное время дырки в тексте нет — как в Apple Music
             if !l.dots {
-                top += rows.len() as f32 * LYR_ROW_H * if l.bg { BG_SCALE } else { 1.0 } + LYR_GAP;
+                top += rows.len() as f32 * LYR_ROW_H * scale + tr_rows.len() as f32 * TR_ROW_H * scale + LYR_GAP;
             }
         }
         d.words = words;
@@ -3133,6 +3404,10 @@ impl App {
         });
         ui.set_fall_stay(st.fall_stay.clamp(1.0, 10.0));
         ui.set_lyr_glow(st.glow.clamp(0.0, 2.0));
+        ui.set_lyr_tr(st.lyr_tr);
+        ui.set_lyr_edge(st.lyr_edge.clamp(0.0, 160.0));
+        ui.set_shuffle(st.shuffle);
+        self.shuffle = st.shuffle;
         ui.set_lite(st.lite);
         ui.set_hole_always(st.hole_always);
         ui.set_spicy_key(st.spicy_key.clone().into());
@@ -3208,7 +3483,7 @@ fn main() -> Result<(), slint::PlatformError> {
         eprintln!("рендер {render} не завёлся ({e}), беру по умолчанию");
     }
     let Ok(_lock) = single_instance() else {
-        eprintln!("BlackHole уже запущен");
+        eprintln!("Gargantua уже запущен");
         return Ok(());
     };
     let ui = AppWindow::new()?;
@@ -3310,7 +3585,7 @@ fn main() -> Result<(), slint::PlatformError> {
         lyr_deadline: Timer::default(),
         was_fullscreen: false,
         shuffle: false,
-        repeat: false,
+        repeat: 0,
         stream_cache: HashMap::new(),
         inflight: HashSet::new(),
         prefetched: false,
@@ -3354,6 +3629,7 @@ fn main() -> Result<(), slint::PlatformError> {
         xf: None,
         xf_timer: Timer::default(),
         stats: stats::Stats::load(),
+        stats_others: stats::Stats::default(),
         listen_at: None,
         listened: 0.0,
         stats_saved: Instant::now(),
@@ -3388,6 +3664,12 @@ fn main() -> Result<(), slint::PlatformError> {
         push_timer: Timer::default(),
         syncing: false,
         cloud_loaded: false,
+        conn_live: false,
+        conn_timer: Timer::default(),
+        conn_pub: Default::default(),
+        conn_adopted: String::new(),
+        mirror: None,
+        conn_held: None,
     };
     APP.with(|a| *a.borrow_mut() = Some(app));
     with(|a| a.apply_settings());
@@ -3433,8 +3715,7 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| a.play_queue(a.view.clone(), i as usize));
     });
     ui.on_play_pl(|i| {
-        // играем так, как видно: с поиском — только найденное, с сортировкой — в её порядке
-        with(|a| a.play_queue(a.pl_shown(), i as usize));
+        with(|a| a.play_pl(i as usize));
     });
     ui.on_pl_filter(|q, sort| {
         with(|a| {
@@ -3450,8 +3731,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let Some(p) = a.open_pl else { return };
             let q = a.store.playlists[p].tracks.clone();
             if shuffle {
-                a.shuffle = true;
-                a.ui.set_shuffle(true);
+                a.set_shuffle(true);
             }
             let i = if shuffle { rand_below(q.len()) } else { 0 };
             a.play_queue(q, i);
@@ -3513,6 +3793,15 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_pick_pl_cover(|| {
         with(|a| a.pick_pl_cover());
     });
+    ui.on_toggle_like(|| {
+        with(|a| a.toggle_like());
+    });
+    ui.on_like_track(|i, kind| {
+        with(|a| a.like_at(i as usize, kind));
+    });
+    ui.on_like_all_pl(|| {
+        with(|a| a.like_all());
+    });
     ui.on_delete_playlist(|| {
         with(|a| a.delete_playlist());
     });
@@ -3571,10 +3860,10 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| a.queue_remove(i as usize));
     });
     ui.on_toggle_repeat(|| {
-        with(|a| {
-            a.repeat = !a.repeat;
-            a.ui.set_repeat(a.repeat);
-        });
+        with(|a| a.cycle_repeat());
+    });
+    ui.on_conn_pick(|id| {
+        with(|a| a.conn_pick(id.to_string()));
     });
     ui.on_do_import(|u| {
         with(|a| a.import(u.to_string()));
@@ -3600,6 +3889,25 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Some(t) = a.lyr.as_ref().and_then(|d| d.starts.get(i as usize).copied()) {
                 a.seek_abs(t);
             }
+        });
+    });
+    ui.on_set_lyr_edge(|v| {
+        with(|a| {
+            a.store.settings.lyr_edge = v;
+            a.ui.set_lyr_edge(v);
+            a.save();
+        });
+    });
+    ui.on_toggle_lyr_tr(|| {
+        with(|a| {
+            let on = !a.store.settings.lyr_tr;
+            a.store.settings.lyr_tr = on;
+            a.ui.set_lyr_tr(on);
+            a.save();
+            if on {
+                a.lyr_translate(true);
+            }
+            a.layout_lyrics();
         });
     });
     ui.on_set_karaoke(|on| {
@@ -3675,7 +3983,7 @@ fn main() -> Result<(), slint::PlatformError> {
             a.apply_theme();
             a.save();
             if on && a.cover_pal.is_none() {
-                a.toast(&tr!("Цвета подстроятся под обложку следующего трека", "Colours will follow the next track's cover", "Кольори підлаштуються під обкладинку наступного треку"));
+                a.toast(&tr!("Цвета подстроятся под обложку следующего трека", "Colours will follow the next track's cover", "Кольори підлаштуються під обкладинку наступного треку", "Farby sa prispôsobia obalu ďalšej skladby"));
             }
         });
     });
@@ -3709,9 +4017,9 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| {
             a.set_sleep(m);
             let msg = match m {
-                1..=3 => tr!("Усну через {} мин", "Sleeping in {} min", "Засну за {} хв", [0, 15, 30, 60][m as usize]),
-                4 => tr!("Усну после этого трека", "Sleeping after this track", "Засну після цього треку"),
-                _ => tr!("Таймер сна выключен", "Sleep timer off", "Таймер сну вимкнено"),
+                1..=3 => tr!("Усну через {} мин", "Sleeping in {} min", "Засну за {} хв", "Zaspím o {} min", [0, 15, 30, 60][m as usize]),
+                4 => tr!("Усну после этого трека", "Sleeping after this track", "Засну після цього треку", "Zaspím po tejto skladbe"),
+                _ => tr!("Таймер сна выключен", "Sleep timer off", "Таймер сну вимкнено", "Časovač spánku vypnutý"),
             };
             a.toast(&msg);
         });
@@ -3745,7 +4053,7 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| {
             cache::clear();
             a.show_cache_size(0);
-            a.toast(&tr!("Офлайн-кэш очищен", "Offline cache cleared", "Офлайн-кеш очищено"));
+            a.toast(&tr!("Офлайн-кэш очищен", "Offline cache cleared", "Офлайн-кеш очищено", "Offline cache vymazaná"));
         });
     });
     ui.on_start_rebind(|i| {
@@ -3787,8 +4095,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 return;
             }
             if shuffle {
-                a.shuffle = true;
-                a.ui.set_shuffle(true);
+                a.set_shuffle(true);
             }
             let i = if shuffle { rand_below(t.len()) } else { 0 };
             a.play_queue(t, i);
@@ -3811,7 +4118,7 @@ fn main() -> Result<(), slint::PlatformError> {
             a.toast(&tr!(
                 "Настройки сброшены — при следующем запуске будет быстрая настройка",
                 "Settings reset — quick setup will run on the next launch",
-                "Налаштування скинуто — під час наступного запуску буде швидке налаштування"
+                "Налаштування скинуто — під час наступного запуску буде швидке налаштування", "Nastavenia zresetované — pri ďalšom spustení bude rýchle nastavenie"
             ));
         });
     });
@@ -3830,6 +4137,20 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     });
     ui.on_open_url(|u| open_url(&u));
+    // вход YouTube на телефон: куки браузера → в аккаунт, телефон заберёт сам
+    ui.on_send_cookies(|| {
+        std::thread::spawn(|| {
+            let r = util::yt_cookies().and_then(|ck| cloud::put_yt_cookies(&cloud::cfg().context("облако не настроено")?, &ck));
+            post(move |a| match r {
+                Ok(()) => a.toast(&tr!(
+                    "Вход YouTube отправлен. На телефоне: Аккаунт → Настройки → YouTube → «Взять с компа»",
+                    "YouTube sign-in sent. On the phone: Account → Settings → YouTube → “Take from PC”",
+                    "Вхід YouTube надіслано. На телефоні: Акаунт → Налаштування → YouTube → «Взяти з компа»", "Prihlásenie do YouTube odoslané. Na telefóne: Účet → Nastavenia → YouTube → „Zobrať z PC“"
+                )),
+                Err(e) => a.toast(&tr!("Не вышло: {:#}", "Failed: {:#}", "Не вийшло: {:#}", "Nevyšlo to: {:#}", e)),
+            });
+        });
+    });
     ui.on_set_cookies(|b| {
         with(|a| {
             a.store.settings.cookies = b.to_string();
@@ -3846,7 +4167,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 Ok(if cloud::sign_in(c, l, &e, &p)? {
                     String::new()
                 } else {
-                    tr!("Почта не подтверждена: открой ссылку из письма или отправь его ещё раз", "Email isn't confirmed: open the link from the email or send it again", "Пошту не підтверджено: відкрий посилання з листа або надішли його ще раз")
+                    tr!("Почта не подтверждена: открой ссылку из письма или отправь его ещё раз", "Email isn't confirmed: open the link from the email or send it again", "Пошту не підтверджено: відкрий посилання з листа або надішли його ще раз", "E-mail nie je potvrdený: otvor odkaz z e-mailu alebo ho pošli znova")
                 })
             })
         });
@@ -3856,7 +4177,7 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| {
             a.acc_job(move |c, l| {
                 cloud::sign_up(c, l, &e, &p)?;
-                Ok(tr!("Письмо ушло на {}. Открой ссылку в нём и вернись сюда", "Sent an email to {}. Open the link in it and come back", "Лист пішов на {}. Відкрий посилання в ньому і повертайся", e))
+                Ok(tr!("Письмо ушло на {}. Открой ссылку в нём и вернись сюда", "Sent an email to {}. Open the link in it and come back", "Лист пішов на {}. Відкрий посилання в ньому і повертайся", "E-mail odišiel na {}. Otvor odkaz v ňom a vráť sa sem", e))
             })
         });
     });
@@ -3868,7 +4189,7 @@ fn main() -> Result<(), slint::PlatformError> {
             std::thread::spawn(move || {
                 let r = cloud::send_reset(&c, if lang.is_empty() { "en" } else { &lang }, &e);
                 post(move |a| match r {
-                    Ok(()) => a.toast(&tr!("Письмо для смены пароля ушло на {}", "Sent a password reset email to {}", "Лист для зміни пароля пішов на {}", e)),
+                    Ok(()) => a.toast(&tr!("Письмо для смены пароля ушло на {}", "Sent a password reset email to {}", "Лист для зміни пароля пішов на {}", "E-mail na zmenu hesla odišiel na {}", e)),
                     Err(err) => a.toast(&acc_err(&err)),
                 });
             });
@@ -3877,7 +4198,7 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| {
             a.acc_job(move |c, l| {
                 cloud::send_reset(c, l, &e)?;
-                Ok(tr!("Письмо для смены пароля ушло на {}", "Sent a password reset email to {}", "Лист для зміни пароля пішов на {}", e))
+                Ok(tr!("Письмо для смены пароля ушло на {}", "Sent a password reset email to {}", "Лист для зміни пароля пішов на {}", "E-mail na zmenu hesla odišiel na {}", e))
             })
         });
     });
@@ -3885,7 +4206,7 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| {
             a.acc_job(|c, l| {
                 cloud::send_verify(c, l)?;
-                Ok(tr!("Отправил ещё раз, глянь и в спаме", "Sent again, check spam too", "Надіслав ще раз, глянь і в спамі"))
+                Ok(tr!("Отправил ещё раз, глянь и в спаме", "Sent again, check spam too", "Надіслав ще раз, глянь і в спамі", "Poslal som znova, pozri aj do spamu"))
             })
         });
     });
@@ -3902,7 +4223,7 @@ fn main() -> Result<(), slint::PlatformError> {
         cloud::sign_out();
         with(|a| {
             a.acc_refresh_ui();
-            a.ui.set_acc_msg(tr!("Вышел. Плейлисты остались в аккаунте", "Signed out. Playlists stay in your account", "Вийшов. Плейлисти лишилися в акаунті").into());
+            a.ui.set_acc_msg(tr!("Вышел. Плейлисты остались в аккаунте", "Signed out. Playlists stay in your account", "Вийшов. Плейлисти лишилися в акаунті", "Odhlásený. Playlisty zostali v účte").into());
         });
     });
     ui.on_cloud_sync(|| {
@@ -3988,8 +4309,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 return;
             }
             if shuffle {
-                a.shuffle = true;
-                a.ui.set_shuffle(true);
+                a.set_shuffle(true);
             }
             let i = if shuffle { rand_below(t.len()) } else { 0 };
             a.play_queue(t, i);
@@ -4004,7 +4324,7 @@ fn main() -> Result<(), slint::PlatformError> {
             a.store.playlists.push(Playlist { name: name.clone(), tracks: a.coll.tracks.clone(), source: None, ..Default::default() });
             a.save();
             a.refresh_playlists();
-            a.toast(&tr!("Сохранил как плейлист «{}»", "Saved as playlist “{}”", "Зберіг як плейлист «{}»", name));
+            a.toast(&tr!("Сохранил как плейлист «{}»", "Saved as playlist “{}”", "Зберіг як плейлист «{}»", "Uložené ako playlist „{}“", name));
         });
     });
     ui.on_set_eq_band(|i, v| {
@@ -4041,7 +4361,7 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| {
             (a.store.settings.speed, a.store.settings.keep_pitch) = (1.0, true);
             a.animate_eq(vec![0.0; fx::BANDS.len()]);
-            a.toast(&tr!("Звук сброшен по умолчанию", "Sound reset to defaults", "Звук скинуто до стандартного"));
+            a.toast(&tr!("Звук сброшен по умолчанию", "Sound reset to defaults", "Звук скинуто до стандартного", "Zvuk vrátený na predvolené"));
         });
     });
     ui.on_want_cover(|u| {
@@ -4064,6 +4384,13 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     with(|a| a.restore_last());
+    // без аккаунта плейлисты локальные — «Любимые треки» заводим сразу (с аккаунтом — после загрузки из облака)
+    with(|a| {
+        if cloud::cfg().is_none() {
+            a.ensure_liked();
+            a.refresh_playlists();
+        }
+    });
     // плейлисты из облака: сразу при запуске и потом раз в минуту
     with(|a| {
         a.acc_refresh_ui();
@@ -4079,6 +4406,11 @@ fn main() -> Result<(), slint::PlatformError> {
             if let Ok(s) = cloud::sync(&c, &a.store.playlists) {
                 cloud::update(|acc| acc.base = s.base);
             }
+        }
+        a.conn_bye();
+        // и свою долю статистики — то, что наслушали за последнюю минуту
+        if let (Some(c), true) = (cloud::cfg(), cloud::account().verified) {
+            let _ = cloud::sync_stats(&c, &a.stats);
         }
     });
     with(|a| {

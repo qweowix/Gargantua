@@ -80,6 +80,83 @@ pub fn choose(all: &[Found]) -> Option<Found> {
         .max_by_key(Found::rank)
 }
 
+/// Перевод строк текста на язык интерфейса (бесплатный эндпоинт Google Translate, без ключа).
+/// Язык переводчик определяет один на весь запрос, поэтому песня, где половина строк по-русски, а половина
+/// по-испански, целиком считалась русской — испанские строки оставались как есть. Строки делим по алфавиту
+/// (кириллица, латиница, иероглифы…) и переводим каждую группу своим запросом. Группа уже на нужном языке
+/// остаётся как есть. Ok(None) — переводить нечего: весь текст уже на этом языке
+pub fn translate(lines: &[String], to: &str) -> Result<Option<Vec<String>>> {
+    let mut groups: std::collections::BTreeMap<u8, Vec<usize>> = Default::default();
+    for (i, l) in lines.iter().enumerate() {
+        if let Some(sc) = script_of(l) {
+            groups.entry(sc).or_default().push(i);
+        }
+    }
+    let mut out = lines.to_vec();
+    let mut any = false;
+    for idx in groups.values() {
+        let part: Vec<String> = idx.iter().map(|&i| lines[i].clone()).collect();
+        if let Some(tr) = translate_group(&part, to)? {
+            any = true;
+            for (&i, t) in idx.iter().zip(tr) {
+                out[i] = t;
+            }
+        }
+    }
+    Ok(any.then_some(out))
+}
+
+/// Алфавит строки — по большинству букв. None — букв нет (междометия цифрами, «♪»): переводить нечего
+fn script_of(l: &str) -> Option<u8> {
+    let mut n = [0usize; 6];
+    for c in l.chars().filter(|c| c.is_alphabetic()) {
+        let k = match c as u32 {
+            0x0400..=0x052F => 1,                                    // кириллица
+            0x0370..=0x03FF => 2,                                    // греческий
+            0x3040..=0x30FF | 0x3400..=0x9FFF | 0xAC00..=0xD7AF => 3, // японский, китайский, корейский
+            0x0590..=0x06FF => 4,                                    // иврит, арабский
+            0..=0x024F | 0x1E00..=0x1EFF => 0,                       // латиница
+            _ => 5,
+        };
+        n[k] += 1;
+    }
+    let (k, &max) = n.iter().enumerate().max_by_key(|(_, &c)| c)?;
+    (max > 0).then_some(k as u8)
+}
+
+/// Один запрос: строки одного алфавита, склеенные переводом строки. None — они уже на нужном языке
+fn translate_group(lines: &[String], to: &str) -> Result<Option<Vec<String>>> {
+    let text = lines.join("\n");
+    let key = format!("tr:{to}:{text}");
+    let v = match cache_get(&key, Duration::from_secs(90 * 86400)) {
+        Some(v) => v,
+        None => {
+            // текст — формой в теле, а не в query: песня в URL не влезает
+            let r = agent()
+                .post("https://translate.googleapis.com/translate_a/single")
+                .query("client", "gtx")
+                .query("sl", "auto")
+                .query("tl", to)
+                .query("dt", "t")
+                .send_form(&[("q", &text)])
+                .map_err(|e| anyhow::anyhow!("translate: {e}"))?;
+            let v: Value = r.into_json()?;
+            cache_put(&key, &v);
+            v
+        }
+    };
+    if v[2].as_str() == Some(to) {
+        return Ok(None);
+    }
+    // куски ответа идут по предложениям, переводы строк внутри сохраняются
+    let joined: String = v[0].as_array().into_iter().flatten().filter_map(|seg| seg[0].as_str()).collect();
+    let out: Vec<String> = joined.split('\n').map(|s| s.trim().to_string()).collect();
+    if out.len() != lines.len() {
+        anyhow::bail!("translate: {} строк вместо {}", out.len(), lines.len());
+    }
+    Ok(Some(out))
+}
+
 /// Дисковый кеш ответов (~/.cache/BlackHole/lyrics): сеть дёргаем один раз на трек
 pub fn cache_path(name: &str) -> Option<std::path::PathBuf> {
     Some(dirs::cache_dir()?.join("BlackHole").join("lyrics").join(format!("{:016x}.json", fnv(name))))
@@ -302,6 +379,18 @@ fn parse_liriqo(t: &Value) -> Option<Found> {
     Some(Found { lyr: parse_liriqo_lyrics(t)?, credit })
 }
 
+/// У слоговых синков Liriqo склеивает слоги в текст строки через пробел ("shat tered"). В lrc того же
+/// ответа строка целая: берём её, если она в то же время и с теми же буквами
+fn whole_words(lines: &mut [Line], lrc: &str) {
+    let whole = parse_lrc(lrc);
+    for l in lines {
+        let n = norm(&l.text);
+        if let Some(w) = whole.iter().find(|w| (w.start - l.start).abs() < 0.1 && !n.is_empty() && norm(&w.text) == n) {
+            l.text = w.text.clone();
+        }
+    }
+}
+
 fn parse_liriqo_lyrics(t: &Value) -> Option<Lyrics> {
     let ms = |v: &Value| v.as_f64().map(|x| x / 1000.0);
     let mut lines: Vec<Line> = t["timed"]
@@ -326,6 +415,7 @@ fn parse_liriqo_lyrics(t: &Value) -> Option<Lyrics> {
         let plain = t["plain"].as_str().filter(|s| !s.trim().is_empty())?;
         return Some(Lyrics::Plain(plain.lines().map(|l| l.trim().to_string()).collect()));
     }
+    whole_words(&mut lines, t["lrc"].as_str().unwrap_or(""));
     lines.sort_by(|a, b| a.start.total_cmp(&b.start));
     mark_bg(&mut lines);
     sanitize_ends(&mut lines);
@@ -494,6 +584,43 @@ mod tests {
         let l = super::parse_lrc("[ar:x]\n[00:01.50] a\n[00:03.00][01:00.00] b\n[00:02.00]");
         let v: Vec<_> = l.iter().map(|l| (l.start, l.text.as_str())).collect();
         assert_eq!(v, vec![(1.5, "a"), (2.0, ""), (3.0, "b"), (60.0, "b")]);
+    }
+
+    /// Живой запрос к переводчику (не гоняется по умолчанию): cargo test translate_live -- --ignored
+    #[test]
+    #[ignore]
+    fn translate_live() {
+        let lines = vec!["The cat is sleeping on the warm window".to_string(), "Tomorrow we will go to the sea".to_string()];
+        let out = super::translate(&lines, "ru").unwrap().expect("английский — должен перевестись");
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().all(|l| l.chars().any(|c| ('а'..='я').contains(&c.to_lowercase().next().unwrap()))), "{out:?}");
+        assert!(super::translate(&["Кот спит на тёплом окне".to_string()], "ru").unwrap().is_none());
+        // половина по-русски, половина по-испански: русские строки остаются, испанская переводится
+        let mixed = vec!["Кот спит на тёплом окне".to_string(), "Завтра мы поедем к морю".to_string(), "El gato duerme en la ventana".to_string()];
+        let out = super::translate(&mixed, "ru").unwrap().expect("испанская строка должна перевестись");
+        assert_eq!(out[0], mixed[0]);
+        assert_ne!(out[2], mixed[2]);
+        println!("{out:?}");
+    }
+
+    #[test]
+    fn scripts() {
+        assert_eq!(super::script_of("Кот спит на окне"), Some(1));
+        assert_eq!(super::script_of("El gato duerme"), Some(0));
+        assert_eq!(super::script_of("猫が寝ている"), Some(3));
+        assert_eq!(super::script_of("1, 2, 3 ♪"), None);
+    }
+
+    #[test]
+    fn liriqo_syllables() {
+        let t = serde_json::json!({
+            "lrc": "[00:05.29]I'm shattered, I'm breathing",
+            "timed": [{ "start": 5296, "end": 7716, "text": "I'm shat tered, I'm breath ing", "words": [
+                { "start": 5296, "end": 5547, "text": "I'm" }, { "start": 5547, "end": 5896, "text": "shat" }, { "start": 5896, "end": 6498, "text": "tered," }
+            ] }]
+        });
+        let Some(super::Lyrics::Synced(l)) = super::parse_liriqo_lyrics(&t) else { panic!() };
+        assert_eq!(l[0].text, "I'm shattered, I'm breathing");
     }
 
     #[test]

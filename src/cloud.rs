@@ -154,6 +154,11 @@ pub fn check_verified(c: &Cfg, lang: &str) -> Result<bool> {
     Ok(ok)
 }
 
+/// Токен для своих запросов к Firebase (Realtime Database у Connect)
+pub fn auth_token(c: &Cfg) -> Result<String> {
+    id_token(c, false)
+}
+
 fn id_token(c: &Cfg, fresh: bool) -> Result<String> {
     if !fresh {
         if let Some((t, _)) = token().as_ref().filter(|(_, exp)| Instant::now() < *exp) {
@@ -212,7 +217,12 @@ fn push(c: &Cfg, uid: &str, id: &str, pls: &[Playlist], prev: Option<&str>) -> R
     let pls: Vec<Playlist> = pls.iter().map(strip).collect();
     let z = miniz_oxide::deflate::compress_to_vec(&serde_json::to_vec(&pls)?, 8);
     let body = json!({"fields": {"pl": {"bytesValue": b64_encode(&z)}, "v": {"integerValue": "1"}}});
-    let req = crate::util::agent().request("PATCH", &doc_url(c, uid)).set("Authorization", &format!("Bearer {id}"));
+    // только свои поля: в том же документе лежит статистика устройств (st), её не затираем
+    let req = crate::util::agent()
+        .request("PATCH", &doc_url(c, uid))
+        .set("Authorization", &format!("Bearer {id}"))
+        .query("updateMask.fieldPaths", "pl")
+        .query("updateMask.fieldPaths", "v");
     let req = match prev {
         Some(t) => req.query("currentDocument.updateTime", t),
         None => req.query("currentDocument.exists", "false"),
@@ -230,6 +240,117 @@ fn push(c: &Cfg, uid: &str, id: &str, pls: &[Playlist], prev: Option<&str>) -> R
         Err(ureq::Error::Status(code, r)) => bail!("Firestore {code}: {}", r.into_string().unwrap_or_default()),
         Err(e) => bail!("NETWORK {e}"),
     }
+}
+
+/// Плейлист для QR: кладём копию в shared/<id> и в код идёт только id — один QR вместо десятка.
+/// id постоянный для пары «аккаунт + название»: повторный «поделиться» обновляет ту же запись, старые QR
+/// показывают свежую версию. Читать может любой вошедший (правила в packaging/firestore.rules)
+pub fn share(c: &Cfg, name: &str, blob: &[u8]) -> Result<String> {
+    let a = account();
+    if !a.verified {
+        bail!("NOT_VERIFIED");
+    }
+    let tok = id_token(c, false)?;
+    // FNV-1a: стабилен между версиями, в отличие от DefaultHasher
+    let h = format!("{}\0{name}", a.uid).bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+    let id: String = (0..12).map(|i| b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[((h >> (i * 5)) % 36) as usize] as char).collect();
+    let body = json!({"fields": {"owner": {"stringValue": a.uid}, "d": {"bytesValue": b64_encode(blob)}}});
+    let url = format!("https://firestore.googleapis.com/v1/projects/{}/databases/(default)/documents/shared/{id}", c.project);
+    match crate::util::agent().request("PATCH", &url).set("Authorization", &format!("Bearer {tok}")).send_json(body) {
+        Ok(_) => Ok(id),
+        Err(ureq::Error::Status(code, r)) => bail!("Firestore {code}: {}", r.into_string().unwrap_or_default()),
+        Err(e) => bail!("NETWORK {e}"),
+    }
+}
+
+/// Плейлист из облачного QR (сжатые байты, как их положил share)
+pub fn fetch_shared(c: &Cfg, id: &str) -> Result<Vec<u8>> {
+    let tok = id_token(c, false)?;
+    let url = format!("https://firestore.googleapis.com/v1/projects/{}/databases/(default)/documents/shared/{id}", c.project);
+    let v: Value = match crate::util::agent().get(&url).set("Authorization", &format!("Bearer {tok}")).call() {
+        Ok(r) => r.into_json()?,
+        Err(ureq::Error::Status(404, _)) => bail!("этот плейлист удалён"),
+        Err(ureq::Error::Status(code, r)) => bail!("Firestore {code}: {}", r.into_string().unwrap_or_default()),
+        Err(e) => bail!("NETWORK {e}"),
+    };
+    v["fields"]["d"]["bytesValue"].as_str().and_then(b64_decode).ok_or_else(|| anyhow!("bad answer"))
+}
+
+/// Куки YouTube с компа для телефона: лежат в своём документе аккаунта (читает только хозяин)
+pub fn put_yt_cookies(c: &Cfg, cookies: &str) -> Result<()> {
+    let a = account();
+    if !a.verified {
+        bail!("NOT_VERIFIED");
+    }
+    let tok = id_token(c, false)?;
+    let body = json!({"fields": {"yt": {"stringValue": cookies}}});
+    match crate::util::agent()
+        .request("PATCH", &doc_url(c, &a.uid))
+        .set("Authorization", &format!("Bearer {tok}"))
+        .query("updateMask.fieldPaths", "yt")
+        .send_json(body)
+    {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(code, r)) => bail!("Firestore {code}: {}", r.into_string().unwrap_or_default()),
+        Err(e) => bail!("NETWORK {e}"),
+    }
+}
+
+/// Куки YouTube, которые перенёс комп. Пусто — не переносили
+pub fn get_yt_cookies(c: &Cfg) -> Result<String> {
+    let a = account();
+    if !a.verified {
+        bail!("NOT_VERIFIED");
+    }
+    let tok = id_token(c, false)?;
+    let v: Value = match crate::util::agent().get(&doc_url(c, &a.uid)).set("Authorization", &format!("Bearer {tok}")).call() {
+        Ok(r) => r.into_json()?,
+        Err(ureq::Error::Status(404, _)) => return Ok(String::new()),
+        Err(ureq::Error::Status(code, r)) => bail!("Firestore {code}: {}", r.into_string().unwrap_or_default()),
+        Err(e) => bail!("NETWORK {e}"),
+    };
+    Ok(v["fields"]["yt"]["stringValue"].as_str().unwrap_or_default().to_string())
+}
+
+/// Статистика аккаунта: у каждого устройства своя доля (поле st.<device>), пишет оно только её — устройства
+/// друг другу не мешают и ничего не считается дважды. Записываем свою и из ответа (PATCH отдаёт весь документ)
+/// забираем сумму чужих
+pub fn sync_stats(c: &Cfg, own: &crate::stats::Stats) -> Result<crate::stats::Stats> {
+    let a = account();
+    if !a.verified {
+        bail!("NOT_VERIFIED");
+    }
+    if own.device.is_empty() {
+        bail!("нет id устройства");
+    }
+    let id = id_token(c, false)?;
+    let z = miniz_oxide::deflate::compress_to_vec(&serde_json::to_vec(own)?, 8);
+    let body = json!({"fields": {"st": {"mapValue": {"fields": {&own.device: {"bytesValue": b64_encode(&z)}}}}}});
+    let v: Value = match crate::util::agent()
+        .request("PATCH", &doc_url(c, &a.uid))
+        .set("Authorization", &format!("Bearer {id}"))
+        .query("updateMask.fieldPaths", &format!("st.{}", own.device))
+        .send_json(body)
+    {
+        Ok(r) => r.into_json()?,
+        Err(ureq::Error::Status(code, r)) => bail!("Firestore {code}: {}", r.into_string().unwrap_or_default()),
+        Err(e) => bail!("NETWORK {e}"),
+    };
+    let mut others = crate::stats::Stats::default();
+    for (dev, f) in v["fields"]["st"]["mapValue"]["fields"].as_object().into_iter().flatten() {
+        if *dev == own.device {
+            continue;
+        }
+        let part = f["bytesValue"]
+            .as_str()
+            .and_then(b64_decode)
+            .and_then(|z| miniz_oxide::inflate::decompress_to_vec(&z).ok())
+            .and_then(|raw| serde_json::from_slice::<crate::stats::Stats>(&raw).ok());
+        if let Some(p) = part {
+            others.absorb(&p);
+        }
+    }
+    Ok(others)
 }
 
 pub struct Synced {

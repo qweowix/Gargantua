@@ -103,7 +103,7 @@ fn ui() {
         track("Not Allowed", "TV Girl", 1),
     ]));
     ui.set_pl_tracks(tracks.clone().into());
-    ui.set_playlists(Rc::new(VecModel::from(vec![PlItem { name: "GOATED".into(), count: 3 }])).into());
+    ui.set_playlists(Rc::new(VecModel::from(vec![PlItem { name: "GOATED".into(), count: 3, liked: false }])).into());
     ui.set_pl_title("GOATED".into());
     ui.set_has_track(true);
     ui.set_now_title("Cigarettes out the Window".into());
@@ -239,7 +239,7 @@ fn ui() {
         let pre: Vec<slint::SharedString> = s.char_indices().map(|(i, c)| s[..i + c.len_utf8()].into()).collect();
         Rc::new(VecModel::from(vec![LyrRow { text: s.into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 }])).into()
     };
-    let line = |s: &str, top: f32, dots: bool| LyrLine { rows: if dots { rows("") } else { rows(s) }, top, empty: false, right: false, dots, bg: false };
+    let line = |s: &str, top: f32, dots: bool| LyrLine { rows: if dots { rows("") } else { rows(s) }, top, empty: false, right: false, dots, bg: false, tr: Default::default() };
     ui.set_lyr_lines(
         Rc::new(VecModel::from(vec![
             line("She'd just say she did", 0.0, false),
@@ -321,7 +321,7 @@ fn hitch() {
                 let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
                 let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
                 let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
-                LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false }
+                LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
             })
             .collect();
         Rc::new(VecModel::from(lines)).into()
@@ -385,7 +385,7 @@ fn duet_scroll() {
             let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
             let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
             let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
-            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false }
+            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
         })
         .collect();
     ui.set_lyr_lines(Rc::new(VecModel::from(lines)).into());
@@ -445,7 +445,7 @@ fn karaoke_step() {
             let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
             let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
             let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
-            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false }
+            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
         })
         .collect();
     ui.set_lyr_lines(Rc::new(VecModel::from(lines)).into());
@@ -490,4 +490,45 @@ fn karaoke_step() {
         println!("{name}: мс/кадр, макс по 0.1 с → {}", worst.join(" "));
         println!("  первые кадры: {:?}", ms.iter().take(12).map(|m| m.round() as i32).collect::<Vec<_>>());
     }
+}
+
+/// Растворение строк у краёв экрана текста: снимки при 0, 10 и 80 px — смотреть глазами (target/shots/edge-*.png)
+/// и проверка, что при 10 px крайние строки не пропадают целиком
+#[test]
+#[ignore]
+fn edge_fade() {
+    let win = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    slint::platform::set_platform(Box::new(Offscreen(win.clone()))).unwrap();
+    win.set_size(slint::PhysicalSize::new(W, H));
+    let ui = AppWindow::new().unwrap();
+    ui.show().unwrap();
+    ui.set_intro_t(100_000.0);
+    ui.set_intro_gone(true);
+    let lines: Vec<LyrLine> = (0..40)
+        .map(|i| {
+            let s = format!("Строка номер {i} для проверки краёв");
+            let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
+            let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
+            let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
+            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
+        })
+        .collect();
+    ui.set_lyr_lines(Rc::new(VecModel::from(lines)).into());
+    ui.set_lyr_state(1);
+    ui.set_lyr_exit(0);
+    ui.set_lyrics_open(true);
+    ui.set_lyr_cur(15);
+    ui.set_lyr_cur_top(15.0 * 84.0);
+    // сколько рядов пикселей с текстом (светлых) в верхней и нижней восьмушке экрана
+    let lit = |img: &image::RgbImage, y0: u32, y1: u32| (y0..y1).filter(|&y| (500..W).any(|x| img.get_pixel(x, y)[0] > 70)).count();
+    let mut got = vec![];
+    for edge in [0.0, 10.0, 80.0] {
+        ui.set_lyr_edge(edge);
+        let img = snap(&win, &format!("edge-{edge}"));
+        let (top, bottom) = (lit(&img, 0, H / 8), lit(&img, H - H / 8, H));
+        println!("край {edge} px: светлых рядов сверху {top}, снизу {bottom}");
+        got.push((top, bottom));
+    }
+    // 10 px гасит только самую кромку — строк должно остаться почти столько же, сколько без растворения
+    assert!(got[1].0 * 10 >= got[0].0 * 7 && got[1].1 * 10 >= got[0].1 * 7, "при 10 px пропали строки у края: {got:?}");
 }

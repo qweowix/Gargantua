@@ -123,15 +123,15 @@ fn activity(n: &Option<Now>) -> Value {
         "type": 2, // «Слушает»
         "status_display_type": 2, // в списке участников — название трека, а не имя приложения
         "details": pad(&n.title),
-        "state": pad(if n.artist.is_empty() { "BlackHole" } else { &n.artist }),
+        "state": pad(if n.artist.is_empty() { "Gargantua" } else { &n.artist }),
         "timestamps": {"start": n.start_ms},
-        "assets": {"large_image": "logo", "large_text": "BlackHole"},
+        "assets": {"large_image": "logo", "large_text": "Gargantua"},
     });
     if let Some(e) = n.end_ms {
         a["timestamps"]["end"] = e.into();
     }
     if n.cover.starts_with("http") {
-        a["assets"] = json!({"large_image": n.cover, "large_text": pad(&n.title), "small_image": "logo", "small_text": "BlackHole"});
+        a["assets"] = json!({"large_image": n.cover, "large_text": pad(&n.title), "small_image": "logo", "small_text": "Gargantua"});
     }
     if n.url.starts_with("http") {
         a["buttons"] = json!([{"label": "Слушать", "url": n.url}]);

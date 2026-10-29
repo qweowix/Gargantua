@@ -83,7 +83,10 @@ pub struct Settings {
     pub karaoke: bool,
     pub lyr_anim: i32, // 0 плавно, 1 каскад, 2 фокус
     pub lyr_exit: i32, // 0 тускнеют, 2 сдув, 3 в дыру, 4 падение, 5 испарение, 6 взрыв (1 был распад)
-    pub lang: String,  // "ru" / "en" / "uk"; пусто — английский
+    pub lang: String,  // "ru" / "en" / "uk" / "sk"; пусто — английский
+    pub lyr_tr: bool,  // перевод текста на язык интерфейса — мелко под каждой строкой
+    pub lyr_edge: f32, // строки текста растворяются у краёв колонки на столько px, 0 — выкл
+    pub shuffle: bool,  // перемешка помнится между запусками, пока её не выключат
     pub fall_stay: f32,  // сколько секунд упавшие буквы лежат внизу
     pub glow: f32,       // сила свечения поющегося слова 0–2, 0 — выкл
     pub hole_always: bool,
@@ -111,7 +114,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { volume: 0.7, lite: false, karaoke: true, lyr_anim: 0, lyr_exit: 3, lang: String::new(), hole_always: true, fall_stay: 2.0, glow: 0.7, eq: vec![0.0; 10], speed: 1.0, keep_pitch: true, spicy_key: String::new(), dl_dir: String::new(), cookies: String::new(), theme: 0, setup_done: false, xfade: 0.0, autoplay: true, cover_theme: false, discord: true, music_dirs: vec![], keys: Default::default(), offline: true, cache_gb: 2.0 }
+        Self { volume: 0.7, lite: false, karaoke: true, lyr_anim: 0, lyr_exit: 3, lang: String::new(), lyr_tr: false, lyr_edge: 90.0, shuffle: false, hole_always: true, fall_stay: 2.0, glow: 0.7, eq: vec![0.0; 10], speed: 1.0, keep_pitch: true, spicy_key: String::new(), dl_dir: String::new(), cookies: String::new(), theme: 0, setup_done: false, xfade: 0.0, autoplay: true, cover_theme: false, discord: true, music_dirs: vec![], keys: Default::default(), offline: true, cache_gb: 2.0 }
     }
 }
 
@@ -228,3 +231,7 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 }
+
+/// Любимые — обычный плейлист с постоянным именем: так он сам синхронизируется между ПК и телефоном
+/// (на телефоне то же имя). Показывается как «♥ Любимые» на языке интерфейса
+pub const LIKED: &str = "♥";

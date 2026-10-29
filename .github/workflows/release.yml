@@ -25,9 +25,10 @@ jobs:
         env:
           BLACKHOLE_FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
           BLACKHOLE_FIREBASE_PROJECT: ${{ secrets.FIREBASE_PROJECT }}
+          BLACKHOLE_FIREBASE_DB: ${{ secrets.FIREBASE_DB }}
       - name: Архив
         run: |
-          D=BlackHole-linux-x86_64
+          D=Gargantua-linux-x86_64
           mkdir -p $D
           cp target/release/blackhole $D/
           cp assets/icon-256.png $D/blackhole.png
@@ -37,7 +38,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: BlackHole-linux-x86_64.tar.gz
+          path: Gargantua-linux-x86_64.tar.gz
 
   windows:
     runs-on: windows-latest
@@ -48,14 +49,15 @@ jobs:
         env:
           BLACKHOLE_FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
           BLACKHOLE_FIREBASE_PROJECT: ${{ secrets.FIREBASE_PROJECT }}
+          BLACKHOLE_FIREBASE_DB: ${{ secrets.FIREBASE_DB }}
       - name: Архив с mpv и yt-dlp
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $D = "BlackHole-windows-x86_64"
+          $D = "Gargantua-windows-x86_64"
           New-Item -ItemType Directory -Force "$D/bin" | Out-Null
-          Copy-Item target/release/blackhole.exe "$D/BlackHole.exe"
+          Copy-Item target/release/blackhole.exe "$D/Gargantua.exe"
           Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile "$D/bin/yt-dlp.exe"
           # mpv: свежая сборка без AVX2 (x86_64, не v3) — пойдёт и на старых процессорах
           $rel = Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } https://api.github.com/repos/zhongfly/mpv-winbuild/releases/latest
@@ -70,7 +72,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: BlackHole-windows-x86_64.zip
+          path: Gargantua-windows-x86_64.zip
 
   release:
     needs: [linux, windows]
@@ -82,8 +84,9 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: Gargantua ${{ github.event.inputs.tag || github.ref_name }}
           draft: ${{ github.event_name == 'workflow_dispatch' }}
           generate_release_notes: true
           files: |
-            BlackHole-linux-x86_64.tar.gz
-            BlackHole-windows-x86_64.zip
+            Gargantua-linux-x86_64.tar.gz
+            Gargantua-windows-x86_64.zip

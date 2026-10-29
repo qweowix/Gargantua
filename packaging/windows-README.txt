@@ -1,6 +1,6 @@
-BlackHole для Windows
+Gargantua для Windows
 
-Запуск: BlackHole.exe. Ничего ставить не нужно — mpv и yt-dlp уже лежат в папке bin.
+Запуск: Gargantua.exe. Ничего ставить не нужно — mpv и yt-dlp уже лежат в папке bin.
 Папку bin не удаляй и не разделяй с exe.
 
 Чтобы качать треки в mp3, нужен ffmpeg: положи ffmpeg.exe в папку bin.
@@ -12,4 +12,4 @@ yt-dlp иногда надо обновлять: замени bin\yt-dlp.exe с�
             сборка: https://github.com/zhongfly/mpv-winbuild
   yt-dlp  — https://github.com/yt-dlp/yt-dlp (Unlicense)
 
-Код плеера: https://github.com/qweowix/blackhole
+Код плеера: https://github.com/qweowix/Gargantua

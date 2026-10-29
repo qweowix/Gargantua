@@ -11,6 +11,7 @@ export struct TrackItem {
     playing: bool,
     snip: bool,
     dl: int, // 0 не скачан, 1 качается, 2 скачан
+    liked: bool, // в «Любимых треках»
 }
 
 export struct Credit {
@@ -33,6 +34,7 @@ export struct LyrLine {
     right: bool, // второй исполнитель (дуэт/бэк-вокал у Apple) — по правому краю
     dots: bool,  // проигрыш: "•••"
     bg: bool,    // бэк-вокал: мелко под основной строкой
+    tr: [string], // перевод строки рядами — мелко под ней, без анимаций
 }
 
 export struct Card {
@@ -43,9 +45,19 @@ export struct Card {
     has-cover: bool,
 }
 
+// устройство аккаунта в Connect
+export struct ConnDev {
+    id: string,
+    name: string,
+    phone: bool,
+    active: bool, // звук сейчас тут
+    me: bool,
+}
+
 export struct PlItem {
     name: string,
     count: int,
+    liked: bool, // «Любимые треки»: всегда первые, ♥ вместо ноты, в них — только сердечком
 }
 
 // статистика: день в клетках «как на GitHub» (level -1 — день ещё не наступил)
@@ -117,11 +129,16 @@ global Icons {
     out property <string> trash: "M9 3h6l1 2h4v2H4V5h4zM6 9h12l-1 12H7z";
     out property <string> shuffle: "M10.59 9.17 5.41 4 4 5.41l5.17 5.17zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04z";
     out property <string> repeat: "M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z";
+    out property <string> repeat-one: "M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2zm-4-2V9h-1l-2 1v1h1.5v4z";
     out property <string> volume: "M4 9v6h4l5 5V4L8 9zm12.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z";
     out property <string> import: "M11 3h2v9.17l3.59-3.58L18 10l-6 6-6-6 1.41-1.41L11 12.17zM5 18h14v2H5z";
     out property <string> settings: "M4 6h9v2H4zm13 0h3v2h-3zm-2-2h2v6h-2zM4 16h3v2H4zm7 0h9v2h-9zm-2-2h2v6H9z";
     out property <string> note: "M12 3v10.55A4 4 0 1 0 14 17V7h4V3z";
     out property <string> queue: "M3 5h14v2H3zm0 5h14v2H3zm0 5h9v2H3zm12 0v6l6-3z";
+    // монитор + телефон: устройства Connect
+    out property <string> devices: "M2 5h13v9H2zM3.8 6.8h9.4v5.4H3.8zM7 14h3v3H7zM5 17h7v1.6H5zM17 8h5v12h-5z";
+    out property <string> pc: "M2 4h20v12H2zM4 6h16v8H4zM9 16h6v3H9zM6 19h12v1.6H6z";
+    out property <string> phone: "M7 2h10a1.5 1.5 0 0 1 1.5 1.5v17A1.5 1.5 0 0 1 17 22H7a1.5 1.5 0 0 1-1.5-1.5v-17A1.5 1.5 0 0 1 7 2z";
     out property <string> up: "M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z";
     out property <string> close: "M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z";
     out property <string> info: "M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16z";
@@ -131,6 +148,9 @@ global Icons {
     out property <string> mic: "M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z";
     out property <string> down: "M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z";
     out property <string> edit: "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z";
+    out property <string> heart: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z";
+    out property <string> heart-o: "M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z";
+    out property <string> translate: "M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z";
     out property <string> fullscreen: "M5 5h5v2H7v3H5zm9 0h5v5h-2V7h-3zM5 14h2v3h3v2H5zm12 3v-3h2v5h-5v-2z";
     out property <string> telegram: "M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z";
     out property <string> github: "M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .32.21.69.82.57A12 12 0 0 0 12 .3";
@@ -544,6 +564,7 @@ component TrackRow inherits Rectangle {
     in property <bool> removable;
     callback play();
     callback add();
+    callback like();
     callback remove();
     callback radio();
     callback artist();
@@ -664,6 +685,20 @@ component TrackRow inherits Rectangle {
                     if root.item.dl == 0 {
                         root.download();
                     }
+                }
+            }
+        }
+
+        // ♥ — в любимые, не запуская трек
+        VerticalLayout {
+            alignment: center;
+            IconBtn {
+                size: 30px;
+                icon: root.item.liked ? Icons.heart : Icons.heart-o;
+                active: root.item.liked;
+                tip: root.item.liked ? @tr("Убрать из любимых") : @tr("В любимые");
+                clicked => {
+                    root.like();
                 }
             }
         }
@@ -967,6 +1002,20 @@ component LyricLine inherits Rectangle {
     in property <int> d;       // расстояние от строки, за которой держится прокрутка
     in property <float> p;     // заливка этой строки 0..1
     in property <float> glow: 1; // сила свечения поющегося слова, 0 — выкл (настройка)
+    // растворение у краёв экрана текста (строки рисуются и за пределами своей колонки — до краёв экрана)
+    in property <length> view-top; // где колонка внутри экрана текста
+    in property <length> view-h;   // высота экрана текста
+    in property <length> edge;     // строки у верха и низа экрана плавно растворяются на этом отрезке, 0 — выкл
+    // прозрачность растворения в точке y экрана текста: 1 — дальше edge от краёв, 0 — на краю и за ним
+    pure function edge-a(y: length) -> float {
+        if (root.edge <= 0) {
+            return 1;
+        }
+        return root.smooth(max(0, min(1, min(y / root.edge, (root.view-h - y) / root.edge))));
+    }
+    pure function smooth(v: float) -> float {
+        return v * v * (3 - 2 * v);
+    }
     // ореол как в Apple Music: полупрозрачные копии текста со сдвигом, три кольца — ближнее ярче
     property <[{ x: length, y: length, a: float }]> halo: [{ x: 1.5px, y: 0.0px, a: 0.100 }, { x: 0.8px, y: 1.0px, a: 0.100 }, { x: -0.7px, y: 1.0px, a: 0.100 }, { x: -1.5px, y: 0.0px, a: 0.100 },
                       { x: -0.8px, y: -1.0px, a: 0.100 }, { x: 0.8px, y: -1.0px, a: 0.100 }, { x: 3.3px, y: 0.8px, a: 0.065 }, { x: 1.6px, y: 2.5px, a: 0.065 },
@@ -1066,7 +1115,7 @@ component LyricLine inherits Rectangle {
     // а с дробной позицией буквы поющейся строки при прокрутке прилипали к пикселям вразнобой и дрожали
     x: root.suck <= 0 ? Math.round(root.nx / 1px) * 1px : root.hole-x + root.r * Math.cos(root.a) * 1px;
     y: root.suck <= 0 ? Math.round(root.ny / 1px) * 1px : root.hole-y + root.r * Math.sin(root.a) * 1px - root.height / 2 * root.suck;
-    height: root.line.rows.length * root.fs * 1.55;
+    height: root.line.rows.length * root.fs * 1.55 + root.line.tr.length * root.fs * 0.55 * 1.45;
     // строки далеко за краем экрана не рисуем вовсе: при прокрутке иначе каждый кадр двигались и
     // рисовались все строки песни (70+), хотя видно ~12 — секунда кадров по 60–120 мс на каждой смене строки
     visible: root.d >= -8 && root.d <= 12;
@@ -1117,6 +1166,16 @@ component LyricLine inherits Rectangle {
         width: txt.preferred-width;
         height: txt.preferred-height;
 
+        // растворение у краёв колонки: ряд гаснет, подходя к верху или низу (как у Apple Music), а не обрезается
+        // растворение у краёв экрана — внутри самого ряда: прозрачность в пяти точках по высоте, текст красится
+        // вертикальным градиентом. Раньше коэффициент был один на весь ряд, и ряд, чуть задевший край, пропадал целиком
+        property <length> ay: root.view-top + root.y + self.y;
+        property <float> e0: root.edge-a(self.ay);
+        property <float> e1: root.edge-a(self.ay + self.height * 0.25);
+        property <float> e2: root.edge-a(self.ay + self.height * 0.5);
+        property <float> e3: root.edge-a(self.ay + self.height * 0.75);
+        property <float> e4: root.edge-a(self.ay + self.height);
+        property <bool> edged: min(self.e0, self.e4) < 0.999;
         // свечение (ореол root.halo) ярче всего у края заливки (текущее слово), к началу строки гаснет
         property <float> g0: max(0, self.f - 0.16);
         property <float> g1: max(self.g0 + 0.001, self.f - 0.03);
@@ -1322,11 +1381,31 @@ component LyricLine inherits Rectangle {
             font-weight: 800;
             transform-rotation: root.tilt;
             color: root.sucked ? (root.d < -2 ? #ffffff00 : #ffffff.transparentize(root.suck * root.suck * root.suck))
+                : (!root.active || !root.karaoke || root.line.empty) && row-box.edged ? @linear-gradient(180deg,
+                    #ffffff.transparentize(1 - root.fade * row-box.e0) 0%, #ffffff.transparentize(1 - root.fade * row-box.e1) 25%,
+                    #ffffff.transparentize(1 - root.fade * row-box.e2) 50%, #ffffff.transparentize(1 - root.fade * row-box.e3) 75%,
+                    #ffffff.transparentize(1 - root.fade * row-box.e4) 100%)
                 : !root.active || !root.karaoke || root.line.empty ? #ffffff.transparentize(1 - root.fade)
                 : row-box.f <= 0 ? #ffffff8c
                 : row-box.f >= 1 ? #ffffff
                 : @linear-gradient(90deg, #ffffff 0%, #ffffff row-box.edge-a, #ffffff8c row-box.edge-b, #ffffff8c 100%);
         }
+    }
+
+    // перевод: мелко под строкой, ряд за рядом. Без анимаций — только гаснет вместе со строкой; при уходе
+    // с эффектом (буквы, дыра, сдув) просто исчезает
+    for t[j] in root.line.tr: Text {
+        property <length> tfs: root.fs * 0.55;
+        x: root.line.right ? root.width - self.width : 0px;
+        y: root.line.rows.length * root.fs * 1.55 + j * self.tfs * 1.45;
+        width: self.preferred-width;
+        text: t;
+        font-size: self.tfs;
+        font-weight: 600;
+        property <length> ay: root.view-top + root.y + self.y;
+        property <float> a: 0.6 * (root.gone && root.exit != 0 ? 0 : root.active ? 1 : root.fade);
+        color: @linear-gradient(180deg, #ffffff.transparentize(1 - self.a * root.edge-a(self.ay)) 0%,
+            #ffffff.transparentize(1 - self.a * root.edge-a(self.ay + self.height / 2)) 50%, #ffffff.transparentize(1 - self.a * root.edge-a(self.ay + self.height)) 100%);
     }
 }
 
@@ -1396,7 +1475,7 @@ component Page inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
-    title: "BlackHole";
+    title: "Gargantua";
     icon: @image-url("../assets/icon-256.png");
     preferred-width: 1120px;
     preferred-height: 720px;
@@ -1456,7 +1535,7 @@ export component AppWindow inherits Window {
     in property <string> dur-text: "0:00";
     in-out property <float> volume: 0.7;
     in property <bool> shuffle;
-    in property <bool> repeat;
+    in property <int> repeat; // 0 — выкл, 1 — очередь, 2 — трек
     // свечение статичное: любая постоянная анимация = перерисовка всего окна каждый кадр
     property <float> pulse: 0.5;
     // радиус блюра теней не анимируем (сбивает кэш теней) — пульсируем только opacity
@@ -1478,6 +1557,12 @@ export component AppWindow inherits Window {
     in property <string> st-ya;
     // звук
     in-out property <bool> fx-open;
+    // Connect: устройства аккаунта и где идёт звук
+    in property <bool> conn-on;
+    in property <[ConnDev]> conn-devs;
+    in property <string> conn-remote; // звук на другом устройстве — его имя
+    in-out property <bool> conn-open;
+    callback conn-pick(string);
     in property <[float]> eq-gains;
     in property <[string]> eq-names;
     in property <[string]> eq-presets;
@@ -1527,6 +1612,12 @@ export component AppWindow inherits Window {
     callback coll-save();
     in property <float> fall-stay: 3;
     in property <float> lyr-glow: 1;
+    in property <bool> lyr-tr; // перевод текста включён
+    in property <bool> cur-liked; // играющий трек в любимых
+    callback toggle-like();
+    in property <float> lyr-edge: 90; // растворение строк у краёв колонки, px; 0 — выкл
+    callback set-lyr-edge(float);
+    callback toggle-lyr-tr();
     in property <image> qr-img;
     in property <int> qr-part: 1;
     in property <int> qr-total: 1;
@@ -1554,6 +1645,7 @@ export component AppWindow inherits Window {
     in property <string> spicy-key;
     in property <string> cookies;
     callback set-cookies(string);
+    callback send-cookies();
     callback set-spicy-key(string);
     // аккаунт: 0 не вошёл, 1 ждём подтверждения почты, 2 вошёл
     in property <bool> acc-on; // Firebase задан при сборке — иначе аккаунтов нет совсем
@@ -1616,6 +1708,8 @@ export component AppWindow inherits Window {
     callback play-result(int);
     callback play-pl(int);
     callback ask-add(int, int);
+    callback like-track(int, int); // ♥ у строки трека: номер в списке и какой это список (как у ask-add)
+    callback like-all-pl();       // ♥ всем трекам открытого плейлиста
     callback download(int, int);
     callback download-all(int); // 1 открытый плейлист, 5 альбом
     callback pick-dl-dir();
@@ -1708,7 +1802,7 @@ export component AppWindow inherits Window {
         if root.rebinding < 0 && e.text == Key.Escape {
             if root.lyrics-open { root.set-lyrics-open(false); keys.focus(); return accept; }
             if root.modal != 0 { root.modal = 0; return accept; }
-            if root.fx-open || root.queue-open { root.fx-open = false; root.queue-open = false; return accept; }
+            if root.fx-open || root.queue-open || root.conn-open { root.fx-open = false; root.queue-open = false; root.conn-open = false; return accept; }
             keys.focus(); // из поля ввода — обратно к горячим клавишам
             return accept;
         }
@@ -1805,7 +1899,7 @@ export component AppWindow inherits Window {
                             VerticalLayout {
                                 alignment: center;
                                 Text {
-                                    text: "BlackHole";
+                                    text: "Gargantua";
                                     font-size: 21px;
                                     font-weight: 800;
                                     color: Theme.text;
@@ -1902,7 +1996,7 @@ export component AppWindow inherits Window {
                         ListView {
                             vertical-stretch: 1;
                             for p[i] in root.playlists: NavItem {
-                                icon: Icons.note;
+                                icon: p.liked ? Icons.heart : Icons.note;
                                 text: p.name;
                                 trailing: p.count;
                                 active: root.page == "playlist" && root.open-pl == i;
@@ -2112,6 +2206,9 @@ export component AppWindow inherits Window {
                                                 add => {
                                                     root.ask-add(i, 8);
                                                 }
+                                                like => {
+                                                    root.like-track(i, 8);
+                                                }
                                                 download => {
                                                     root.download(i, 8);
                                                 }
@@ -2217,6 +2314,9 @@ export component AppWindow inherits Window {
                                             }
                                             add => {
                                                 root.ask-add(i, 0);
+                                            }
+                                            like => {
+                                                root.like-track(i, 0);
                                             }
                                             download => {
                                                 root.download(i, 0);
@@ -2407,6 +2507,17 @@ export component AppWindow inherits Window {
                                         VerticalLayout {
                                             alignment: center;
                                             IconBtn {
+                                                icon: Icons.heart;
+                                                tip: @tr("Лайкнуть все треки");
+                                                clicked => {
+                                                    root.like-all-pl();
+                                                }
+                                            }
+                                        }
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            IconBtn {
                                                 icon: Icons.qrcode;
                                                 tip: @tr("Поделиться QR-кодом");
                                                 clicked => {
@@ -2472,6 +2583,9 @@ export component AppWindow inherits Window {
                                         }
                                         add => {
                                             root.ask-add(i, 1);
+                                        }
+                                        like => {
+                                            root.like-track(i, 1);
                                         }
                                         download => {
                                             root.download(i, 1);
@@ -2570,7 +2684,7 @@ export component AppWindow inherits Window {
                             }
 
                             Text {
-                                text: @tr("• Spotify: open.spotify.com/playlist/… или /album/…\n• Apple Music: music.apple.com/…/playlist/… или /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/юзер/sets/…\n• Яндекс Музыка: music.yandex.ru/users/…/playlists/… или /album/…\n• QR-код: картинка или фото QR, которым поделились из BlackHole (можно выбрать сразу все части)");
+                                text: @tr("• Spotify: open.spotify.com/playlist/… или /album/…\n• Apple Music: music.apple.com/…/playlist/… или /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/юзер/sets/…\n• Яндекс Музыка: music.yandex.ru/users/…/playlists/… или /album/…\n• QR-код: картинка или фото QR, которым поделились из Gargantua (можно выбрать сразу все части)");
                                 color: Theme.faint;
                                 font-size: 13px;
                                 wrap: word-wrap;
@@ -2700,6 +2814,9 @@ export component AppWindow inherits Window {
                                     }
                                     add => {
                                         root.ask-add(i, 6);
+                                    }
+                                    like => {
+                                        root.like-track(i, 6);
                                     }
                                     download => {
                                         root.download(i, 6);
@@ -2987,6 +3104,9 @@ export component AppWindow inherits Window {
                                 add => {
                                     root.ask-add(i, 7);
                                 }
+                                like => {
+                                    root.like-track(i, 7);
+                                }
                                 download => {
                                     root.download(i, 7);
                                 }
@@ -3028,7 +3148,7 @@ export component AppWindow inherits Window {
                                     alignment: center;
                                     spacing: 4px;
                                     Text {
-                                        text: "BlackHole";
+                                        text: "Gargantua";
                                         color: Theme.text;
                                         font-size: 32px;
                                         font-weight: 800;
@@ -3112,7 +3232,7 @@ export component AppWindow inherits Window {
                                 { k: @tr("Разработчик"), v: "qweowix", url: "" },
                                 { k: @tr("При поддержке"), v: "Claude Code", url: "" },
                                 { k: @tr("Телеграм-канал"), v: "https://t.me/BlackHolePlayer", url: "https://t.me/BlackHolePlayer" },
-                                { k: "GitHub", v: "https://www.github.com/qweowix/blackhole", url: "https://www.github.com/qweowix/blackhole" },
+                                { k: "GitHub", v: "https://www.github.com/qweowix/Gargantua", url: "https://www.github.com/qweowix/Gargantua" },
                             ]: HorizontalLayout {
                                 spacing: 12px;
                                 Text {
@@ -3319,6 +3439,9 @@ export component AppWindow inherits Window {
                                         add => {
                                             root.ask-add(i, 4);
                                         }
+                                        like => {
+                                            root.like-track(i, 4);
+                                        }
                                         download => {
                                             root.download(i, 4);
                                         }
@@ -3498,6 +3621,9 @@ export component AppWindow inherits Window {
                                     add => {
                                         root.ask-add(i, 5);
                                     }
+                                    like => {
+                                        root.like-track(i, 5);
+                                    }
                                     download => {
                                         root.download(i, 5);
                                     }
@@ -3669,6 +3795,14 @@ export component AppWindow inherits Window {
                                     active: root.lang == "uk";
                                     clicked => {
                                         root.set-lang("uk");
+                                    }
+                                }
+                                Chip {
+                                    text: "Slovenčina";
+                                    accent: Theme.soft1;
+                                    active: root.lang == "sk";
+                                    clicked => {
+                                        root.set-lang("sk");
                                     }
                                 }
                             }
@@ -4018,6 +4152,38 @@ export component AppWindow inherits Window {
                                 }
                             }
 
+                            HorizontalLayout {
+                                spacing: 14px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    Text {
+                                        property <int> v: Math.round(edge-sl.shown * 16) * 10;
+                                        text: self.v <= 0 ? @tr("Растворение у краёв: выкл") : @tr("Растворение у краёв: {} px", self.v);
+                                        color: Theme.text;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+
+                                    Text {
+                                        text: @tr("Строки текста плавно гаснут у верха и низа, а не обрезаются. Ползунок до упора влево — выключить.");
+                                        color: Theme.dim;
+                                        font-size: 13px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    edge-sl := Slider {
+                                        width: 200px;
+                                        value: root.lyr-edge / 160;
+                                        changed(v) => {
+                                            root.set-lyr-edge(Math.round(v * 16) * 10);
+                                        }
+                                    }
+                                }
+                            }
+
                             SettingRow {
                                 title: @tr("Дыра в lyrics всегда");
                                 desc: @tr("Логотип-дыра в углу экрана lyrics виден всегда. Если выключить — появляется только с уходом строк «в дыру».");
@@ -4056,6 +4222,18 @@ export component AppWindow inherits Window {
                                         clicked => {
                                             // по кругу: выкл → firefox → chrome → … → safari → выкл
                                             root.set-cookies(ck.next-browser());
+                                        }
+                                    }
+                                }
+
+                                // вход YouTube на телефон через аккаунт
+                                if root.cookies != "": VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: @tr("На телефон");
+                                        primary: false;
+                                        clicked => {
+                                            root.send-cookies();
                                         }
                                     }
                                 }
@@ -4244,8 +4422,8 @@ export component AppWindow inherits Window {
                             }
 
                             Text {
-                                text: root.loading ? @tr("засасываю поток…") : root.has-track ? root.now-artist : @tr("включи что-нибудь");
-                                color: root.loading ? Theme.soft2 : now-artist-ta.has-hover && root.has-track ? Theme.pale1 : Theme.dim;
+                                text: root.loading ? @tr("засасываю поток…") : root.has-track ? (root.conn-remote != "" ? @tr("{} · играет на «{}»", root.now-artist, root.conn-remote) : root.now-artist) : @tr("включи что-нибудь");
+                                color: root.loading ? Theme.soft2 : now-artist-ta.has-hover && root.has-track ? Theme.pale1 : root.conn-remote != "" ? Theme.soft2 : Theme.dim;
                                 font-size: 12px;
                                 overflow: elide;
                                 now-artist-ta := TouchArea {
@@ -4254,6 +4432,19 @@ export component AppWindow inherits Window {
                                     clicked => {
                                         root.open-artist(0, 2);
                                     }
+                                }
+                            }
+                        }
+
+                        if root.has-track: VerticalLayout {
+                            alignment: center;
+                            IconBtn {
+                                size: 30px;
+                                icon: root.cur-liked ? Icons.heart : Icons.heart-o;
+                                active: root.cur-liked;
+                                tip: root.cur-liked ? @tr("Убрать из любимых") : @tr("В любимые");
+                                clicked => {
+                                    root.toggle-like();
                                 }
                             }
                         }
@@ -4341,9 +4532,9 @@ export component AppWindow inherits Window {
                                 alignment: center;
                                 IconBtn {
                                     size: 32px;
-                                    icon: Icons.repeat;
-                                    tip: @tr("Повтор");
-                                    active: root.repeat;
+                                    icon: root.repeat == 2 ? Icons.repeat-one : Icons.repeat;
+                                    tip: root.repeat == 2 ? @tr("Повтор трека") : @tr("Повтор");
+                                    active: root.repeat > 0;
                                     clicked => {
                                         root.toggle-repeat();
                                     }
@@ -4382,8 +4573,24 @@ export component AppWindow inherits Window {
 
                     // таймер сна + громкость + lyrics + очередь + звук
                     HorizontalLayout {
-                        width: 352px;
+                        width: root.conn-on ? 392px : 352px;
                         spacing: 8px;
+                        // устройства Connect: куда идёт звук
+                        if root.conn-on: VerticalLayout {
+                            alignment: center;
+                            IconBtn {
+                                size: 32px;
+                                icon: Icons.devices;
+                                active: root.conn-open || root.conn-remote != "";
+                                tip: root.conn-remote != "" ? @tr("Играет на «{}»", root.conn-remote) : @tr("Устройства");
+                                clicked => {
+                                    root.conn-open = !root.conn-open;
+                                    root.queue-open = false;
+                                    root.fx-open = false;
+                                }
+                            }
+                        }
+
                         // луна: по кругу выкл → 15 → 30 → 60 мин → после трека; цифра — сколько минут осталось
                         VerticalLayout {
                             alignment: center;
@@ -4428,6 +4635,7 @@ export component AppWindow inherits Window {
                                 active: root.fx-open || !root.fx-default;
                                 clicked => {
                                     root.fx-open = !root.fx-open;
+                                    root.conn-open = false;
                                 }
                             }
                         }
@@ -4441,6 +4649,7 @@ export component AppWindow inherits Window {
                                 active: root.queue-open;
                                 clicked => {
                                     root.queue-open = !root.queue-open;
+                                    root.conn-open = false;
                                 }
                             }
                         }
@@ -4495,6 +4704,100 @@ export component AppWindow inherits Window {
             }
         }
     }
+    }
+
+    // ── устройства Connect: всплывают над плеером, клик — звук переезжает туда ──
+    Rectangle {
+        width: 100%;
+        height: root.height - 96px;
+        visible: root.conn-open;
+        TouchArea {
+            clicked => {
+                root.conn-open = false;
+            }
+        }
+    }
+
+    Rectangle {
+        x: root.width - self.width - 20px;
+        y: root.conn-open ? root.height - 96px - self.height - 12px : root.height + 20px;
+        width: 320px;
+        height: conn-lay.preferred-height;
+        visible: root.conn-open || self.y < root.height;
+        background: #110d1cf7;
+        border-radius: 18px;
+        border-width: 1px;
+        border-color: Theme.c1.transparentize(0.73);
+        drop-shadow-blur: 40px;
+        drop-shadow-color: #000000aa;
+        animate y { duration: 280ms; easing: cubic-bezier(0.2, 0.9, 0.2, 1); }
+        TouchArea { }
+
+        conn-lay := VerticalLayout {
+            padding: 14px;
+            spacing: 4px;
+            Text {
+                text: @tr("Где играть");
+                color: Theme.text;
+                font-size: 17px;
+                font-weight: 800;
+            }
+
+            Text {
+                text: @tr("Все устройства твоего аккаунта, где открыт Gargantua");
+                color: Theme.dim;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+
+            Rectangle { height: 6px; }
+
+            for d in root.conn-devs: Rectangle {
+                height: 52px;
+                border-radius: 12px;
+                background: d.active ? Theme.c1.transparentize(0.8) : dev-ta.has-hover ? #ffffff10 : #ffffff00;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 12px;
+                    alignment: start;
+                    Icon {
+                        d: d.phone ? Icons.phone : Icons.pc;
+                        width: 22px;
+                        height: 22px;
+                        y: (parent.height - self.height) / 2;
+                        fill: d.active ? Theme.soft2 : #bdb6d3;
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: d.name;
+                            color: d.active ? Theme.soft2 : Theme.text;
+                            font-size: 14px;
+                            font-weight: 700;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: d.active ? @tr("звук тут") : d.me ? @tr("это устройство") : "";
+                            visible: self.text != "";
+                            color: Theme.dim;
+                            font-size: 11px;
+                        }
+                    }
+                }
+
+                dev-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.conn-pick(d.id);
+                        root.conn-open = false;
+                    }
+                }
+            }
+        }
     }
 
     // ── панель звука: эквалайзер и скорость, всплывает над плеером ──
@@ -5109,9 +5412,9 @@ export component AppWindow inherits Window {
                                         alignment: center;
                                         IconBtn {
                                             size: 34px;
-                                            icon: Icons.repeat;
-                                            tip: @tr("Повтор");
-                                            active: root.repeat;
+                                            icon: root.repeat == 2 ? Icons.repeat-one : Icons.repeat;
+                                            tip: root.repeat == 2 ? @tr("Повтор трека") : @tr("Повтор");
+                                            active: root.repeat > 0;
                                             clicked => {
                                                 root.toggle-repeat();
                                             }
@@ -5280,6 +5583,9 @@ export component AppWindow inherits Window {
                             quiet: i < root.lyr-jump;
                             stay-ms: root.fall-stay * 1000;
                             glow: root.lyr-glow;
+                            view-top: lyr-col.off-y;
+                            view-h: lyr-screen.height;
+                            edge: root.lyr-edge * 1px;
                             step: root.lyr-step;
                             // пол — низ экрана, а не колонки текста
                             floor-y: lyr-screen.height - lyr-col.off-y - 26px;
@@ -5337,6 +5643,16 @@ export component AppWindow inherits Window {
                     width: self.preferred-width;
                     height: 40px;
                     spacing: 6px;
+                    IconBtn {
+                        size: 40px;
+                        icon: Icons.translate;
+                        active: root.lyr-tr;
+                        tip: @tr("Перевод текста");
+                        clicked => {
+                            root.toggle-lyr-tr();
+                        }
+                    }
+
                     IconBtn {
                         size: 40px;
                         icon: Icons.fullscreen;
@@ -5467,7 +5783,10 @@ export component AppWindow inherits Window {
 
                 if root.modal == 1 && root.playlists.length > 0: ListView {
                     height: min(240px, root.playlists.length * 44px);
+                    // в любимые — только сердечком, тут их нет
                     for p[i] in root.playlists: NavItem {
+                        visible: !p.liked;
+                        height: p.liked ? 0px : 40px;
                         icon: Icons.note;
                         text: p.name;
                         trailing: p.count;
@@ -5775,7 +6094,7 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
-                    for l in [{ code: "ru", name: "Русский" }, { code: "en", name: "English" }, { code: "uk", name: "Українська" }]: Chip {
+                    for l in [{ code: "ru", name: "Русский" }, { code: "en", name: "English" }, { code: "uk", name: "Українська" }, { code: "sk", name: "Slovenčina" }]: Chip {
                         text: l.name;
                         accent: Theme.soft1;
                         active: root.lang == l.code;
@@ -5884,7 +6203,7 @@ export component AppWindow inherits Window {
                 padding: 28px;
                 spacing: 12px;
                 Text {
-                    text: root.acc-state == 1 ? @tr("Подтверди почту") : root.acc-reg ? @tr("Регистрация") : @tr("Вход в BlackHole");
+                    text: root.acc-state == 1 ? @tr("Подтверди почту") : root.acc-reg ? @tr("Регистрация") : @tr("Вход в Gargantua");
                     color: Theme.text;
                     font-size: 24px;
                     font-weight: 800;
@@ -5893,7 +6212,7 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
-                    for l in [{ code: "ru", name: "Русский" }, { code: "en", name: "English" }, { code: "uk", name: "Українська" }]: Chip {
+                    for l in [{ code: "ru", name: "Русский" }, { code: "en", name: "English" }, { code: "uk", name: "Українська" }, { code: "sk", name: "Slovenčina" }]: Chip {
                         text: l.name;
                         accent: Theme.soft1;
                         active: root.lang == l.code;
@@ -6105,7 +6424,7 @@ export component AppWindow inherits Window {
             }
 
             title := Text {
-                text: "BlackHole";
+                text: "Gargantua";
                 font-size: 46px;
                 font-weight: 800;
                 color: Theme.text;

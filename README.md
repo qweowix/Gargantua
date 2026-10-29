@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/icon-256.png" width="128" alt="BlackHole">
+  <img src="assets/icon-256.png" width="128" alt="Gargantua">
 </p>
 
-<h1 align="center">BlackHole</h1>
+<h1 align="center">Gargantua</h1>
 
 <p align="center">
   <b>Все сервисы — одна дыра.</b><br>
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/qweowix/blackhole/releases/latest"><b>Скачать</b></a> ·
+  <a href="https://github.com/qweowix/Gargantua/releases/latest"><b>Скачать</b></a> ·
   <a href="https://t.me/BlackHolePlayer">Telegram</a> ·
   <a href="#english">English</a>
 </p>
@@ -47,8 +47,8 @@
 
 ### Windows
 
-1. Скачай `BlackHole-windows-x86_64.zip` из [релизов](https://github.com/qweowix/blackhole/releases/latest).
-2. Распакуй куда угодно и запусти `BlackHole.exe`.
+1. Скачай `Gargantua-windows-x86_64.zip` из [релизов](https://github.com/qweowix/Gargantua/releases/latest).
+2. Распакуй куда угодно и запусти `Gargantua.exe`.
 
 mpv и yt-dlp уже лежат в папке `bin`, ставить ничего не надо. Для скачивания в mp3 положи туда же `ffmpeg.exe`.
 
@@ -64,7 +64,7 @@ mpv и yt-dlp уже лежат в папке `bin`, ставить ничего
    sudo dnf install mpv yt-dlp python3
    ```
    `ffmpeg` нужен только для скачивания в mp3.
-2. Скачай `BlackHole-linux-x86_64.tar.gz` из [релизов](https://github.com/qweowix/blackhole/releases/latest), распакуй и запусти `./install.sh` — плеер появится в меню приложений и в `~/.local/bin`. Или просто запусти `./blackhole` из папки.
+2. Скачай `Gargantua-linux-x86_64.tar.gz` из [релизов](https://github.com/qweowix/Gargantua/releases/latest), распакуй и запусти `./install.sh` — плеер появится в меню приложений и в `~/.local/bin`. Или просто запусти `./blackhole` из папки.
 
 yt-dlp лучше держать свежим (`yt-dlp -U` или через пакетный менеджер): YouTube постоянно что-то меняет. В дистрибутивах со старым yt-dlp ставь его через pipx.
 
@@ -108,8 +108,8 @@ yt-dlp лучше держать свежим (`yt-dlp -U` или через п�
 Нужен Rust (stable).
 
 ```sh
-git clone https://github.com/qweowix/blackhole
-cd blackhole
+git clone https://github.com/qweowix/Gargantua
+cd Gargantua
 cargo build --release
 ./target/release/blackhole
 ```
@@ -141,12 +141,12 @@ cargo build --release
 <a name="english"></a>
 ## English
 
-**BlackHole** is a free music player for Linux and Windows. It searches YouTube Music, SoundCloud and Yandex Music at once, imports playlists from Spotify, Apple Music and others by link, plays your local files, and shows word-by-word synced lyrics with karaoke effects. It has no ads. You sign in with email, and your playlists live in your account, the same on every computer. Everything else is stored locally.
+**Gargantua** is a free music player for Linux and Windows. It searches YouTube Music, SoundCloud and Yandex Music at once, imports playlists from Spotify, Apple Music and others by link, plays your local files, and shows word-by-word synced lyrics with karaoke effects. It has no ads. You sign in with email, and your playlists live in your account, the same on every computer. Everything else is stored locally.
 
 Also included: daily mixes, listening stats with a GitHub-style heatmap, an offline cache, mp3 downloads, crossfade, an EQ, a sleep timer, rebindable hotkeys, Discord Rich Presence, 15 themes plus a cover-coloured theme, QR playlist sharing, and an English/Russian/Ukrainian UI.
 
-**Install:** grab the archive for your OS from [Releases](https://github.com/qweowix/blackhole/releases/latest).
-- **Windows:** unzip it and run `BlackHole.exe`; mpv and yt-dlp are bundled.
+**Install:** grab the archive for your OS from [Releases](https://github.com/qweowix/Gargantua/releases/latest).
+- **Windows:** unzip it and run `Gargantua.exe`; mpv and yt-dlp are bundled.
 - **Linux:** install `mpv`, `yt-dlp` and `python3`, unpack the archive and run `./install.sh`.
 
 **Build from source:** `cargo build --release`.

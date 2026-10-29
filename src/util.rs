@@ -102,6 +102,33 @@ fn browser_arg(b: &str) -> String {
     }
 }
 
+/// Куки YouTube из выбранного браузера (достаёт сам yt-dlp, он умеет все браузеры) — для переноса входа
+/// на телефон. JSON [[имя, значение], …]
+pub fn yt_cookies() -> anyhow::Result<String> {
+    let b = COOKIES.read().unwrap().clone();
+    if b.is_empty() {
+        anyhow::bail!("сначала выбери браузер в «Куки YouTube»");
+    }
+    let py = find_bin("python3").or_else(|| find_bin("python")).context("нет Python")?;
+    let ytdlp = find_bin("yt-dlp").context("нет yt-dlp")?;
+    let spec = browser_arg(&b);
+    let (name, profile) = spec.split_once(':').unwrap_or((&spec, ""));
+    const SCRIPT: &str = r#"
+import sys, json
+sys.path.insert(0, sys.argv[1])
+from yt_dlp.cookies import extract_cookies_from_browser
+jar = extract_cookies_from_browser(sys.argv[2], sys.argv[3] or None)
+got = {c.name: c.value for c in jar if c.domain.endswith('youtube.com') and c.value}
+print(json.dumps(sorted(got.items())))
+"#;
+    let out = command(&py).arg("-c").arg(SCRIPT).arg(&ytdlp).arg(name).arg(profile).output()?;
+    let v: Vec<(String, String)> = serde_json::from_slice(&out.stdout).context("yt-dlp не отдал куки")?;
+    if !v.iter().any(|(n, _)| n == "SAPISID" || n == "__Secure-3PAPISID") {
+        anyhow::bail!("в {b} нет входа в YouTube");
+    }
+    Ok(serde_json::to_string(&v)?)
+}
+
 /// yt-dlp с нужными флагами: куки браузера (если включены) и JS-рантайм. Свежему YouTube нужен JS,
 /// а yt-dlp по умолчанию знает только deno — если его нет, подсовываем node или bun
 fn ytdlp_cmd(cookies: Option<&str>) -> Option<Command> {
@@ -115,11 +142,11 @@ pub fn ytdlp_args(cookies: Option<&str>) -> Vec<String> {
     let mut a = vec![];
     if let Some(b) = cookies {
         a.extend(["--cookies-from-browser".to_string(), browser_arg(b)]);
-        // с куками yt-dlp идёт через web-клиент, а ему нужен JS для расшифровки ссылок
-        if find_bin("deno").is_none() {
-            if let Some((name, p)) = ["node", "bun"].iter().find_map(|n| Some((*n, find_bin(n)?))) {
-                a.extend(["--js-runtimes".to_string(), format!("{name}:{}", p.display())]);
-            }
+    }
+    // ссылки YouTube теперь у всех клиентов зашифрованы — без JS-движка yt-dlp звук не достанет
+    if find_bin("deno").is_none() {
+        if let Some((name, p)) = ["node", "bun"].iter().find_map(|n| Some((*n, find_bin(n)?))) {
+            a.extend(["--js-runtimes".to_string(), format!("{name}:{}", p.display())]);
         }
     }
     a

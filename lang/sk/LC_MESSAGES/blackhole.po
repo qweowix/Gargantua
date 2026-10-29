@@ -1,0 +1,993 @@
+# Slovenský preklad BlackHole. Zdrojové reťazce sú ruské (msgid), pozri @tr() v ui/app.slint
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: sk\n"
+"Plural-Forms: nplurals=3; plural=(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2;\n"
+
+msgid "{} · превью → YT"
+msgstr "{} · ukážka → YT"
+
+msgid "Радио по этому треку"
+msgstr "Rádio podľa tejto skladby"
+
+msgid "Уже скачано"
+msgstr "Už stiahnuté"
+
+msgid "Качается…"
+msgstr "Sťahuje sa…"
+
+msgid "Скачать в mp3"
+msgstr "Stiahnuť ako mp3"
+
+msgid "Добавить в плейлист"
+msgstr "Pridať do playlistu"
+
+msgid "Убрать из плейлиста"
+msgstr "Odstrániť z playlistu"
+
+msgid "Выше в очереди"
+msgstr "Vyššie vo fronte"
+
+msgid "Ниже в очереди"
+msgstr "Nižšie vo fronte"
+
+msgid "Убрать из очереди"
+msgstr "Odstrániť z frontu"
+
+msgid "все сервисы · одна дыра"
+msgstr "všetky služby · jedna diera"
+
+msgid "Поиск"
+msgstr "Hľadať"
+
+msgid "Импорт"
+msgstr "Import"
+
+msgid "Настройки"
+msgstr "Nastavenia"
+
+msgid "О программе"
+msgstr "O aplikácii"
+
+msgid "ПЛЕЙЛИСТЫ"
+msgstr "PLAYLISTY"
+
+msgid "Новый плейлист"
+msgstr "Nový playlist"
+
+msgid "Трек, артист, что угодно — дыра всё засосёт"
+msgstr "Skladba, interpret, čokoľvek — diera to vcucne"
+
+msgid "Все"
+msgstr "Všetko"
+
+msgid "Яндекс"
+msgstr "Yandex"
+
+msgid "Артисты"
+msgstr "Interpreti"
+
+msgid "Альбомы"
+msgstr "Albumy"
+
+msgid "Треки"
+msgstr "Skladby"
+
+msgid "Засасываю результаты…"
+msgstr "Vcucávam výsledky…"
+
+msgid "Чёрная дыра голодна. Вбей что-нибудь сверху."
+msgstr "Čierna diera je hladná. Napíš niečo hore."
+
+msgid "Сменить обложку"
+msgstr "Zmeniť obal"
+
+msgid "ПЛЕЙЛИСТ"
+msgstr "PLAYLIST"
+
+msgid "{} треков"
+msgstr "{} skladieb"
+
+msgid "Слушать"
+msgstr "Počúvať"
+
+msgid "Вперемешку"
+msgstr "Náhodne"
+
+msgid "Качаю… {}"
+msgstr "Sťahujem… {}"
+
+msgid "Скачать всё"
+msgstr "Stiahnuť všetko"
+
+msgid "Поделиться QR-кодом"
+msgstr "Zdieľať ako QR kód"
+
+msgid "Удалить плейлист"
+msgstr "Zmazať playlist"
+
+msgid "Пусто. Найди треки в поиске и жми «+»."
+msgstr "Prázdno. Nájdi skladby vo vyhľadávaní a stlač „+“."
+
+msgid "Импорт плейлиста"
+msgstr "Import playlistu"
+
+msgid "Кидай ссылку на плейлист или альбом из Spotify, Apple Music, YouTube Music или SoundCloud — дыра его засосёт целиком. Треки из Spotify и Apple Music сразу ищутся на YT Music, сомнительные совпадения спрошу. Ключи не нужны."
+msgstr "Hoď odkaz na playlist alebo album zo Spotify, Apple Music, YouTube Music alebo SoundCloud — diera ho vcucne celý. Skladby zo Spotify a Apple Music sa hneď hľadajú na YT Music, pri pochybných zhodách sa opýtam. Kľúče netreba."
+
+msgid "Засасываю…"
+msgstr "Vcucávam…"
+
+msgid "Засосать"
+msgstr "Vcucnúť"
+
+msgid "Добавить по QR-коду"
+msgstr "Pridať cez QR kód"
+
+msgid "• Spotify: open.spotify.com/playlist/… или /album/…\n• Apple Music: music.apple.com/…/playlist/… или /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/юзер/sets/…\n• Яндекс Музыка: music.yandex.ru/users/…/playlists/… или /album/…\n• QR-код: картинка или фото QR, которым поделились из Gargantua (можно выбрать сразу все части)"
+msgstr "• Spotify: open.spotify.com/playlist/… alebo /album/…\n• Apple Music: music.apple.com/…/playlist/… alebo /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/používateľ/sets/…\n• Yandex Music: music.yandex.ru/users/…/playlists/… alebo /album/…\n• QR kód: obrázok alebo fotka QR zdieľaného z Gargantua (môžeš vybrať všetky časti naraz)"
+
+msgid "версия {}"
+msgstr "verzia {}"
+
+msgid "Полностью бесплатный музыкальный плеер с открытым кодом и поддержкой нескольких стриминговых сервисов.\nРазработчик — qweowix"
+msgstr "Úplne bezplatný hudobný prehrávač s otvoreným kódom a podporou viacerých streamovacích služieb.\nVývojár — qweowix"
+
+msgid "ГЛАВНЫЕ ПЛЮСЫ"
+msgstr "PREČO GARGANTUA"
+
+msgid "Всё локально"
+msgstr "Všetko lokálne"
+
+msgid "Плейлисты, история и настройки хранятся только у тебя на компьютере. Никаких аккаунтов, регистраций, подписок и API-ключей."
+msgstr "Playlisty, história a nastavenia sú uložené len u teba v počítači. Žiadne účty, registrácie, predplatné ani API kľúče."
+
+msgid "Все сервисы в одном месте"
+msgstr "Všetky služby na jednom mieste"
+
+msgid "Поиск сразу по YouTube Music и SoundCloud, импорт плейлистов и альбомов из Spotify, Apple Music, YouTube Music и SoundCloud."
+msgstr "Vyhľadávanie naraz v YouTube Music a SoundCloud, import playlistov a albumov zo Spotify, Apple Music, YouTube Music a SoundCloud."
+
+msgid "Смешанные плейлисты"
+msgstr "Zmiešané playlisty"
+
+msgid "Треки из разных сервисов спокойно живут в одном плейлисте."
+msgstr "Skladby z rôznych služieb pokojne žijú v jednom playliste."
+
+msgid "Бесплатно и без рекламы"
+msgstr "Zadarmo a bez reklám"
+
+msgid "Ни рекламы, ни платных функций, ни телеметрии. Код открыт."
+msgstr "Žiadne reklamy, platené funkcie ani telemetria. Kód je otvorený."
+
+msgid "Лёгкий"
+msgstr "Ľahký"
+
+msgid "Нативное приложение без браузерного движка: в простое почти не нагружает процессор, а для слабых машин есть лайт-режим."
+msgstr "Natívna aplikácia bez prehliadačového jadra: v nečinnosti takmer nezaťažuje procesor a pre slabšie stroje je lite režim."
+
+msgid "Тексты как в Apple Music"
+msgstr "Texty ako v Apple Music"
+
+msgid "Экран текстов с караоке по словам, свечением и анимациями. Тексты собираются из нескольких источников и выравниваются по твоему треку."
+msgstr "Obrazovka textov s karaoke po slovách, žiarou a animáciami. Texty sa zbierajú z viacerých zdrojov a zarovnávajú sa presne na tvoju skladbu."
+
+msgid "Без ожидания"
+msgstr "Bez čakania"
+
+msgid "Следующие треки подгружаются заранее, переключение почти мгновенное — даже в перемешку."
+msgstr "Nasledujúce skladby sa načítavajú vopred, takže prepínanie je takmer okamžité — aj pri náhodnom prehrávaní."
+
+msgid "Дружит с системой"
+msgstr "Kamaráti sa so systémom"
+
+msgid "Виден в панели и медиа-клавишах (MPRIS), умеет очередь, историю, перемешку и повтор."
+msgstr "Je vidieť v paneli a mediálnych klávesoch (MPRIS), má front, históriu, náhodné prehrávanie a opakovanie."
+
+msgid "Разработчик"
+msgstr "Vývojár"
+
+msgid "При поддержке"
+msgstr "S podporou"
+
+msgid "Телеграм-канал"
+msgstr "Telegram kanál"
+
+msgid "АРТИСТ"
+msgstr "INTERPRET"
+
+msgid "Загружаю…"
+msgstr "Načítavam…"
+
+msgid "Радио"
+msgstr "Rádio"
+
+msgid "Свернуть"
+msgstr "Zbaliť"
+
+msgid "Читать полностью"
+msgstr "Čítať celé"
+
+msgid "Популярное"
+msgstr "Populárne"
+
+msgid "Все песни"
+msgstr "Všetky skladby"
+
+msgid "Синглы и EP"
+msgstr "Single a EP"
+
+msgid "Похожие артисты"
+msgstr "Podobní interpreti"
+
+msgid "Назад"
+msgstr "Späť"
+
+msgid "В плейлисты"
+msgstr "Do playlistov"
+
+msgid "Язык"
+msgstr "Jazyk"
+
+msgid "Тема"
+msgstr "Téma"
+
+msgid "Горизонт"
+msgstr "Horizont"
+
+msgid "Океан"
+msgstr "Oceán"
+
+msgid "Токсик"
+msgstr "Toxic"
+
+msgid "Сакура"
+msgstr "Sakura"
+
+msgid "Закат"
+msgstr "Západ slnka"
+
+msgid "Моно"
+msgstr "Mono"
+
+msgid "Лайт-режим"
+msgstr "Lite režim"
+
+msgid "Вырубает постоянные анимации (вращение, пульсацию). Ноль лишней нагрузки."
+msgstr "Vypne neustále animácie (otáčanie, pulzovanie). Nulová záťaž navyše."
+
+msgid "Упавшие буквы лежат: {} с"
+msgstr "Spadnuté písmená ležia: {} s"
+
+msgid "Для ухода строк «падение»: сколько буквы лежат внизу экрана, прежде чем растаять."
+msgstr "Pre odchod riadkov „pád“: ako dlho písmená ležia dole na obrazovke, kým sa roztopia."
+
+msgid "Свечение текста: выкл"
+msgstr "Žiara textu: vyp"
+
+msgid "Свечение текста: {}%"
+msgstr "Žiara textu: {}%"
+
+msgid "Ореол вокруг слова, которое сейчас поётся. Ползунок до упора влево — выключить."
+msgstr "Svätožiara okolo slova, ktoré sa práve spieva. Posuvník úplne doľava — vypnúť."
+
+msgid "Дыра в lyrics всегда"
+msgstr "Diera v texte vždy"
+
+msgid "Логотип-дыра в углу экрана lyrics виден всегда. Если выключить — появляется только с уходом строк «в дыру»."
+msgstr "Logo diery v rohu obrazovky textu je vidieť stále. Keď je vypnuté, objaví sa len pri odchode riadkov „do diery“."
+
+msgid "Куки YouTube"
+msgstr "Cookies YouTube"
+
+msgid "Если YouTube просит доказать, что ты не бот, и треки не играют — выбери браузер, где ты залогинен в YouTube. yt-dlp возьмёт оттуда куки; они никуда, кроме YouTube, не уходят."
+msgstr "Ak YouTube chce dôkaz, že nie si bot, a skladby nehrajú — vyber prehliadač, kde si prihlásený do YouTube. yt-dlp odtiaľ zoberie cookies; nikam okrem YouTube nejdú."
+
+msgid "Выкл"
+msgstr "Vyp"
+
+msgid "Папка загрузок"
+msgstr "Priečinok sťahovania"
+
+msgid "Открыть"
+msgstr "Otvoriť"
+
+msgid "Сменить"
+msgstr "Zmeniť"
+
+msgid "Ключ Spicy Lyrics"
+msgstr "Kľúč Spicy Lyrics"
+
+msgid "Ещё один источник текстов: синки по слогам от сообщества и Apple Music. Нужен свой бесплатный ключ (secret key, sl_sk_…) — хранится только у тебя на компьютере. Пусто — источник выключен."
+msgstr "Ďalší zdroj textov: synchronizácia po slabikách od komunity a Apple Music. Treba vlastný bezplatný kľúč (secret key, sl_sk_…) — uložený len u teba v počítači. Prázdne — zdroj je vypnutý."
+
+msgid "Получить ключ"
+msgstr "Získať kľúč"
+
+msgid "Стереть настройки"
+msgstr "Vymazať nastavenia"
+
+msgid "Тишина"
+msgstr "Ticho"
+
+msgid "засасываю поток…"
+msgstr "vcucávam stream…"
+
+msgid "включи что-нибудь"
+msgstr "pusti niečo"
+
+msgid "Перемешать"
+msgstr "Zamiešať"
+
+msgid "Предыдущий трек"
+msgstr "Predchádzajúca skladba"
+
+msgid "Пауза"
+msgstr "Pauza"
+
+msgid "Играть"
+msgstr "Hrať"
+
+msgid "Следующий трек"
+msgstr "Ďalšia skladba"
+
+msgid "Повтор"
+msgstr "Opakovanie"
+
+msgid "Эквалайзер и скорость"
+msgstr "Ekvalizér a rýchlosť"
+
+msgid "Очередь"
+msgstr "Front"
+
+msgid "Текст песни"
+msgstr "Text piesne"
+
+msgid "Звук"
+msgstr "Zvuk"
+
+msgid "Сбросить всё"
+msgstr "Resetovať všetko"
+
+msgid "Закрыть"
+msgstr "Zavrieť"
+
+msgid " Гц"
+msgstr " Hz"
+
+msgid "Скорость"
+msgstr "Rýchlosť"
+
+msgid "Сохранять тональность"
+msgstr "Zachovať výšku tónu"
+
+msgid "Выключи — и при замедлении голос станет ниже, при ускорении выше: тот самый slowed / sped up."
+msgstr "Vypni to — pri spomalení bude hlas nižší, pri zrýchlení vyšší: presne ten slowed / sped up."
+
+msgid "ИСТОРИЯ"
+msgstr "HISTÓRIA"
+
+msgid "СЕЙЧАС ИГРАЕТ"
+msgstr "PRÁVE HRÁ"
+
+msgid "ДАЛЕЕ · ВПЕРЕМЕШКУ"
+msgstr "ĎALEJ · NÁHODNE"
+
+msgid "ДАЛЕЕ"
+msgstr "ĎALEJ"
+
+msgid "Дальше пусто"
+msgstr "Ďalej nič nie je"
+
+msgid "Караоке: вкл"
+msgstr "Karaoke: zap"
+
+msgid "Караоке: выкл"
+msgstr "Karaoke: vyp"
+
+msgid "Стиль: {}"
+msgstr "Štýl: {}"
+
+msgid "плавно"
+msgstr "plynulo"
+
+msgid "каскад"
+msgstr "kaskáda"
+
+msgid "фокус"
+msgstr "fokus"
+
+msgid "Уход: {}"
+msgstr "Odchod: {}"
+
+msgid "тускнеют"
+msgstr "vyblednutie"
+
+msgid "сдув"
+msgstr "odfúknutie"
+
+msgid "в дыру"
+msgstr "do diery"
+
+msgid "в дыру буквами"
+msgstr "do diery po písmenách"
+
+msgid "падение"
+msgstr "pád"
+
+msgid "испарение"
+msgstr "vyparenie"
+
+msgid "взрыв"
+msgstr "výbuch"
+
+msgid "Ищу текст…"
+msgstr "Hľadám text…"
+
+msgid "Текста нет"
+msgstr "Text nie je"
+
+msgid "Инструментал, или lrclib про этот трек не знает"
+msgstr "Inštrumentálka, alebo lrclib o tejto skladbe nevie"
+
+msgid "Во весь экран"
+msgstr "Na celú obrazovku"
+
+msgid "Свернуть текст"
+msgstr "Zbaliť text"
+
+msgid "Удалить плейлист?"
+msgstr "Zmazať playlist?"
+
+msgid "Поделиться плейлистом"
+msgstr "Zdieľať playlist"
+
+msgid "Точно эта песня?"
+msgstr "Je to naozaj táto pieseň?"
+
+msgid "или в новый:"
+msgstr "alebo do nového:"
+
+msgid "Плейлист большой — это часть {0} из {1}. При импорте выбери все части сразу."
+msgstr "Playlist je veľký — toto je časť {0} z {1}. Pri importe vyber všetky časti naraz."
+
+msgid "Отсканируй или сохрани картинку и добавь её через «Импорт → Добавить по QR-коду»."
+msgstr "Naskenuj alebo ulož obrázok a pridaj ho cez „Import → Pridať cez QR kód“."
+
+msgid "Предыдущая часть"
+msgstr "Predchádzajúca časť"
+
+msgid "Следующая часть"
+msgstr "Ďalšia časť"
+
+msgid "«{0}» ({1} треков) улетит за горизонт событий. Вернуть не получится."
+msgstr "„{0}“ ({1} skladieb) odletí za horizont udalostí. Vrátiť sa to nedá."
+
+msgid "Искал"
+msgstr "Hľadal som"
+
+msgid "Нашлось на YT Music"
+msgstr "Našlo sa na YT Music"
+
+msgid "Название, артист или длительность не сходятся — возможно, это другая песня или другая версия. Осталось проверить: {}"
+msgstr "Názov, interpret alebo dĺžka nesedia — možno je to iná pieseň alebo iná verzia. Zostáva skontrolovať: {}"
+
+msgid "Оставить все"
+msgstr "Nechať všetky"
+
+msgid "Пропустить все"
+msgstr "Preskočiť všetky"
+
+msgid "Название плейлиста"
+msgstr "Názov playlistu"
+
+msgid "Отмена"
+msgstr "Zrušiť"
+
+msgid "Пропустить"
+msgstr "Preskočiť"
+
+msgid "Оставить"
+msgstr "Nechať"
+
+msgid "Сохранить все PNG"
+msgstr "Uložiť všetky PNG"
+
+msgid "Сохранить PNG"
+msgstr "Uložiť PNG"
+
+msgid "Создать"
+msgstr "Vytvoriť"
+
+msgid "Удалить"
+msgstr "Zmazať"
+
+msgid "Быстрая настройка"
+msgstr "Rýchle nastavenie"
+
+msgid "Пара вещей, чтобы всё сразу работало. Потом всё меняется в настройках."
+msgstr "Pár vecí, aby všetko hneď fungovalo. Neskôr sa to dá zmeniť v nastaveniach."
+
+msgid "Браузер, где ты залогинен в YouTube"
+msgstr "Prehliadač, kde si prihlásený do YouTube"
+
+msgid "Если YouTube начнёт просить доказать, что ты не бот, плеер возьмёт куки из этого браузера. Они никуда, кроме YouTube, не уходят."
+msgstr "Ak YouTube začne chcieť dôkaz, že nie si bot, prehrávač zoberie cookies z tohto prehliadača. Nikam okrem YouTube nejdú."
+
+msgid "Без кук"
+msgstr "Bez cookies"
+
+msgid "Ключ Spicy Lyrics — необязательно, но желательно"
+msgstr "Kľúč Spicy Lyrics — nepovinné, ale odporúčané"
+
+msgid "Ещё один источник текстов: синки по слогам и бэк-вокал. Ключ бесплатный и хранится только у тебя."
+msgstr "Ďalší zdroj textov: synchronizácia po slabikách a doprovodné vokály. Kľúč je zadarmo a zostáva len u teba."
+
+msgid "Готово"
+msgstr "Hotovo"
+
+msgid "Продолжить"
+msgstr "Pokračovať"
+
+msgid "Название и описание"
+msgstr "Názov a popis"
+
+msgid "Изменить плейлист"
+msgstr "Upraviť playlist"
+
+msgid "Описание (необязательно)"
+msgstr "Popis (nepovinné)"
+
+msgid "Сохранить"
+msgstr "Uložiť"
+
+msgid "Моя музыка"
+msgstr "Moja hudba"
+
+msgid "Статистика"
+msgstr "Štatistiky"
+
+msgid "Ищу музыку в папках…"
+msgstr "Hľadám hudbu v priečinkoch…"
+
+msgid "{} треков с диска · папка загрузок подхватывается сама"
+msgstr "{} skladieb z disku · priečinok sťahovania sa pridá sám"
+
+msgid "Пересканировать папки"
+msgstr "Znova prehľadať priečinky"
+
+msgid "Добавить папку"
+msgstr "Pridať priečinok"
+
+msgid "Убрать папку"
+msgstr "Odobrať priečinok"
+
+msgid "Пока пусто. Добавь папку с mp3, flac, ogg или m4a — треки появятся здесь, их можно класть в плейлисты наравне со стримингом."
+msgstr "Zatiaľ prázdno. Pridaj priečinok s mp3, flac, ogg alebo m4a — skladby sa objavia tu a dajú sa dávať do playlistov rovnako ako streamované."
+
+msgid "Сегодня"
+msgstr "Dnes"
+
+msgid "За неделю"
+msgstr "Tento týždeň"
+
+msgid "За месяц"
+msgstr "Tento mesiac"
+
+msgid "За всё время"
+msgstr "Celkovo"
+
+msgid "Год музыки"
+msgstr "Rok hudby"
+
+msgid "пн"
+msgstr "po"
+
+msgid "ср"
+msgstr "st"
+
+msgid "пт"
+msgstr "pi"
+
+msgid "Наведи на клетку — покажу, сколько слушал в тот день"
+msgstr "Prejdi myšou na štvorček — ukážem, koľko si v ten deň počúval"
+
+msgid "меньше"
+msgstr "menej"
+
+msgid "больше"
+msgstr "viac"
+
+msgid "Пока пусто — включи что-нибудь, и тут появятся любимые исполнители и треки."
+msgstr "Zatiaľ prázdno — pusti niečo a objavia sa tu tvoji obľúbení interpreti a skladby."
+
+msgid "Любимый исполнитель"
+msgstr "Obľúbený interpret"
+
+msgid "{} вместе"
+msgstr "{} spolu"
+
+msgid "Топ-5 треков"
+msgstr "Top 5 skladieb"
+
+msgid "Цвета из обложки"
+msgstr "Farby z obalu"
+
+msgid "Акцентные цвета интерфейса подстраиваются под обложку играющего трека. Выбор темы выше выключает это."
+msgstr "Farby rozhrania sa prispôsobia obalu hrajúcej skladby. Výber témy vyššie to vypne."
+
+msgid "Выравнивать громкость"
+msgstr "Vyrovnávať hlasitosť"
+
+msgid "Тихие треки подтягиваются, громкие прижимаются — не надо крутить громкость между песнями. Почти не нагружает процессор."
+msgstr "Tiché skladby sa zosilnia, hlasné stlmia — netreba krútiť hlasitosťou medzi pesničkami. Takmer nezaťažuje procesor."
+
+msgid "Кроссфейд: выкл"
+msgstr "Prelínanie: vyp"
+
+msgid "Кроссфейд: {} с"
+msgstr "Prelínanie: {} s"
+
+msgid "Конец трека плавно перетекает в начало следующего. Если следующий ещё не подгружен — обычный переход."
+msgstr "Koniec skladby plynulo prejde do začiatku ďalšej. Ak ďalšia ešte nie je načítaná — obyčajný prechod."
+
+msgid "Дальше похожее"
+msgstr "Ďalej podobné"
+
+msgid "Когда плейлист или очередь заканчиваются, музыка не замолкает — включаются похожие треки."
+msgstr "Keď sa playlist alebo front minie, hudba neutíchne — pustia sa podobné skladby."
+
+msgid "Таймер сна"
+msgstr "Časovač spánku"
+
+msgid "Музыка плавно затихнет и встанет на паузу. Тот же таймер — на луне в плеере."
+msgstr "Hudba plynulo stíchne a pozastaví sa. Ten istý časovač je na mesiaci v prehrávači."
+
+msgid "15 мин"
+msgstr "15 min"
+
+msgid "30 мин"
+msgstr "30 min"
+
+msgid "1 час"
+msgstr "1 hodina"
+
+msgid "После трека"
+msgstr "Po skladbe"
+
+msgid "Статус в Discord"
+msgstr "Stav v Discorde"
+
+msgid "Друзья видят, что ты слушаешь: трек, исполнитель, обложка и сколько осталось. На паузе статус пропадает."
+msgstr "Kamaráti vidia, čo počúvaš: skladbu, interpreta, obal a koľko zostáva. Pri pauze stav zmizne."
+
+msgid "В этой сборке нет Application ID для Discord — статус пока не работает."
+msgstr "Táto zostava nemá Application ID pre Discord — stav zatiaľ nefunguje."
+
+msgid "Горячие клавиши"
+msgstr "Klávesové skratky"
+
+msgid "Пробел"
+msgstr "Medzerník"
+
+msgid "пауза / играть"
+msgstr "pauza / hrať"
+
+msgid "перемотка на 5 с"
+msgstr "pretočenie o 5 s"
+
+msgid "предыдущий / следующий трек (или P / N)"
+msgstr "predchádzajúca / ďalšia skladba (alebo P / N)"
+
+msgid "громкость"
+msgstr "hlasitosť"
+
+msgid "без звука"
+msgstr "stlmiť"
+
+msgid "текст песни"
+msgstr "text piesne"
+
+msgid "перемешка / повтор"
+msgstr "náhodne / opakovanie"
+
+msgid "полный экран"
+msgstr "celá obrazovka"
+
+msgid "поиск"
+msgstr "hľadať"
+
+msgid "закрыть окно или выйти из поля ввода"
+msgstr "zavrieť okno alebo opustiť textové pole"
+
+msgid "Усну после этого трека"
+msgstr "Zaspím po tejto skladbe"
+
+msgid "Усну через {} мин"
+msgstr "Zaspím o {} min"
+
+msgid "Нажми на клавишу справа и потом новое сочетание. Занятая клавиша поменяется местами. Esc всегда закрывает окна и выходит из поля ввода."
+msgstr "Klikni na kláves vpravo a potom stlač novú kombináciu. Ak je obsadená, vymenia sa. Esc vždy zatvára okná a opúšťa textové polia."
+
+msgid "жми клавишу… (Esc — отмена)"
+msgstr "stlač kláves… (Esc — zrušiť)"
+
+msgid "Вернуть клавиши по умолчанию"
+msgstr "Vrátiť predvolené klávesy"
+
+msgid "Неон"
+msgstr "Neón"
+
+msgid "Лава"
+msgstr "Láva"
+
+msgid "Лаванда"
+msgstr "Levanduľa"
+
+msgid "Аврора"
+msgstr "Polárna žiara"
+
+msgid "Полночь"
+msgstr "Polnoc"
+
+msgid "Золото"
+msgstr "Zlato"
+
+msgid "Мята"
+msgstr "Mäta"
+
+msgid "Кровь"
+msgstr "Krv"
+
+msgid "Персик"
+msgstr "Broskyňa"
+
+msgid "Главная"
+msgstr "Domov"
+
+msgid "Собираю миксы…"
+msgstr "Skladám mixy…"
+
+msgid "Пересобрать миксы"
+msgstr "Poskladať mixy znova"
+
+msgid "Послушай пару треков — и тут появятся миксы под тебя, недавнее и похожие артисты. А пока ищи что угодно сверху."
+msgstr "Vypočuj si pár skladieb — a objavia sa tu mixy pre teba, nedávne a podobní interpreti. Zatiaľ hľadaj čokoľvek hore."
+
+msgid "Собираю миксы под тебя…"
+msgstr "Skladám mixy pre teba…"
+
+msgid "Твои миксы"
+msgstr "Tvoje mixy"
+
+msgid "Быстрый подбор"
+msgstr "Rýchly výber"
+
+msgid "Недавно играло"
+msgstr "Nedávno hrané"
+
+msgid "Твои плейлисты"
+msgstr "Tvoje playlisty"
+
+msgid "Похоже на {}"
+msgstr "Podobné ako {}"
+
+msgid "Найти в плейлисте"
+msgstr "Hľadať v playliste"
+
+msgid "Как добавлены"
+msgstr "Ako pridané"
+
+msgid "Сначала новые"
+msgstr "Najnovšie prvé"
+
+msgid "Название"
+msgstr "Názov"
+
+msgid "Артист"
+msgstr "Interpret"
+
+msgid "Длительность"
+msgstr "Dĺžka"
+
+msgid "Ничего не нашлось"
+msgstr "Nič sa nenašlo"
+
+msgid "Офлайн-кэш"
+msgstr "Offline cache"
+
+msgid "Прослушанные треки тихо сохраняются на диск: повторно играют мгновенно и без интернета. Старые вытесняются, когда кэш упрётся в предел."
+msgstr "Prehrané skladby sa potichu ukladajú na disk: nabudúce hrajú okamžite, aj bez internetu. Staré sa vytlačia, keď cache narazí na limit."
+
+msgid "Предел:"
+msgstr "Limit:"
+
+msgid "{} ГБ"
+msgstr "{} GB"
+
+msgid "Очистить · {}"
+msgstr "Vymazať · {}"
+
+msgid "Плейлисты, история, статистика и настройки хранятся у тебя на компьютере. Аккаунт — по желанию, только чтобы плейлисты были одинаковые на всех компах. Никаких подписок и телеметрии."
+msgstr "Playlisty, história, štatistiky a nastavenia sú u teba v počítači. Účet je voliteľný, len aby boli playlisty rovnaké na všetkých počítačoch. Žiadne predplatné ani telemetria."
+
+msgid "Поиск сразу по YouTube Music, SoundCloud и Яндекс Музыке. Импорт плейлистов и альбомов из Spotify, Apple Music, YouTube Music, SoundCloud и Яндекса — одной ссылкой или QR-кодом."
+msgstr "Vyhľadávanie naraz v YouTube Music, SoundCloud a Yandex Music. Import playlistov a albumov zo Spotify, Apple Music, YouTube Music, SoundCloud a Yandexu jedným odkazom alebo QR kódom."
+
+msgid "Твои файлы рядом со стримингом"
+msgstr "Tvoje súbory vedľa streamingu"
+
+msgid "mp3, flac, ogg и m4a из твоих папок играют наравне со стримингом и живут в тех же плейлистах."
+msgstr "mp3, flac, ogg a m4a z tvojich priečinkov hrajú rovnako ako streaming a žijú v tých istých playlistoch."
+
+msgid "Главная под тебя"
+msgstr "Domov na mieru"
+
+msgid "Каждый день свежие миксы по тому, что ты слушаешь: твой микс, миксы по любимым артистам и открытия — то, чего ты ещё не слышал."
+msgstr "Každý deň čerstvé mixy podľa toho, čo počúvaš: tvoj mix, mixy podľa obľúbených interpretov a objavy — to, čo si ešte nepočul."
+
+msgid "Караоке по словам, свечение, волна по буквам и семь анимаций ухода строк. Тексты собираются из нескольких источников и подгоняются под твой трек."
+msgstr "Karaoke po slovách, žiara, vlna po písmenách a sedem animácií odchodu riadkov. Texty sa zbierajú z viacerých zdrojov a zarovnávajú sa na tvoju skladbu."
+
+msgid "Быстрый и офлайн"
+msgstr "Rýchly a offline"
+
+msgid "Следующие треки подгружаются заранее, а прослушанные сохраняются на диск — повторно играют мгновенно и без интернета."
+msgstr "Nasledujúce skladby sa načítavajú vopred a prehrané sa ukladajú na disk — hrajú okamžite, aj bez internetu."
+
+msgid "Всё, что нужно плееру"
+msgstr "Všetko, čo prehrávač potrebuje"
+
+msgid "Кроссфейд, эквалайзер, скорость, таймер сна, горячие клавиши, очередь, история, перемешка и повтор. «Дальше похожее», когда плейлист кончился."
+msgstr "Prelínanie, ekvalizér, rýchlosť, časovač spánku, klávesové skratky, front, história, náhodné prehrávanie a opakovanie. „Ďalej podobné“, keď playlist skončí."
+
+msgid "Сколько слушал за день, неделю и месяц, год клеточками, любимый исполнитель и топ треков."
+msgstr "Koľko si počúval za deň, týždeň a mesiac, rok v štvorčekoch, obľúbený interpret a top skladby."
+
+msgid "Виден в панели и медиа-клавишах (MPRIS), показывает, что играет, в статусе Discord."
+msgstr "Je vidieť v paneli a mediálnych klávesoch (MPRIS) a v stave Discordu ukazuje, čo hrá."
+
+msgid "Пятнадцать тем"
+msgstr "Pätnásť tém"
+
+msgid "Или цвета прямо из обложки играющего трека."
+msgstr "Alebo farby priamo z obalu hrajúcej skladby."
+
+msgid "Аккаунт"
+msgstr "Účet"
+
+msgid "Войди, и плейлисты будут одинаковые на всех твоих компьютерах. Без аккаунта всё работает как раньше."
+msgstr "Prihlás sa a playlisty budú rovnaké na všetkých tvojich počítačoch. Bez účtu všetko funguje ako predtým."
+
+msgid "Почта"
+msgstr "E-mail"
+
+msgid "Пароль"
+msgstr "Heslo"
+
+msgid "Войти"
+msgstr "Prihlásiť sa"
+
+msgid "Создать аккаунт"
+msgstr "Vytvoriť účet"
+
+msgid "Забыл пароль"
+msgstr "Zabudol som heslo"
+
+msgid "Подтверди почту {}: открой ссылку из письма. Плейлисты начнут синхронизироваться сразу после этого."
+msgstr "Potvrď e-mail {}: otvor odkaz z e-mailu. Playlisty sa začnú synchronizovať hneď potom."
+
+msgid "Я подтвердил"
+msgstr "Potvrdil som"
+
+msgid "Отправить ещё раз"
+msgstr "Poslať znova"
+
+msgid "Выйти"
+msgstr "Odhlásiť sa"
+
+msgid "Синхронизирую…"
+msgstr "Synchronizujem…"
+
+msgid "Синхронизировать"
+msgstr "Synchronizovať"
+
+msgid "Секунду…"
+msgstr "Moment…"
+
+msgid "Синхронизировать плейлисты"
+msgstr "Synchronizovať playlisty"
+
+msgid "Войти в аккаунт"
+msgstr "Prihlásiť sa do účtu"
+
+msgid "История, статистика и настройки хранятся у тебя на компьютере. Плейлисты — в твоём аккаунте, одинаковые на всех компах. Никаких подписок и телеметрии."
+msgstr "História, štatistiky a nastavenia sú u teba v počítači. Playlisty sú v tvojom účte, rovnaké na každom počítači. Žiadne predplatné ani telemetria."
+
+msgid "Подтверди почту"
+msgstr "Potvrď e-mail"
+
+msgid "Плейлисты хранятся в аккаунте и одинаковые на всех твоих компьютерах."
+msgstr "Playlisty sú uložené v účte a sú rovnaké na všetkých tvojich počítačoch."
+
+msgid "Вход в Gargantua"
+msgstr "Prihlásenie do Gargantua"
+
+msgid "Без слежки"
+msgstr "Bez sledovania"
+
+msgid "Почта и пароль от 6 символов. На почту придёт письмо со ссылкой для подтверждения."
+msgstr "E-mail a heslo aspoň so 6 znakmi. Príde ti e-mail s odkazom na potvrdenie."
+
+msgid "Пароль ещё раз"
+msgstr "Heslo znova"
+
+msgid "Пароли не совпадают"
+msgstr "Heslá sa nezhodujú"
+
+msgid "Уже есть аккаунт?"
+msgstr "Už máš účet?"
+
+msgid "Нет аккаунта?"
+msgstr "Nemáš účet?"
+
+msgid "Зарегистрироваться"
+msgstr "Zaregistrovať sa"
+
+msgid "Регистрация"
+msgstr "Registrácia"
+
+msgid "Плейлисты хранятся в аккаунте и одинаковые на всех твоих компьютерах. Правки уходят на сервер сразу, свежие подтягиваются раз в минуту. История, статистика и настройки остаются на этом компьютере."
+msgstr "Playlisty sú uložené v účte a sú rovnaké na všetkých tvojich počítačoch. Úpravy idú na server hneď, nové sa sťahujú raz za minútu. História, štatistiky a nastavenia zostávajú na tomto počítači."
+
+msgid "Сменить пароль"
+msgstr "Zmeniť heslo"
+
+msgid "Перевод текста"
+msgstr "Preklad textu"
+
+msgid "Растворение у краёв: выкл"
+msgstr "Rozplývanie pri okrajoch: vyp"
+
+msgid "Растворение у краёв: {} px"
+msgstr "Rozplývanie pri okrajoch: {} px"
+
+msgid "Строки текста плавно гаснут у верха и низа, а не обрезаются. Ползунок до упора влево — выключить."
+msgstr "Riadky textu plynulo miznú pri hornom a dolnom okraji namiesto orezania. Posuvník úplne doľava — vypnúť."
+
+msgid "Убрать из любимых"
+msgstr "Odobrať z obľúbených"
+
+msgid "В любимые"
+msgstr "Do obľúbených"
+
+msgid "Лайкнуть все треки"
+msgstr "Lajknúť všetky skladby"
+
+msgid "На телефон"
+msgstr "Na telefón"
+
+msgid "{} · играет на «{}»"
+msgstr "{} · hrá na „{}“"
+
+msgid "Играет на «{}»"
+msgstr "Hrá na „{}“"
+
+msgid "Устройства"
+msgstr "Zariadenia"
+
+msgid "Где играть"
+msgstr "Kde hrať"
+
+msgid "Все устройства твоего аккаунта, где открыт Gargantua"
+msgstr "Všetky zariadenia tvojho účtu, kde je otvorený Gargantua"
+
+msgid "звук тут"
+msgstr "hrá tu"
+
+msgid "это устройство"
+msgstr "toto zariadenie"
+
+msgid "Повтор трека"
+msgstr "Opakovať skladbu"

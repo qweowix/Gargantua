@@ -25,6 +25,9 @@ pub struct Stats {
     pub days: BTreeMap<i64, u64>,
     pub tracks: HashMap<String, TrackStat>,
     pub artists: HashMap<String, u64>,
+    /// чья это доля статистики аккаунта (поле st.<device> в облаке). Живёт в самом файле: копия файла
+    /// на другой машине пишет в ту же долю, а не считается дважды
+    pub device: String,
 }
 
 /// Сейчас по местному времени (поля C-шного tm: год от 1900, месяц с 0)
@@ -96,7 +99,41 @@ impl Stats {
     }
 
     pub fn load() -> Self {
-        fs::read(Self::path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        let mut s: Self = fs::read(Self::path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        if s.device.is_empty() {
+            use std::hash::{BuildHasher, Hasher};
+            // RandomState засеян случайно на каждый процесс — хватает, чтобы у устройств не совпало
+            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+            h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
+            s.device = format!("d{:016x}", h.finish());
+        }
+        s
+    }
+
+    /// Доложить чужую статистику к своей: время и прослушивания складываются, «последний раз» — свежее
+    pub fn absorb(&mut self, o: &Stats) {
+        for (d, ms) in &o.days {
+            *self.days.entry(*d).or_default() += ms;
+        }
+        for (k, t) in &o.tracks {
+            let e = self.tracks.entry(k.clone()).or_insert_with(|| TrackStat { track: t.track.clone(), ..Default::default() });
+            e.ms += t.ms;
+            e.plays += t.plays;
+            if t.last > e.last {
+                e.last = t.last;
+                e.track = t.track.clone();
+            }
+        }
+        for (a, ms) in &o.artists {
+            *self.artists.entry(a.clone()).or_default() += ms;
+        }
+    }
+
+    /// Своя статистика вместе с долями других устройств аккаунта
+    pub fn with(&self, others: &Stats) -> Stats {
+        let mut s = self.clone();
+        s.absorb(others);
+        s
     }
 
     pub fn save(&self) {
@@ -179,6 +216,24 @@ pub fn level(ms: u64) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn absorb() {
+        let t = Track { title: "a".into(), artist: "X, Y".into(), ..Default::default() };
+        let (mut pc, mut phone) = (Stats::default(), Stats::default());
+        pc.add(&t, 10.0, 5);
+        pc.play(&t);
+        phone.add(&t, 4.0, 5);
+        phone.add(&t, 1.0, 6);
+        phone.play(&t);
+        let all = pc.with(&phone);
+        assert_eq!(all.days[&5], 14_000);
+        assert_eq!(all.days[&6], 1_000);
+        assert_eq!(all.tracks[&t.key()].plays, 2);
+        assert_eq!(all.tracks[&t.key()].ms, 15_000);
+        assert_eq!(all.artists["Y"], 15_000);
+        assert_eq!(pc.tracks[&t.key()].plays, 1); // своя не тронута
+    }
 
     #[test]
     fn counts() {

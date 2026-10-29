@@ -125,8 +125,8 @@ msgstr "Suck it in"
 msgid "Добавить по QR-коду"
 msgstr "Add from a QR code"
 
-msgid "• Spotify: open.spotify.com/playlist/… или /album/…\n• Apple Music: music.apple.com/…/playlist/… или /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/юзер/sets/…\n• Яндекс Музыка: music.yandex.ru/users/…/playlists/… или /album/…\n• QR-код: картинка или фото QR, которым поделились из BlackHole (можно выбрать сразу все части)"
-msgstr "• Spotify: open.spotify.com/playlist/… or /album/…\n• Apple Music: music.apple.com/…/playlist/… or /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/user/sets/…\n• Yandex Music: music.yandex.ru/users/…/playlists/… or /album/…\n• QR code: a picture or photo of a QR shared from BlackHole (you can pick all parts at once)"
+msgid "• Spotify: open.spotify.com/playlist/… или /album/…\n• Apple Music: music.apple.com/…/playlist/… или /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/юзер/sets/…\n• Яндекс Музыка: music.yandex.ru/users/…/playlists/… или /album/…\n• QR-код: картинка или фото QR, которым поделились из Gargantua (можно выбрать сразу все части)"
+msgstr "• Spotify: open.spotify.com/playlist/… or /album/…\n• Apple Music: music.apple.com/…/playlist/… or /album/…\n• YouTube Music: music.youtube.com/playlist?list=…\n• SoundCloud: soundcloud.com/user/sets/…\n• Yandex Music: music.yandex.ru/users/…/playlists/… or /album/…\n• QR code: a picture or photo of a QR shared from Gargantua (you can pick all parts at once)"
 
 msgid "версия {}"
 msgstr "version {}"
@@ -135,7 +135,7 @@ msgid "Полностью бесплатный музыкальный плеер
 msgstr "A completely free, open-source music player with support for multiple music streaming services.\nDeveloped by qweowix"
 
 msgid "ГЛАВНЫЕ ПЛЮСЫ"
-msgstr "WHY BLACKHOLE"
+msgstr "WHY GARGANTUA"
 
 msgid "Всё локально"
 msgstr "Everything is local"
@@ -911,8 +911,8 @@ msgstr "Confirm your email"
 msgid "Плейлисты хранятся в аккаунте и одинаковые на всех твоих компьютерах."
 msgstr "Playlists live in your account and are the same on all your computers."
 
-msgid "Вход в BlackHole"
-msgstr "Sign in to BlackHole"
+msgid "Вход в Gargantua"
+msgstr "Sign in to Gargantua"
 
 msgid "Без слежки"
 msgstr "No tracking"
@@ -943,3 +943,51 @@ msgstr "Playlists live in your account and are the same on all your computers. E
 
 msgid "Сменить пароль"
 msgstr "Change password"
+
+msgid "Перевод текста"
+msgstr "Translate lyrics"
+
+msgid "Растворение у краёв: выкл"
+msgstr "Edge fade: off"
+
+msgid "Растворение у краёв: {} px"
+msgstr "Edge fade: {} px"
+
+msgid "Строки текста плавно гаснут у верха и низа, а не обрезаются. Ползунок до упора влево — выключить."
+msgstr "Lyrics lines fade out smoothly near the top and bottom instead of being cut off. Slide all the way left to turn it off."
+
+msgid "Убрать из любимых"
+msgstr "Remove from Liked"
+
+msgid "В любимые"
+msgstr "Add to Liked"
+
+msgid "Лайкнуть все треки"
+msgstr "Like all tracks"
+
+msgid "На телефон"
+msgstr "To phone"
+
+msgid "{} · играет на «{}»"
+msgstr "{} · playing on “{}”"
+
+msgid "Играет на «{}»"
+msgstr "Playing on “{}”"
+
+msgid "Устройства"
+msgstr "Devices"
+
+msgid "Где играть"
+msgstr "Play on"
+
+msgid "Все устройства твоего аккаунта, где открыт Gargantua"
+msgstr "All devices on your account with Gargantua open"
+
+msgid "звук тут"
+msgstr "playing here"
+
+msgid "это устройство"
+msgstr "this device"
+
+msgid "Повтор трека"
+msgstr "Repeat track"
