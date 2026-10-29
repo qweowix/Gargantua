@@ -6,8 +6,9 @@ pub const MAX_DB: f32 = 12.0;
 /// (название ru, название en, усиления по полосам в дБ)
 pub const PRESETS: [(&str, &str, [f32; 10]); 13] = [
     ("Ровно", "Flat", [0.0; 10]),
-    ("Bass", "Bass", [6.0, 5.0, 4.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-    ("Super Bass", "Super Bass", [10.0, 9.0, 7.0, 4.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    // бас — это 30–90 Гц; 125–250 не трогаем, иначе звук «в бочке»
+    ("Bass", "Bass", [5.0, 6.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    ("Super Bass", "Super Bass", [8.0, 9.0, 5.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.5, 1.0]),
     ("Treble", "Treble", [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 3.0, 4.0, 5.0, 6.0]),
     ("Vocal", "Vocal", [-2.0, -2.0, -1.0, 1.0, 3.0, 4.0, 3.0, 1.0, 0.0, -1.0]),
     ("Rock", "Rock", [4.0, 3.0, 2.0, 0.0, -1.0, -1.0, 1.0, 3.0, 4.0, 4.0]),
@@ -21,19 +22,50 @@ pub const PRESETS: [(&str, &str, [f32; 10]); 13] = [
 ];
 
 /// Строка для `af` в mpv. Пусто — фильтров нет вообще (ровный звук ничего не стоит).
-/// Если полосы подняты — заранее опускаем общий уровень, иначе громкие места хрипят от перегруза
+/// Полосы — колокола шириной в октаву и перекрываются: соседние складываются, и бас выходил выше
+/// ползунков (Bass +6 давал +7 на 31 Гц и +5.5 на 125). Поэтому усиления подгоняем по настоящей
+/// АЧХ, чтобы кривая шла ровно через ползунки, а общий уровень опускаем на её реальный пик — без клипа
 pub fn af(gains: &[f32]) -> String {
-    let mut chain: Vec<String> = vec![];
-    let boost = gains.iter().cloned().fold(0.0f32, f32::max);
-    let bands = BANDS.iter().zip(gains).filter(|(_, g)| g.abs() >= 0.05);
-    if bands.clone().next().is_some() && boost > 0.0 {
-        chain.push(format!("volume=volume={:.1}dB", -boost * 0.7));
-    }
-    chain.extend(bands.map(|(f, g)| format!("equalizer=f={f}:t=o:w=1:g={g:.1}")));
-    if chain.is_empty() {
+    if gains.iter().all(|g| g.abs() < 0.05) {
         return String::new();
     }
+    let target: Vec<f64> = gains.iter().map(|&g| g as f64).collect();
+    let mut set = target.clone();
+    for _ in 0..30 {
+        for (k, f) in BANDS.iter().enumerate() {
+            set[k] = (set[k] + target[k] - response(&set, *f as f64)).clamp(-24.0, 24.0);
+        }
+    }
+    // пик по всему слышимому диапазону с шагом 1/12 октавы
+    let peak = (0..=120).map(|i| response(&set, 20.0 * 2f64.powf(i as f64 / 12.0))).fold(0.0, f64::max);
+    let mut chain = vec![];
+    if peak > 0.05 {
+        chain.push(format!("volume=volume={:.1}dB", -peak));
+    }
+    chain.extend(BANDS.iter().zip(&set).filter(|(_, g)| g.abs() >= 0.05).map(|(f, g)| format!("equalizer=f={f}:t=o:w=1:g={g:.1}")));
     format!("lavfi=[{}]", chain.join(","))
+}
+
+/// АЧХ цепочки колоколов (дБ) на частоте f — те же формулы RBJ, что у фильтра equalizer в ffmpeg
+fn response(gains: &[f64], f: f64) -> f64 {
+    const RATE: f64 = 48000.0;
+    let w = 2.0 * std::f64::consts::PI * f / RATE;
+    BANDS
+        .iter()
+        .zip(gains)
+        .filter(|(_, g)| g.abs() >= 0.05)
+        .map(|(&fc, &g)| {
+            let w0 = 2.0 * std::f64::consts::PI * fc as f64 / RATE;
+            let a = 10f64.powf(g / 40.0);
+            let alpha = w0.sin() * (2f64.ln() / 2.0 * w0 / w0.sin()).sinh();
+            let (b, d) = ([1.0 + alpha * a, -2.0 * w0.cos(), 1.0 - alpha * a], [1.0 + alpha / a, -2.0 * w0.cos(), 1.0 - alpha / a]);
+            let mag = |c: [f64; 3]| {
+                let (re, im) = (c[0] + c[1] * w.cos() + c[2] * (2.0 * w).cos(), -c[1] * w.sin() - c[2] * (2.0 * w).sin());
+                re * re + im * im
+            };
+            10.0 * (mag(b) / mag(d)).log10()
+        })
+        .sum()
 }
 
 /// Какой пресет совпадает с текущими полосами (-1 — свои настройки)
@@ -47,9 +79,22 @@ mod tests {
     fn filter_string() {
         assert_eq!(super::af(&[0.0; 10]), "");
         let s = super::af(&[6.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -3.0]);
-        assert_eq!(s, "lavfi=[volume=volume=-4.2dB,equalizer=f=31:t=o:w=1:g=6.0,equalizer=f=16000:t=o:w=1:g=-3.0]");
+        assert!(s.starts_with("lavfi=[volume=volume=-") && s.contains("equalizer=f=31:t=o:w=1:g=") && s.contains("equalizer=f=16000"), "{s}");
         assert_eq!(super::preset_of(&super::PRESETS[1].2), 1);
         assert_eq!(super::preset_of(&[1.0; 10]), -1);
+    }
+
+    /// Настоящая кривая идёт через ползунки (а не выше, как у сложенных колоколов)
+    #[test]
+    fn curve_hits_sliders() {
+        for (_, _, g) in super::PRESETS.iter().skip(1) {
+            let s = super::af(g);
+            let set: Vec<f64> = super::BANDS.iter().map(|f| s.split(&format!("equalizer=f={f}:t=o:w=1:g=")).nth(1).map_or(0.0, |r| r.split([',', ']']).next().unwrap().parse().unwrap())).collect();
+            for (k, f) in super::BANDS.iter().enumerate() {
+                let got = super::response(&set, *f as f64);
+                assert!((got - g[k] as f64).abs() < 0.3, "{f} Гц: {got:.2} вместо {}", g[k]);
+            }
+        }
     }
 
     /// mpv сам проверяет, что такая цепочка фильтров валидна (нужен mpv в системе)
