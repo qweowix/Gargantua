@@ -52,6 +52,7 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -206,6 +207,11 @@ fun TrackRow(
                     text = { Text(tr("Играть следующим", "Play next", "Грати наступним", "Hrať ako ďalšiu")) },
                     leadingIcon = { Icon(Icons.AutoMirrored.Rounded.QueueMusic, null) },
                     onClick = { menu = false; vm.playNext(t) },
+                )
+                DropdownMenuItem(
+                    text = { Text(tr("Поделиться ссылкой", "Share link", "Поділитися посиланням", "Zdieľať odkaz")) },
+                    leadingIcon = { Icon(Icons.Rounded.Link, null) },
+                    onClick = { menu = false; vm.share(t) },
                 )
                 DropdownMenuItem(
                     text = { Text(tr("Радио по треку", "Track radio", "Радіо за треком", "Rádio podľa skladby")) },

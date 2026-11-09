@@ -122,6 +122,7 @@ global Icons {
     out property <string> next: "M5 5.5v13l9.5-6.5zM16 5h2.5v14H16z";
     out property <string> prev: "M19 5.5v13L9.5 12zM5.5 5H8v14H5.5z";
     out property <string> plus: "M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z";
+    out property <string> link: "M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 0-10z";
     out property <string> download: "M11 4h2v9.17l3.59-3.58L18 11l-6 6-6-6 1.41-1.41L11 13.17zM5 18h14v2H5z";
     out property <string> check: "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
     out property <string> folder: "M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8z";
@@ -569,6 +570,7 @@ component TrackRow inherits Rectangle {
     callback radio();
     callback artist();
     callback download();
+    callback share();
     callback want-cover(string);
     height: 58px;
     border-radius: 10px;
@@ -668,6 +670,18 @@ component TrackRow inherits Rectangle {
                 tip: @tr("Радио по этому треку");
                 clicked => {
                     root.radio();
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            IconBtn {
+                size: 30px;
+                icon: Icons.link;
+                tip: @tr("Поделиться ссылкой");
+                clicked => {
+                    root.share();
                 }
             }
         }
@@ -1475,6 +1489,17 @@ component Page inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
+    // в буфер обмена Slint пишет только из поля ввода: это поле никто не видит, через него копируем
+    clip := TextInput {
+        visible: false;
+        width: 0;
+        height: 0;
+    }
+    public function copy-text(s: string) {
+        clip.text = s;
+        clip.select-all();
+        clip.copy();
+    }
     title: "Gargantua";
     icon: @image-url("../assets/icon-256.png");
     preferred-width: 1120px;
@@ -1628,6 +1653,7 @@ export component AppWindow inherits Window {
     callback qr-page(int);
     callback qr-save();
     callback radio(int, int);
+    callback share(int, int);
     in property <bool> hole-always: true;
     in property <string> version;
     callback set-lang(string);
@@ -2215,6 +2241,9 @@ export component AppWindow inherits Window {
                                                 radio => {
                                                     root.radio(i, 8);
                                                 }
+                                                share => {
+                                                    root.share(i, 8);
+                                                }
                                                 artist => {
                                                     root.open-artist(i, 8);
                                                 }
@@ -2323,6 +2352,9 @@ export component AppWindow inherits Window {
                                             }
                                             radio => {
                                                 root.radio(i, 0);
+                                            }
+                                            share => {
+                                                root.share(i, 0);
                                             }
                                             artist => {
                                                 root.open-artist(i, 0);
@@ -2593,6 +2625,9 @@ export component AppWindow inherits Window {
                                         radio => {
                                             root.radio(i, 1);
                                         }
+                                        share => {
+                                            root.share(i, 1);
+                                        }
                                         artist => {
                                             root.open-artist(i, 1);
                                         }
@@ -2823,6 +2858,9 @@ export component AppWindow inherits Window {
                                     }
                                     radio => {
                                         root.radio(i, 6);
+                                    }
+                                    share => {
+                                        root.share(i, 6);
                                     }
                                     artist => {
                                         root.open-artist(i, 6);
@@ -3112,6 +3150,9 @@ export component AppWindow inherits Window {
                                 }
                                 radio => {
                                     root.radio(i, 7);
+                                }
+                                share => {
+                                    root.share(i, 7);
                                 }
                                 artist => {
                                     root.open-artist(i, 7);
@@ -3448,6 +3489,9 @@ export component AppWindow inherits Window {
                                         radio => {
                                             root.radio(i, 4);
                                         }
+                                        share => {
+                                            root.share(i, 4);
+                                        }
                                         artist => {
                                             root.open-artist(i, 4);
                                         }
@@ -3629,6 +3673,9 @@ export component AppWindow inherits Window {
                                     }
                                     radio => {
                                         root.radio(i, 5);
+                                    }
+                                    share => {
+                                        root.share(i, 5);
                                     }
                                     artist => {
                                         root.open-artist(i, 5);
@@ -4469,6 +4516,18 @@ export component AppWindow inherits Window {
                                 tip: @tr("Радио по этому треку");
                                 clicked => {
                                     root.radio(0, 2);
+                                }
+                            }
+                        }
+
+                        if root.has-track: VerticalLayout {
+                            alignment: center;
+                            IconBtn {
+                                size: 30px;
+                                icon: Icons.link;
+                                tip: @tr("Поделиться ссылкой");
+                                clicked => {
+                                    root.share(0, 2);
                                 }
                             }
                         }

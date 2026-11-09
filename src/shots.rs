@@ -16,6 +16,8 @@ thread_local! {
     static NOW: Cell<Duration> = const { Cell::new(Duration::ZERO) };
 }
 
+thread_local!(static CLIP: std::cell::RefCell<String> = Default::default());
+
 struct Offscreen(Rc<MinimalSoftwareWindow>);
 
 impl Platform for Offscreen {
@@ -25,6 +27,9 @@ impl Platform for Offscreen {
     // время двигаем сами: перед снимком проматываем все анимации до конца
     fn duration_since_start(&self) -> Duration {
         NOW.with(Cell::get)
+    }
+    fn set_clipboard_text(&self, text: &str, _: slint::platform::Clipboard) {
+        CLIP.with(|c| *c.borrow_mut() = text.to_string());
     }
 }
 
@@ -97,6 +102,8 @@ fn ui() {
     ui.set_intro_t(100_000.0);
     ui.set_intro_gone(true);
     slint::select_bundled_translation("").unwrap();
+    ui.invoke_copy_text("https://soundcloud.com/a/b".into());
+    assert_eq!(CLIP.with(|c| c.borrow().clone()), "https://soundcloud.com/a/b");
     let tracks = Rc::new(VecModel::from(vec![
         track("Cigarettes out the Window", "TV Girl", 0),
         track("Lovers Rock", "TV Girl", 2),

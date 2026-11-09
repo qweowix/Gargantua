@@ -53,6 +53,17 @@ impl Track {
     pub fn key(&self) -> String {
         format!("{}:{}", self.src.tag(), self.id)
     }
+
+    /// Ссылка на трек там, откуда он (SoundCloud — на SoundCloud, даже если играет через YT Music).
+    /// У файла на диске ссылки нет
+    pub fn share_url(&self) -> Option<String> {
+        match self.src {
+            Src::Lc => None,
+            _ if self.url.starts_with("http") => Some(self.url.clone()),
+            Src::Yt if !self.id.is_empty() => Some(format!("https://music.youtube.com/watch?v={}", self.id)),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -209,6 +220,17 @@ pub fn fmt_dur(s: u64) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn share_url_points_to_source() {
+        let t = |src, id: &str, url: &str| super::Track { src, id: id.into(), url: url.into(), ..Default::default() };
+        // превью SoundCloud играет с YT Music, но ссылка всё равно на SoundCloud
+        let sc = super::Track { snip: true, ..t(super::Src::Sc, "1", "https://soundcloud.com/a/b") };
+        assert_eq!(sc.share_url().unwrap(), "https://soundcloud.com/a/b");
+        assert_eq!(t(super::Src::Yt, "abc", "").share_url().unwrap(), "https://music.youtube.com/watch?v=abc");
+        assert_eq!(t(super::Src::Lc, "/m/a.mp3", "/m/a.mp3").share_url(), None);
+        assert_eq!(t(super::Src::Sc, "1", "").share_url(), None);
+    }
+
     use super::*;
 
     #[test]

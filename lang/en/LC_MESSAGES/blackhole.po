@@ -991,3 +991,6 @@ msgstr "this device"
 
 msgid "Повтор трека"
 msgstr "Repeat track"
+
+msgid "Поделиться ссылкой"
+msgstr "Share link"

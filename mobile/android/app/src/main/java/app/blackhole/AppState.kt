@@ -574,6 +574,20 @@ class AppState(app: Application) : AndroidViewModel(app) {
         c.play()
     }
 
+    /** Ссылка на трек там, откуда он — в буфер обмена. Логика как Track::share_url на ПК */
+    fun share(t: Track) {
+        val url = when {
+            t.src == "lc" -> ""
+            t.url.startsWith("http") -> t.url
+            t.src == "yt" && t.id.isNotEmpty() -> "https://music.youtube.com/watch?v=${t.id}"
+            else -> ""
+        }
+        if (url.isEmpty()) return toast(tr("У этого трека нет ссылки", "This track has no link", "У цього треку немає посилання", "Táto skladba nemá odkaz"))
+        val clip = getApplication<Application>().getSystemService(android.content.ClipboardManager::class.java)
+        clip.setPrimaryClip(android.content.ClipData.newPlainText(t.title, url))
+        toast(tr("Ссылка скопирована", "Link copied", "Посилання скопійовано", "Odkaz skopírovaný"))
+    }
+
     fun playNext(t: Track) {
         remote?.let { r ->
             connQueue(r.played, listOf(t) + r.upnext, r.source, r.shuffle)

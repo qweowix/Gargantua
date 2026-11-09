@@ -1272,6 +1272,17 @@ impl App {
         }
     }
 
+    fn share(&mut self, t: &Track) {
+        let msg = match t.share_url() {
+            Some(u) => {
+                self.ui.invoke_copy_text(u.into());
+                tr!("Ссылка скопирована", "Link copied", "Посилання скопійовано", "Odkaz skopírovaný")
+            }
+            None => tr!("У этого трека нет ссылки", "This track has no link", "У цього треку немає посилання", "Táto skladba nemá odkaz"),
+        };
+        self.toast(&msg);
+    }
+
     // ── скачивание ──
 
     fn dl_dir(&self) -> std::path::PathBuf {
@@ -4258,6 +4269,13 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| {
             if let Some(t) = a.track_at(kind, i as usize) {
                 a.ask(Confirm::Radio(t));
+            }
+        });
+    });
+    ui.on_share(|i, kind| {
+        with(|a| {
+            if let Some(t) = a.track_at(kind, i as usize) {
+                a.share(&t);
             }
         });
     });
