@@ -135,7 +135,6 @@ import app.blackhole.AppState
 import app.blackhole.LyrLine
 import app.blackhole.fmtDur
 import app.blackhole.tr
-import coil3.compose.AsyncImage
 
 /** Мини-плеер — плавающая «таблетка» над нижним меню: обложка, название, ⏯ и ⏩ */
 @UnstableApi
@@ -288,8 +287,8 @@ fun NowPlaying(vm: AppState) {
         LyrBackdrop(t.cover, clock)
         // в режиме плеера обложка на всю ширину сверху и плавно уходит в фон
         AnimatedVisibility(mode == 0, enter = fadeIn(tween(350)), exit = fadeOut(tween(250))) {
-            AsyncImage(
-                bigCover(t.cover), null, contentScale = ContentScale.Crop,
+            CoverImage(
+                t.cover, big = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(0.92f)

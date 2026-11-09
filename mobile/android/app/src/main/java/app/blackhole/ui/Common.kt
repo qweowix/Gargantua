@@ -64,6 +64,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -91,6 +93,25 @@ import app.blackhole.LIKED_ART
 import androidx.compose.ui.unit.min
 import coil3.compose.AsyncImage
 
+/** Картинка обложки, которая не сдаётся: Coil после сбоя сам больше не пробует, и обложка оставалась пустой.
+ *  big — сперва большая, не вышло — обычная; потом ещё круг с паузой */
+@Composable
+fun CoverImage(url: String, modifier: Modifier, big: Boolean = false) {
+    var attempt by remember(url) { mutableIntStateOf(0) }
+    var failed by remember(url) { mutableIntStateOf(0) }
+    LaunchedEffect(url, failed) {
+        if (failed == 0) return@LaunchedEffect
+        if (!big || failed % 2 == 0) delay(1500L * failed)
+        attempt = failed
+    }
+    key(url, attempt) {
+        AsyncImage(
+            if (big && attempt % 2 == 0) bigCover(url) else url, null, contentScale = ContentScale.Crop, modifier = modifier,
+            onError = { if (attempt < 3) failed = attempt + 1 },
+        )
+    }
+}
+
 @Composable
 fun Cover(url: String, size: Dp, radius: Dp = 10.dp, modifier: Modifier = Modifier) {
     if (url == LIKED_ART) return LikedArt(modifier.size(size).clip(RoundedCornerShape(radius)))
@@ -100,7 +121,7 @@ fun Cover(url: String, size: Dp, radius: Dp = 10.dp, modifier: Modifier = Modifi
     ) {
         Icon(Icons.Rounded.MusicNote, null, tint = Pal.faint, modifier = Modifier.size(size / 2.5f))
         if (url.isNotEmpty()) {
-            AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+            CoverImage(url, Modifier.matchParentSize())
         }
     }
 }
@@ -408,7 +429,7 @@ fun Hero(image: String, round: Boolean = false, content: @Composable BoxScope.()
         if (image == LIKED_ART) {
             LikedArt(Modifier.fillMaxSize())
         } else if (image.isNotEmpty()) {
-            AsyncImage(bigCover(image), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            CoverImage(image, Modifier.fillMaxSize(), big = true)
         } else {
             Box(Modifier.fillMaxSize().background(Pal.card), contentAlignment = Alignment.Center) {
                 Icon(if (round) Icons.Rounded.Person else Icons.Rounded.MusicNote, null, tint = Pal.faint, modifier = Modifier.size(96.dp))

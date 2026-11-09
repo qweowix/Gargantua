@@ -10,6 +10,7 @@ import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.ceil
 import kotlin.math.exp
@@ -91,7 +92,11 @@ private fun Px.lift(gain: Float): Px {
 
 suspend fun backdrop(ctx: Context, url: String): Backdrop? = withContext(Dispatchers.Default) {
     val req = ImageRequest.Builder(ctx).data(url).size(128).allowHardware(false).build()
-    val img = (SingletonImageLoader.get(ctx).execute(req) as? SuccessResult)?.image?.toBitmap() ?: return@withContext null
+    // не вышло с первого раза — фон остался бы от прошлого трека
+    val img = (0..2).firstNotNullOfOrNull { n ->
+        if (n > 0) delay(1500L * n)
+        (SingletonImageLoader.get(ctx).execute(req) as? SuccessResult)?.image?.toBitmap()
+    } ?: return@withContext null
     // фон: крошечная размытая копия, растянутая на весь экран — сама превращается в мягкие пятна
     val bg = Bitmap.createScaledBitmap(img, 20, 20, true).px().blur(1.2f)
     // пятно с мягкими прозрачными краями, его таскаем поверх фона
