@@ -4479,39 +4479,6 @@ export component AppWindow inherits Window {
                             }
                         }
 
-                        if root.has-track: VerticalLayout {
-                            alignment: center;
-                            Rectangle {
-                                width: 30px;
-                                height: 30px;
-                                IconBtn {
-                                    size: 30px;
-                                    icon: Icons.more;
-                                    tip: @tr("Ещё");
-                                    active: root.sleep-mode != 0 || !root.fx-default;
-                                    clicked => {
-                                        root.open-menu(0, 2, 0, self.absolute-position.x, self.absolute-position.y);
-                                    }
-                                }
-
-                                if root.sleep-mode != 0: Rectangle {
-                                    x: parent.width - 14px;
-                                    y: -2px;
-                                    width: max(16px, sleep-badge.preferred-width + 8px);
-                                    height: 16px;
-                                    border-radius: 8px;
-                                    background: Theme.c1;
-                                    sleep-badge := Text {
-                                        text: root.sleep-mode == 4 ? "♪" : root.sleep-left;
-                                        color: white;
-                                        font-size: 9px;
-                                        font-weight: 800;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                            }
-                        }
                     }
 
                     // управление
@@ -4611,10 +4578,44 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    // устройства + очередь + текст + громкость; таймер сна и эквалайзер — в меню ⋯
+                    // меню ⋯ (таймер сна, эквалайзер…) + устройства + очередь + текст + громкость
                     HorizontalLayout {
-                        width: root.conn-on ? 312px : 272px;
+                        width: root.conn-on ? 350px : 310px;
                         spacing: 8px;
+                        if root.has-track: VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 30px;
+                                height: 30px;
+                                IconBtn {
+                                    size: 30px;
+                                    icon: Icons.more;
+                                    tip: @tr("Ещё");
+                                    active: root.sleep-mode != 0 || !root.fx-default;
+                                    clicked => {
+                                        root.open-menu(0, 2, 0, self.absolute-position.x, self.absolute-position.y);
+                                    }
+                                }
+
+                                if root.sleep-mode != 0: Rectangle {
+                                    x: parent.width - 14px;
+                                    y: -2px;
+                                    width: max(16px, sleep-badge.preferred-width + 8px);
+                                    height: 16px;
+                                    border-radius: 8px;
+                                    background: Theme.c1;
+                                    sleep-badge := Text {
+                                        text: root.sleep-mode == 4 ? "♪" : root.sleep-left;
+                                        color: white;
+                                        font-size: 9px;
+                                        font-weight: 800;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
                         // устройства Connect: куда идёт звук
                         if root.conn-on: VerticalLayout {
                             alignment: center;

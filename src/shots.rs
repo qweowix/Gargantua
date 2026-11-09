@@ -147,7 +147,7 @@ fn ui() {
     snap(&win, "02-playlist");
     ui.invoke_open_menu(1, 1, 0, 1180.0, 317.0);
     snap(&win, "02-playlist-menu");
-    ui.invoke_open_menu(0, 2, 0, 290.0, 725.0);
+    ui.invoke_open_menu(0, 2, 0, 950.0, 725.0);
     snap(&win, "02-bar-menu");
     ui.set_menu_open(false);
 
