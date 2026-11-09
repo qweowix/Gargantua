@@ -17,6 +17,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -805,6 +806,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
                     c.replaceMediaItems(0, cur, played.map { it.item() })
                 }
             }
+            "volume" -> audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (((a as? JsonPrimitive)?.doubleOrNull ?: return) * maxVol()).roundToInt(), 0)
             "transfer" -> connPick((a as? JsonPrimitive)?.contentOrNull ?: return)
         }
     }
@@ -817,6 +819,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         if (remote == null) controller?.let { if (it.isPlaying) it.pause() } // играли сами — звук теперь там
         remote = st
         remoteName = name
+        if (System.currentTimeMillis() >= volHeldUntil) st.vol?.let { remoteVol = it.toFloat() }
         val t = st.track
         if (t?.key != current?.key) {
             current = t
@@ -852,6 +855,25 @@ class AppState(app: Application) : AndroidViewModel(app) {
         readPlayer()
     }
 
+    private val audio by lazy { getApplication<Application>().getSystemService(android.media.AudioManager::class.java) }
+    private fun maxVol() = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+
+    /** Громкость там, где звук: ползунок показывает её, пока играет другое устройство */
+    var remoteVol by mutableStateOf<Float?>(null)
+        private set
+    private var volHeldUntil = 0L
+    private var volSentAt = 0L
+
+    /** Ползунок на зеркале: уходит хозяину. Пока тянут (end = false) — не чаще 5 раз в секунду, каждая команда — запись в базу */
+    fun connVolume(f: Float, end: Boolean) {
+        val now = System.currentTimeMillis()
+        remoteVol = f
+        volHeldUntil = now + 3000 // эхо из базы не дёргает ползунок назад
+        if (!end && now - volSentAt < 200) return
+        volSentAt = now
+        connSend("volume", JsonPrimitive(f))
+    }
+
     /** Наша сессия как она есть */
     private fun localState(): ConnState? {
         val c = controller ?: return null
@@ -865,6 +887,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
             source = if (shuffle) all.sortedBy { at[it.key] ?: Int.MAX_VALUE } else all,
             pos = c.currentPosition / 1000.0, playing = c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING),
             shuffle = shuffle, repeat = repeatOf(c.repeatMode),
+            vol = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) / maxVol().toDouble(),
         )
     }
 
@@ -877,7 +900,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         if (connMe.isEmpty()) return
         val st = localState() ?: return
         if (!st.playing && connHost != connMe) return
-        val sig = "${st.track?.key}|${st.playing}|${st.shuffle}|${st.repeat}"
+        val sig = "${st.track?.key}|${st.playing}|${st.shuffle}|${st.repeat}|${st.vol}"
         val q = (st.played + st.upnext).map { it.key }.hashCode()
         val now = System.currentTimeMillis()
         val expected = pubPos + if (pubPlaying) (now - pubAt) / 1000.0 else 0.0

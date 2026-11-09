@@ -275,6 +275,8 @@ struct App {
     conn_adopted: String,           // какую передачу сессии сюда уже подхватили
     mirror: Option<connect::State>, // звук на другом устройстве — тут его сессия
     conn_held: Option<remote::Held>,
+    conn_vol_hold: Option<Instant>,
+    conn_vol_sent: Option<Instant>,
 }
 
 thread_local! {
@@ -2742,6 +2744,9 @@ impl App {
 
     fn set_volume(&mut self, v: f32) {
         let v = v.clamp(0.0, 1.0);
+        if self.conn_volume(v, true) {
+            return;
+        }
         self.store.settings.volume = v;
         self.ui.set_volume(v);
         if let Some(p) = &self.player {
@@ -2860,7 +2865,7 @@ impl App {
             "back" if live => self.seek_abs((self.pos - 5.0).max(0.0)),
             "vol+" | "vol-" => {
                 self.muted = None;
-                self.set_volume(self.store.settings.volume + if k == "vol+" { 0.05 } else { -0.05 });
+                self.set_volume(self.ui.get_volume() + if k == "vol+" { 0.05 } else { -0.05 });
             }
             "mute" => match self.muted.take() {
                 Some(v) => self.set_volume(v),
@@ -3681,6 +3686,8 @@ fn main() -> Result<(), slint::PlatformError> {
         conn_adopted: String::new(),
         mirror: None,
         conn_held: None,
+        conn_vol_hold: None,
+        conn_vol_sent: None,
     };
     APP.with(|a| *a.borrow_mut() = Some(app));
     with(|a| a.apply_settings());
@@ -4135,6 +4142,9 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.on_preview_volume(|v| {
         with(|a| {
+            if a.conn_volume(v, false) {
+                return;
+            }
             if let Some(p) = &a.player {
                 p.send(Cmd::Volume(v as f64 * 100.0));
             }

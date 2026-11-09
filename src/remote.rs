@@ -116,6 +116,7 @@ impl App {
             "prev" => self.prev(),
             "seek" => self.seek_abs(a.as_f64().unwrap_or(0.0)),
             "repeat" => self.set_repeat(repeat_of(&a).unwrap_or(0)),
+            "volume" => self.set_volume(a.as_f64().unwrap_or(0.0) as f32),
             "queue" | "load" => {
                 (self.played, self.upnext, self.source) = (tracks("played"), tracks("upnext"), tracks("source"));
                 self.set_shuffle(a["shuffle"].as_bool().unwrap_or(self.shuffle));
@@ -143,6 +144,7 @@ impl App {
             playing: self.ui.get_playing() && !self.restored,
             shuffle: self.shuffle,
             repeat: self.repeat,
+            vol: Some(self.store.settings.volume as f64),
             xfer: String::new(),
         }
     }
@@ -171,7 +173,7 @@ impl App {
             return;
         }
         let playing = st.playing && !self.ui.get_loading();
-        let sig = format!("{}|{playing}|{}|{}", key(t), st.shuffle, st.repeat);
+        let sig = format!("{}|{playing}|{}|{}|{:.0}", key(t), st.shuffle, st.repeat, st.vol.unwrap_or(0.0) * 100.0);
         let q = qsig(&self.played, &self.upnext, &self.source);
         let p = &self.conn_pub;
         let expected = p.pos + if p.playing { p.at.map_or(0.0, |a| a.elapsed().as_secs_f64()) } else { 0.0 };
@@ -208,6 +210,10 @@ impl App {
         self.ui.set_shuffle(st.shuffle);
         self.repeat = st.repeat.min(2);
         self.ui.set_repeat(self.repeat as i32);
+        // ползунок показывает громкость там, где звук; пока его тянут, эхо из базы не дёргает его назад
+        if let Some(v) = st.vol.filter(|_| self.conn_vol_hold.is_none_or(|h| h < Instant::now())) {
+            self.ui.set_volume(v as f32);
+        }
         self.ui.set_playing(st.playing);
         self.ui.set_loading(false);
         self.pos = pos;
@@ -224,6 +230,7 @@ impl App {
     /// Устройство со звуком пропало: остаёмся с его треком на паузе, play продолжит уже тут
     fn mirror_end(&mut self) {
         self.mirror = None;
+        self.ui.set_volume(self.store.settings.volume);
         self.ui.set_conn_remote("".into());
         self.ui.set_playing(false);
         self.update_lyr_timer();
@@ -232,6 +239,7 @@ impl App {
     /// Сессию перекинули сюда
     fn conn_adopt(&mut self, st: State) {
         self.mirror = None;
+        self.ui.set_volume(self.store.settings.volume);
         self.ui.set_conn_remote("".into());
         (self.played, self.upnext, self.source) = (st.played.clone(), st.upnext.clone(), st.source.clone());
         self.shuffle = st.shuffle;
@@ -277,6 +285,22 @@ impl App {
             self.update_lyr_timer();
         }
         true
+    }
+
+    /// Громкость на зеркале уходит хозяину, своя (settings.volume) не трогается. true — ушла туда.
+    /// Пока тянут ползунок (end = false), шлём не чаще 5 раз в секунду: каждая команда — запись в базу
+    pub(crate) fn conn_volume(&mut self, v: f32, end: bool) -> bool {
+        if self.mirror.is_none() {
+            return false;
+        }
+        self.conn_vol_hold = Some(Instant::now() + Duration::from_secs(3));
+        if end {
+            self.ui.set_volume(v);
+        } else if self.conn_vol_sent.is_some_and(|t| t.elapsed() < Duration::from_millis(200)) {
+            return true;
+        }
+        self.conn_vol_sent = Some(Instant::now());
+        self.conn_cmd("volume", json!(v))
     }
 
     /// Вся очередь — хозяину (play трека, правка очереди, перемешка). load — ещё и сменить трек

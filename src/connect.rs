@@ -2,7 +2,7 @@
 //! остальные показывают то же самое и управляют им командами; сессию можно перекинуть на другое устройство.
 //! Живёт в Firebase Realtime Database, узел connect/<uid>:
 //!   devices/<id> = {name, kind, seen}    seen — серверное время последнего «я тут» (раз в 25 с)
-//!   state = {host, track, played, upnext, source, pos, at, playing, shuffle, repeat, xfer}
+//!   state = {host, track, played, upnext, source, pos, at, playing, shuffle, repeat, vol, xfer}
 //!       host — где идёт звук; at — серверное время, когда pos был верен (остальные досчитывают сами);
 //!       xfer меняется, когда сессию перекидывают: новый host подхватывает её и играет
 //!   cmd/<id> = {to, op, a, t}            команды хозяину от остальных; хозяин выполняет и удаляет
@@ -44,6 +44,8 @@ pub struct State {
     pub shuffle: bool,
     /// 0 выкл, 1 вся очередь, 2 один трек
     pub repeat: u8,
+    /// громкость там, где идёт звук (0..1). Нет — хозяин старой версии
+    pub vol: Option<f64>,
     /// метка передачи: новое значение у host — «подхвати сессию и играй»
     pub xfer: String,
 }
@@ -310,6 +312,9 @@ fn publish(s: &State, queue: bool) -> Result<()> {
         v["played"] = json!(s.played);
         v["upnext"] = json!(s.upnext);
         v["source"] = json!(s.source);
+    }
+    if let Some(vol) = s.vol {
+        v["vol"] = json!(vol);
     }
     if !s.xfer.is_empty() {
         v["xfer"] = json!(s.xfer);

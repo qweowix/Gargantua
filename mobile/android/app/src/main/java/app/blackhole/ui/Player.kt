@@ -354,7 +354,7 @@ fun NowPlaying(vm: AppState) {
                         PlayButton(vm, 72)
                         IconButton(onClick = { vm.next() }, Modifier.size(64.dp)) { Icon(Icons.Rounded.FastForward, null, tint = Color.White, modifier = Modifier.size(48.dp)) }
                     }
-                    Volume()
+                    Volume(vm)
                     if (vm.remote != null) {
                         Text(
                             tr("Играет на «${vm.remoteName}»", "Playing on “${vm.remoteName}”", "Грає на «${vm.remoteName}»", "Hrá na „${vm.remoteName}“"),
@@ -495,9 +495,10 @@ private fun Seek(vm: AppState) {
     }
 }
 
-/** Громкость телефона (поток музыки). Кнопки громкости тоже двигают полосу */
+/** Громкость там, где звук: телефона (поток музыки, кнопки громкости тоже двигают полосу) или другого устройства */
+@UnstableApi
 @Composable
-private fun Volume() {
+private fun Volume(vm: AppState) {
     val ctx = LocalContext.current
     val am = remember { ctx.getSystemService(AudioManager::class.java) }
     val max = remember { am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }
@@ -510,22 +511,22 @@ private fun Volume() {
         }
     }
     val grab by animateFloatAsState(if (drag != null) 1f else 0f, tween(150), label = "vgrab")
-    fun set(f: Float) {
+    fun set(f: Float, end: Boolean = false) {
         drag = f
-        am.setStreamVolume(AudioManager.STREAM_MUSIC, (f * max).roundToInt(), 0)
+        if (vm.remote != null) vm.connVolume(f, end) else am.setStreamVolume(AudioManager.STREAM_MUSIC, (f * max).roundToInt(), 0)
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.AutoMirrored.Rounded.VolumeMute, null, tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(8.dp))
         Bar(
-            drag ?: vol, grab,
+            drag ?: vm.remoteVol.takeIf { vm.remote != null } ?: vol, grab,
             Modifier
                 .weight(1f)
-                .pointerInput(Unit) { detectTapGestures { set((it.x / size.width).coerceIn(0f, 1f)); drag = null } }
+                .pointerInput(Unit) { detectTapGestures { set((it.x / size.width).coerceIn(0f, 1f), true); drag = null } }
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragStart = { set((it.x / size.width).coerceIn(0f, 1f)) },
-                        onDragEnd = { drag?.let { vol = it }; drag = null },
+                        onDragEnd = { drag?.let { vol = it; if (vm.remote != null) vm.connVolume(it, true) }; drag = null },
                         onDragCancel = { drag = null },
                     ) { ch, _ -> set((ch.position.x / size.width).coerceIn(0f, 1f)) }
                 },
