@@ -76,6 +76,14 @@ export struct KeyBind {
     key: string,
 }
 
+// Заливка звучащей строки как ломаная по времени: текущее слово и два следующих (с — секунды трека,
+// a→b — доля строки). Rust обновляет окно 20 раз в секунду, а считается заливка каждый кадр
+export struct LyrWin {
+    s1: float, e1: float, a1: float, b1: float,
+    s2: float, e2: float, a2: float, b2: float,
+    s3: float, e3: float, a3: float, b3: float,
+}
+
 export struct StatArtist {
     name: string,
     time: string,
@@ -1042,9 +1050,6 @@ component LyricLine inherits Rectangle {
     // Дольше не держим — две строки буквами со свечением разом стоят вдвое дороже
     property <float> live: root.active ? 1 : 0;
     animate live { duration: 450ms; }
-    // заливка между тиками едет прямыми отрезками: Rust шлёт позицию на момент через step, а мы линейно
-    // доезжаем до неё ровно за step — скорость везде настоящая, без запаздывания и догоняний.
-    // step чуть длиннее периода таймера, чтобы опоздавший тик не давал остановку
     in property <duration> step: 66ms;
     // заливка встала (дошла до конца ряда, а строка ещё звучит, или пауза между словами):
     // через 0.35 с поднятые буквы за полсекунды опускаются, а не висят в воздухе
@@ -1055,8 +1060,8 @@ component LyricLine inherits Rectangle {
     // с той высоты, где была (раньше счётчик «стоит» сбрасывался, и осевшие буквы подпрыгивали снова)
     property <float> rest: root.active ? 1 - root.calm : 0;
     animate rest { duration: 350ms; easing: ease-out; }
+    // заливка приходит уже посчитанной на этот кадр (см. lyr-pos в окне): анимации не нужно
     property <float> ps: root.p;
-    animate ps { duration: root.step; easing: linear; }
     in property <bool> active; // звучит сейчас (у Apple таких бывает несколько сразу)
     in property <bool> done;   // уже спета
     in property <bool> karaoke;
@@ -1324,10 +1329,17 @@ component LyricLine inherits Rectangle {
                 property <float> swell: (1 - Math.cos(self.bump * 180deg)) / 2 * root.rest;
                 property <length> lift: -3px * self.swell;
                 property <float> grow: 1 + 0.12 * self.swell;
-                // заливка внутри буквы с мягким краем
-                property <float> lf: max(0, min(1, row-box.edge - k));
-                property <float> e-a: max(0, self.lf * 1.5 - 0.5);
-                property <float> e-b: max(self.e-a + 0.001, self.lf * 1.5);
+                // мягкий край заливки (полбуквы шириной) один на весь ряд и идёт через границы букв без остановок.
+                // Раньше он жил внутри каждой буквы: пробегал её за 2/3 времени и треть стоял, пока не начнётся
+                // следующая, — заливка пульсировала по буквам. fd — сколько букв от начала этой до переднего края;
+                // b0 и b1 — яркость 0..1 на левом и правом краю буквы, ua и ub — где внутри неё белое и где край
+                property <float> fd: row-box.edge * (row-box.n + 0.5) / row-box.n - k;
+                property <float> b0: max(0, min(1, self.fd * 2));
+                property <float> b1: max(0, min(1, (self.fd - 1) * 2));
+                property <float> ua: max(0, min(1, self.fd - 0.5));
+                property <float> ub: max(0, min(1, self.fd));
+                property <float> p1: self.ua * 0.998 + 0.001;
+                property <float> p2: max(self.p1 + 0.001, self.ub * 0.998 + 0.001);
                 // яркость ореола в центре буквы: профиль g0 → g1 (пик) → g2 ряда
                 property <float> c: (k + 0.5) / row-box.n;
                 property <float> halo-a: self.c <= row-box.g0 || self.c >= row-box.g2 ? 0
@@ -1382,9 +1394,12 @@ component LyricLine inherits Rectangle {
                     transform-origin: { x: self.width - cb.adv / 2, y: self.height * 0.78 };
                     color: root.sucked ? #ffffff.transparentize(root.suck * root.suck * root.suck)
                         : !root.active ? #ffffff.transparentize(1 - root.fade)
-                        : cb.lf <= 0 ? #ffffff8c
-                        : cb.lf >= 1 ? #ffffff
-                        : @linear-gradient(90deg, #ffffff 0%, #ffffff cb.e-a, #ffffff8c cb.e-b, #ffffff8c 100%);
+                        : cb.b0 <= 0 ? #ffffff8c
+                        : cb.b1 >= 1 ? #ffffff
+                        : @linear-gradient(90deg, #ffffff.transparentize((1 - cb.b0) * 0.45) 0%,
+                            #ffffff.transparentize(cb.ua > 0 ? 0 : (1 - cb.b0) * 0.45) cb.p1,
+                            #ffffff.transparentize(cb.ub < 1 ? 0.45 : (1 - cb.b1) * 0.45) cb.p2,
+                            #ffffff.transparentize((1 - cb.b1) * 0.45) 100%);
                 }
             }
         }
@@ -1715,6 +1730,26 @@ export component AppWindow inherits Window {
     in property <float> p0;
     in property <float> p1;
     in property <float> p2;
+    // часы караоке живут тут: позиция трека на каждом кадре = база + время кадров с момента t0. Rust только
+    // поправляет базу, если часы разошлись с плеером, — от его таймера плавность не зависит. Раньше UI
+    // анимацией доезжал до значений от таймера, и неровный таймер (на Linux дрожит сильнее) давал рывки
+    in property <bool> lyr-clock; // выкл — заливка из p0..p2 (тесты)
+    in property <float> lyr-base;
+    in property <duration> lyr-t0;
+    in property <float> lyr-rate; // скорость воспроизведения, 0 — стоит
+    in property <LyrWin> w0;
+    in property <LyrWin> w1;
+    in property <LyrWin> w2;
+    property <float> lyr-pos: root.lyr-rate > 0 ? root.lyr-base + (animation-tick() - root.lyr-t0) / 1s * root.lyr-rate : root.lyr-base;
+    pure function seg(pos: float, s: float, e: float, a: float, b: float) -> float {
+        a + (b - a) * max(0, min(1, (pos - s) / max(0.001, e - s)))
+    }
+    pure function wfill(pos: float, w: LyrWin) -> float {
+        pos < w.s2 ? seg(pos, w.s1, w.e1, w.a1, w.b1) : pos < w.s3 ? seg(pos, w.s2, w.e2, w.a2, w.b2) : seg(pos, w.s3, w.e3, w.a3, w.b3)
+    }
+    public pure function frame-time() -> duration {
+        animation-tick()
+    }
     in property <[float]> still; // сек, сколько заливка каждой звучащей строки (act0..2) стоит на месте
     in property <int> act-max: -1;
     in property <int> lyr-prep: -1; // следующая строка, буквы которой заготовить заранее
@@ -1797,6 +1832,12 @@ export component AppWindow inherits Window {
     in property <[MonthMark]> st-months;
     in property <[TrackItem]> st-tracks;
     in property <[StatArtist]> st-artists;
+    // карточка любимого артиста: фото, фон и пятна из него (как в текстах), его самый частый трек
+    in property <image> st-fav-photo;
+    in property <image> st-fav-bg;
+    in property <image> st-fav-blob;
+    in property <bool> st-fav-has;
+    in property <string> st-fav-track;
     in property <[StatArtist]> st-more; // со второго места
     callback open-stats();
     callback stat-artist(int);
@@ -3016,44 +3057,95 @@ export component AppWindow inherits Window {
                                 wrap: word-wrap;
                             }
 
-                            if root.st-artists.length > 0: Text {
-                                text: @tr("Любимый исполнитель");
-                                color: Theme.text;
-                                font-size: 15px;
-                                font-weight: 700;
-                            }
-
-                            if root.st-artists.length > 0: Rectangle {
-                                height: 96px;
-                                border-radius: 18px;
+                            if root.st-artists.length > 0: fav := Rectangle {
+                                property <length> big: max(self.width, self.height);
+                                // фон плывёт, только пока карточку видно
+                                property <float> ft: root.page == "stats" && root.st-fav-has && !root.lyrics-open ? animation-tick() / 1s * 1.2 : 0;
+                                height: 240px;
+                                border-radius: 24px;
+                                clip: true;
                                 background: @linear-gradient(120deg, Theme.deep1 0%, #0c0914 60%, Theme.deep2 100%);
-                                border-width: 1px;
-                                border-color: fav-ta.has-hover ? Theme.c1.transparentize(0.4) : Theme.line;
-                                drop-shadow-blur: 24px;
-                                drop-shadow-color: Theme.c1.transparentize(0.75);
+                                Image {
+                                    width: fav.big * 1.7;
+                                    height: self.width;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    source: root.st-fav-bg;
+                                    image-fit: fill;
+                                    visible: root.st-fav-has;
+                                    transform-rotation: fav.ft * 3deg;
+                                }
+
+                                Image {
+                                    width: fav.big * 0.7;
+                                    height: self.width;
+                                    x: parent.width * 0.3 - self.width / 2 + fav.big * 0.08 * Math.cos(fav.ft * 0.13 * 1rad);
+                                    y: parent.height * 0.4 - self.height / 2 + fav.big * 0.06 * Math.sin(fav.ft * 0.17 * 1rad);
+                                    source: root.st-fav-blob;
+                                    image-fit: fill;
+                                    visible: root.st-fav-has;
+                                    transform-rotation: -fav.ft * 7deg;
+                                }
+
+                                Image {
+                                    width: fav.big * 0.6;
+                                    height: self.width;
+                                    x: parent.width * 0.8 - self.width / 2 + fav.big * 0.07 * Math.sin(fav.ft * 0.11 * 1rad);
+                                    y: parent.height * 0.6 - self.height / 2 + fav.big * 0.07 * Math.cos(fav.ft * 0.09 * 1rad);
+                                    source: root.st-fav-blob;
+                                    image-fit: fill;
+                                    visible: root.st-fav-has;
+                                    transform-rotation: fav.ft * 5deg + 140deg;
+                                }
+
+                                // слева темнее — под белый текст
+                                Rectangle {
+                                    background: @linear-gradient(90deg, #00000099 0%, #00000055 55%, #00000022 100%);
+                                }
+
+                                Rectangle {
+                                    border-radius: 24px;
+                                    border-width: 1px;
+                                    border-color: fav-ta.has-hover ? #ffffff40 : #ffffff1a;
+                                }
+
                                 fav-ta := TouchArea {
                                     mouse-cursor: pointer;
                                     clicked => {
                                         root.stat-artist(0);
                                     }
                                 }
+
                                 HorizontalLayout {
-                                    padding: 20px;
-                                    spacing: 16px;
+                                    padding: 28px;
+                                    spacing: 28px;
                                     VerticalLayout {
                                         alignment: center;
                                         Rectangle {
-                                            width: 52px;
-                                            height: 52px;
-                                            border-radius: 26px;
+                                            width: 164px;
+                                            height: 164px;
+                                            border-radius: 82px;
                                             background: Theme.accent;
-                                            drop-shadow-blur: 18px;
-                                            drop-shadow-color: Theme.c1.transparentize(0.4);
+                                            drop-shadow-blur: 30px;
+                                            drop-shadow-color: #00000080;
                                             Text {
                                                 text: "#1";
                                                 color: white;
-                                                font-size: 18px;
+                                                font-size: 36px;
                                                 font-weight: 800;
+                                                visible: !root.st-fav-has;
+                                            }
+
+                                            Rectangle {
+                                                border-radius: 82px;
+                                                clip: true;
+                                                visible: root.st-fav-has;
+                                                Image {
+                                                    width: 100%;
+                                                    height: 100%;
+                                                    source: root.st-fav-photo;
+                                                    image-fit: cover;
+                                                }
                                             }
                                         }
                                     }
@@ -3061,19 +3153,35 @@ export component AppWindow inherits Window {
                                     VerticalLayout {
                                         alignment: center;
                                         horizontal-stretch: 1;
-                                        spacing: 2px;
+                                        spacing: 6px;
+                                        Text {
+                                            text: @tr("ЛЮБИМЫЙ ИСПОЛНИТЕЛЬ");
+                                            color: #ffffffb0;
+                                            font-size: 11px;
+                                            font-weight: 800;
+                                            letter-spacing: 2px;
+                                        }
+
                                         Text {
                                             text: root.st-artists[0].name;
-                                            color: Theme.text;
-                                            font-size: 24px;
-                                            font-weight: 800;
+                                            color: white;
+                                            font-size: 44px;
+                                            font-weight: 900;
                                             overflow: elide;
                                         }
 
                                         Text {
                                             text: @tr("{} вместе", root.st-artists[0].time);
-                                            color: Theme.soft2;
-                                            font-size: 13px;
+                                            color: #ffffffe0;
+                                            font-size: 16px;
+                                            font-weight: 600;
+                                        }
+
+                                        if root.st-fav-track != "": Text {
+                                            text: root.st-fav-track;
+                                            color: #ffffffb0;
+                                            font-size: 14px;
+                                            wrap: word-wrap;
                                         }
                                     }
                                 }
@@ -5566,7 +5674,8 @@ export component AppWindow inherits Window {
                             hole-y: hole.y + hole.height / 2 - lyr-col.off-y;
                             d: i - root.lyr-cur;
                             active: i == root.act0 || i == root.act1 || i == root.act2;
-                            p: i == root.act0 ? root.p0 : i == root.act1 ? root.p1 : i == root.act2 ? root.p2 : 0;
+                            p: !root.lyr-clock ? (i == root.act0 ? root.p0 : i == root.act1 ? root.p1 : i == root.act2 ? root.p2 : 0)
+                                : i == root.act0 ? root.wfill(root.lyr-pos, root.w0) : i == root.act1 ? root.wfill(root.lyr-pos, root.w1) : i == root.act2 ? root.wfill(root.lyr-pos, root.w2) : 0;
                             still: i == root.act0 ? root.still[0] : i == root.act1 ? root.still[1] : i == root.act2 ? root.still[2] : 0;
                             // бэк-вокал, допетый раньше своей основной строки, — тоже спет, а не "следующая строка"
                             done: !(i == root.act0 || i == root.act1 || i == root.act2) && (i < root.lyr-cur || i < root.act-max || (line.bg && i <= root.lyr-bg-done));

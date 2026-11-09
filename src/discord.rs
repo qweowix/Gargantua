@@ -11,13 +11,15 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-/// Application ID приложения «BlackHole» на discord.com/developers — не секрет, его видно любому клиенту
+/// Application ID на discord.com/developers — не секрет, его видно любому клиенту. Там приложение называется
+/// BlackHole; что видят люди, задаёт поле name в статусе
 pub const APP_ID: &str = "1563254690815410206";
 
 pub struct Now {
     pub title: String,
     pub artist: String,
     pub cover: String,       // http-ссылка, иначе в Discord будет логотип приложения
+    pub avatar: String,      // фото артиста в маленьком значке; пусто — логотип
     pub url: String,         // кнопка «Слушать» (только http)
     pub start_ms: i64,       // когда трек начался бы с нуля — Discord сам рисует прогресс
     pub end_ms: Option<i64>, // когда кончится, если длина известна
@@ -107,6 +109,11 @@ fn connect() -> Option<Sock> {
     None
 }
 
+/// Картинка, которую Discord примет: http и не длиннее 256 символов (иначе он отвергает весь статус)
+fn image(u: &str) -> bool {
+    u.starts_with("http") && u.len() <= 256
+}
+
 /// Discord требует строки от 2 символов
 fn pad(s: &str) -> String {
     let s: String = s.chars().take(120).collect();
@@ -120,18 +127,21 @@ fn pad(s: &str) -> String {
 fn activity(n: &Option<Now>) -> Value {
     let Some(n) = n else { return Value::Null };
     let mut a = json!({
+        "name": "Gargantua",
         "type": 2, // «Слушает»
         "status_display_type": 2, // в списке участников — название трека, а не имя приложения
         "details": pad(&n.title),
         "state": pad(if n.artist.is_empty() { "Gargantua" } else { &n.artist }),
         "timestamps": {"start": n.start_ms},
-        "assets": {"large_image": "logo", "large_text": "Gargantua"},
+        // large_text не передаём: Discord выводит его третьей строкой, как альбом
+        "assets": {"large_image": "logo"},
     });
     if let Some(e) = n.end_ms {
         a["timestamps"]["end"] = e.into();
     }
-    if n.cover.starts_with("http") {
-        a["assets"] = json!({"large_image": n.cover, "large_text": pad(&n.title), "small_image": "logo", "small_text": "Gargantua"});
+    if image(&n.cover) {
+        let (small, text) = if image(&n.avatar) { (n.avatar.as_str(), pad(&n.artist)) } else { ("logo", "Gargantua".to_string()) };
+        a["assets"] = json!({"large_image": n.cover, "small_image": small, "small_text": text});
     }
     if n.url.starts_with("http") {
         a["buttons"] = json!([{"label": "Слушать", "url": n.url}]);
@@ -181,6 +191,22 @@ fn run(rx: mpsc::Receiver<Option<Now>>) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn activity_shows_name_and_avatar() {
+        let now = |cover: &str, avatar: &str| Some(Now { title: "Lovers Rock".into(), artist: "TV Girl".into(), cover: cover.into(), avatar: avatar.into(), url: String::new(), start_ms: 1, end_ms: None });
+        let a = activity(&now("https://c/1.jpg", "https://a/2.jpg"));
+        assert_eq!(a["name"], "Gargantua");
+        assert!(a["assets"].get("large_text").is_none());
+        assert_eq!(a["assets"]["small_image"], "https://a/2.jpg");
+        assert_eq!(a["assets"]["small_text"], "TV Girl");
+        // аватарки ещё нет или ссылка слишком длинная — логотип
+        assert_eq!(activity(&now("https://c/1.jpg", ""))["assets"]["small_image"], "logo");
+        let long = format!("https://a/{}", "x".repeat(300));
+        assert_eq!(activity(&now("https://c/1.jpg", &long))["assets"]["small_image"], "logo");
+        // слишком длинная обложка не ломает статус
+        assert_eq!(activity(&now(&long, ""))["assets"]["large_image"], "logo");
+    }
+
     /// Живой Discord: рукопожатие и статус проходят без ошибки, потом статус убираем
     #[test]
     #[ignore]
@@ -190,6 +216,7 @@ mod tests {
             title: "Lovers Rock".into(),
             artist: "TV Girl".into(),
             cover: "https://i.ytimg.com/vi/x4c_wI6kQyE/hqdefault.jpg".into(),
+            avatar: String::new(),
             url: "https://music.youtube.com/watch?v=x4c_wI6kQyE".into(),
             start_ms: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64,
             end_ms: None,

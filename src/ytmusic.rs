@@ -219,6 +219,19 @@ pub fn find_artist(name: &str) -> Result<String> {
         .context("артист не найден на YouTube Music")
 }
 
+/// Фото артиста. У трека SoundCloud — аватар автора (поиск по имени нашёл бы однофамильца); у остальных —
+/// с YT Music: по id из трека, если это его первый артист, иначе поиском по имени
+pub fn artist_photo(name: &str, t: Option<&Track>) -> Result<String> {
+    match t {
+        Some(t) if t.src == Src::Sc => return crate::soundcloud::avatar(&t.url),
+        Some(t) if t.src != Src::Lc && !t.artist_id.is_empty() && crate::stats::artists(&t.artist).first() == Some(&name) => {
+            return Ok(artist(&t.artist_id)?.photo)
+        }
+        _ => {}
+    }
+    Ok(artist(&find_artist(name)?)?.photo)
+}
+
 pub fn artist(id: &str) -> Result<Artist> {
     let v = post("browse", json!({"browseId": id}))?;
     let h = v["header"].as_object().and_then(|o| o.values().next()).cloned().unwrap_or_default();

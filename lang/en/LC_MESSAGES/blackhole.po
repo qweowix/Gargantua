@@ -997,3 +997,6 @@ msgstr "Share link"
 
 msgid "Ещё"
 msgstr "More"
+
+msgid "ЛЮБИМЫЙ ИСПОЛНИТЕЛЬ"
+msgstr "FAVORITE ARTIST"

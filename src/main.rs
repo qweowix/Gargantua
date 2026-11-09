@@ -174,7 +174,10 @@ struct App {
     lyr_idle: Timer, // через 2 с без движения мыши прячет управление на экране текста
     lyr_last: Instant,
     lyr_shown: f64, // позиция, которую уже показал текст: назад на доли секунды не откатываем
-    lyr_step: f64,  // за сколько секунд UI доезжает до нового значения заливки
+    // часы караоке в интерфейсе: позиция = lyr_base + (время кадров − lyr_t0) · lyr_rate (см. lyr-pos в app.slint)
+    lyr_base: f64,
+    lyr_t0: f64,
+    lyr_rate: f64,
     lyr_still: [(i32, f32, Instant); 3], // по звучащим строкам: строка, заливка и когда та последний раз сдвинулась
     lyr_still_model: Rc<VecModel<f32>>,
     lyr_wrap: usize, // символов в ряду, считается от ширины колонки
@@ -237,6 +240,7 @@ struct App {
     listened: f64,              // сколько секунд дослушан текущий трек (прослушивание считается с 30 с)
     stats_saved: Instant,
     stat_top: Vec<Track>,
+    stat_fav_for: String, // чьё фото сейчас в карточке любимого артиста
     stat_artists: Vec<String>,
     sleep_mode: i32, // 0 выкл, 1–3 через 15/30/60 мин, 4 после этого трека
     sleep_at: Option<Instant>,
@@ -274,6 +278,7 @@ struct App {
     conn_pub: remote::Published,
     conn_adopted: String,           // какую передачу сессии сюда уже подхватили
     mirror: Option<connect::State>, // звук на другом устройстве — тут его сессия
+    discord_avatars: HashMap<String, String>,
     conn_held: Option<remote::Held>,
     conn_vol_hold: Option<Instant>,
     conn_vol_sent: Option<Instant>,
@@ -320,6 +325,42 @@ fn resolve(t: &Track) -> Result<String> {
 /// Файл на этом компьютере — играем его напрямую, без yt-dlp
 fn local_file(t: &Track) -> Option<String> {
     (t.src == Src::Lc && std::path::Path::new(&t.url).is_file()).then(|| t.url.clone())
+}
+
+/// Заливка строки i на позиции pos: по словам, если есть их тайминги (в паузе между словами стоит), иначе всей строкой
+fn fill_at(d: &LyrData, i: usize, pos: f64) -> f32 {
+    if let Some(ws) = d.words.get(i).filter(|w| !w.is_empty()) {
+        match ws.iter().rposition(|w| w.0 <= pos) {
+            None => 0.0,
+            Some(k) => {
+                let (s, e, c0, c1) = ws[k];
+                c0 + (c1 - c0) * ((pos - s) / (e - s)).clamp(0.0, 1.0) as f32
+            }
+        }
+    } else {
+        ((pos - d.starts[i]) / (d.fills[i] - d.starts[i]).max(0.01)).clamp(0.0, 1.0) as f32
+    }
+}
+
+/// Окно заливки строки i для интерфейса: слово, которое поют на pos, и два следующих (или вся строка одним
+/// куском, если таймингов слов нет). В паузах между словами заливка стоит
+fn win_at(d: &LyrData, i: usize, pos: f64) -> LyrWin {
+    let segs: Vec<(f64, f64, f32, f32)> = match d.words.get(i).filter(|w| !w.is_empty()) {
+        Some(ws) => ws.iter().skip(ws.iter().rposition(|w| w.0 <= pos).unwrap_or(0)).take(3).copied().collect(),
+        None => vec![(d.starts[i], d.fills[i].max(d.starts[i] + 0.01), 0.0, 1.0)],
+    };
+    let end = segs.last().map_or(1.0, |s| s.3);
+    let g = |k: usize| segs.get(k).map_or((1e9, 1e9, end, end), |&(s, e, a, b)| (s as f32, e as f32, a, b));
+    let ((s1, e1, a1, b1), (s2, e2, a2, b2), (s3, e3, a3, b3)) = (g(0), g(1), g(2));
+    LyrWin { s1, e1, a1, b1, s2, e2, a2, b2, s3, e3, a3, b3 }
+}
+
+/// Фото артиста трека для Discord; у файлов с диска — никакого (в значке логотип)
+fn artist_photo(t: &Track) -> Result<String> {
+    if t.src == Src::Lc {
+        return Ok(String::new());
+    }
+    ytmusic::artist_photo(first_artist(&t.artist), Some(t))
 }
 
 /// Ссылка на картинку, которую поймут панели (MPRIS) и Discord: только настоящий http
@@ -2625,7 +2666,7 @@ impl App {
         let ui = &self.ui;
         ui.set_st_today(fmt_long(s.last(today, 1)).into());
         ui.set_st_week(fmt_long(s.last(today, 7)).into());
-        ui.set_st_month(fmt_long(s.last(today, 30)).into());
+        ui.set_st_month(fmt_long(s.this_month(today)).into());
         ui.set_st_total(fmt_long(s.days.values().sum()).into());
         // год клетками, как на GitHub: колонка — неделя с понедельника, последняя — текущая
         let start = today - stats::weekday(today) - 52 * 7;
@@ -2659,6 +2700,27 @@ impl App {
         ui.set_st_tracks(Rc::new(VecModel::from(items)).into());
         ui.set_st_more(Rc::new(VecModel::from(artists.iter().skip(1).cloned().collect::<Vec<_>>())).into());
         ui.set_st_artists(Rc::new(VecModel::from(artists)).into());
+        // карточка любимого артиста: его самый частый трек и фото, из фото — живой фон как в текстах
+        if let Some((name, _, fav)) = s.favorite() {
+            ui.set_st_fav_track(fav.map_or(String::new(), |t| tr!("Любимый трек — «{}» · {}×", "Favorite track — “{}” · {}×", "Улюблений трек — «{}» · {}×", "Obľúbená skladba — „{}“ · {}×", t.track.title, t.plays)).into());
+            if self.stat_fav_for != name {
+                self.stat_fav_for = name.to_string();
+                ui.set_st_fav_has(false);
+                let (name, track) = (name.to_string(), fav.map(|t| t.track.clone()));
+                std::thread::spawn(move || {
+                    let big = ytmusic::artist_photo(&name, track.as_ref()).and_then(|p| covers::big(&p));
+                    let Ok(b) = big.map_err(|e| eprintln!("фото любимого артиста: {e:#}")) else { return };
+                    post(move |a| {
+                        if a.stat_fav_for == name {
+                            a.ui.set_st_fav_photo(Image::from_rgba8(b.cover));
+                            a.ui.set_st_fav_bg(Image::from_rgba8(b.bg));
+                            a.ui.set_st_fav_blob(Image::from_rgba8(b.blob));
+                            a.ui.set_st_fav_has(true);
+                        }
+                    });
+                });
+            }
+        }
         ui.set_page("stats".into());
     }
 
@@ -2885,8 +2947,26 @@ impl App {
     // ── Discord ──
 
     fn discord_update(&mut self) {
-        let Some(d) = &self.discord else { return };
+        if self.discord.is_none() {
+            return;
+        }
         let playing = self.ui.get_playing() && !self.ui.get_loading() && self.store.settings.discord;
+        // фото артиста: один запрос на артиста, пока ищем (или не нашли) — в значке логотип
+        let avatar_key = self.current.as_ref().map(|t| format!("{}:{}", t.src.tag(), first_artist(&t.artist)));
+        if let (Some(t), Some(k), true) = (self.current.clone(), avatar_key.clone(), playing) {
+            if !self.discord_avatars.contains_key(&k) {
+                self.discord_avatars.insert(k.clone(), String::new());
+                std::thread::spawn(move || {
+                    let photo = artist_photo(&t).unwrap_or_default();
+                    post(move |a| {
+                        a.discord_avatars.insert(k, photo);
+                        a.discord_update();
+                    });
+                });
+            }
+        }
+        let avatar = avatar_key.and_then(|k| self.discord_avatars.get(&k).cloned()).unwrap_or_default();
+        let Some(d) = &self.discord else { return };
         let now = self.current.as_ref().filter(|_| playing).map(|t| {
             let speed = self.store.settings.speed.max(0.1) as f64;
             let start_ms = now_ms() - (self.pos / speed * 1000.0) as i64;
@@ -2894,13 +2974,14 @@ impl App {
                 title: t.title.clone(),
                 artist: t.artist.clone(),
                 cover: web_cover(t).unwrap_or_default().to_string(),
+                avatar: avatar.clone(),
                 url: t.url.clone(),
                 start_ms,
                 end_ms: (self.dur > 0.0).then(|| start_ms + (self.dur / speed * 1000.0) as i64),
             }
         });
         // опрос mpv 3 раза в секунду, а Discord — только когда что-то правда поменялось (трек, пауза, перемотка)
-        let (title, start) = now.as_ref().map_or((String::new(), 0), |n| (format!("{}|{:?}", n.title, n.end_ms.is_some()), n.start_ms));
+        let (title, start) = now.as_ref().map_or((String::new(), 0), |n| (format!("{}|{:?}|{}", n.title, n.end_ms.is_some(), n.avatar), n.start_ms));
         if title == self.discord_last.0 && (start - self.discord_last.1).abs() < 2000 {
             return;
         }
@@ -3283,6 +3364,20 @@ impl App {
             let err = mpv - ahead;
             let pos = if err.abs() > 1.0 { mpv } else { (ahead + err * (dt as f64 * 3.0).min(1.0)).max(self.lyr_shown) };
             self.lyr_shown = pos;
+            // дальше всё считаем по часам интерфейса — по ним рисуется заливка. Они идут сами по времени кадров;
+            // базу трогаем, только если разошлись с плеером больше чем на 80 мс (перемотка, пауза, скорость)
+            let ft = self.ui.invoke_frame_time();
+            let rate = if playing { speed } else { 0.0 };
+            let ui_pos = self.lyr_base + (ft as f64 / 1000.0 - self.lyr_t0) * self.lyr_rate;
+            let pos = if (rate - self.lyr_rate).abs() > 1e-6 || (ui_pos - pos).abs() > 0.08 {
+                (self.lyr_base, self.lyr_t0, self.lyr_rate) = (pos, ft as f64 / 1000.0, rate);
+                self.ui.set_lyr_base(pos as f32);
+                self.ui.set_lyr_t0(ft);
+                self.ui.set_lyr_rate(rate as f32);
+                pos
+            } else {
+                ui_pos
+            };
             let (mut cur, act) = lyrics::active(&d.starts, &d.ends, pos);
             // две строки поются внахлёст (дуэт) — прокрутка сразу к последней начавшейся, а не к первой
             // и потом второй рывок к следующей
@@ -3312,21 +3407,7 @@ impl App {
             if self.ui.get_lyr_prep() != prep {
                 self.ui.set_lyr_prep(prep);
             }
-            let progress = |i: usize| -> f32 {
-                let pos = pos + self.lyr_step; // UI доезжает до этого значения как раз за step
-                if let Some(ws) = d.words.get(i).filter(|w| !w.is_empty()) {
-                    // реальные тайминги: слово заливается, пока его поют; в паузе между словами стоим
-                    match ws.iter().rposition(|w| w.0 <= pos) {
-                        None => 0.0,
-                        Some(k) => {
-                            let (s, e, c0, c1) = ws[k];
-                            c0 + (c1 - c0) * ((pos - s) / (e - s)).clamp(0.0, 1.0) as f32
-                        }
-                    }
-                } else {
-                    ((pos - d.starts[i]) / (d.fills[i] - d.starts[i]).max(0.01)).clamp(0.0, 1.0) as f32
-                }
-            };
+            let progress = |i: usize| fill_at(d, i, pos);
             // короткая пауза между строками: последняя спетая остаётся подсвеченной
             let slots: Vec<(i32, f32)> = match (act.is_empty(), cur >= 0) {
                 (true, true) => vec![(cur, 1.0)],
@@ -3354,6 +3435,11 @@ impl App {
             self.ui.set_p0(p0);
             self.ui.set_p1(p1);
             self.ui.set_p2(p2);
+            let done = LyrWin { s1: 0.0, e1: 1.0, a1: 1.0, b1: 1.0, s2: 1e9, e2: 1e9, a2: 1.0, b2: 1.0, s3: 1e9, e3: 1e9, a3: 1.0, b3: 1.0 };
+            let win = |a: i32| if act.is_empty() || a < 0 { done.clone() } else { win_at(d, a as usize, pos) };
+            self.ui.set_w0(win(a0));
+            self.ui.set_w1(win(a1));
+            self.ui.set_w2(win(a2));
             // как долго заливка каждой звучащей строки не двигается
             let still: Vec<f32> = [(a0, p0), (a1, p1), (a2, p2)]
                 .iter()
@@ -3375,13 +3461,24 @@ impl App {
         }
     }
 
+    /// Экран текста закрыли или пауза: часы караоке в интерфейсе встают там, где были
+    fn lyr_freeze(&mut self) {
+        if self.lyr_rate != 0.0 {
+            let ft = self.ui.invoke_frame_time();
+            self.lyr_base += (ft as f64 / 1000.0 - self.lyr_t0) * self.lyr_rate;
+            (self.lyr_t0, self.lyr_rate) = (ft as f64 / 1000.0, 0.0);
+            self.ui.set_lyr_base(self.lyr_base as f32);
+            self.ui.set_lyr_t0(ft);
+            self.ui.set_lyr_rate(0.0);
+        }
+    }
+
     /// Тикаем только пока экран lyrics открыт и что-то играет: 20 fps, в лайт-режиме ~12
     fn update_lyr_timer(&mut self) {
         let on = self.ui.get_lyrics_open() && self.ui.get_playing();
         if on && !self.lyr_timer.running() {
             let ms = if self.store.settings.lite { 80 } else { 50 };
             // UI интерполирует до следующего значения чуть дольше периода, чтобы опоздавший тик не давал остановку
-            self.lyr_step = (ms + 16) as f64 / 1000.0;
             self.ui.set_lyr_step((ms + 16) as i64);
             self.lyr_last = Instant::now();
             self.lyr_timer.start(TimerMode::Repeated, Duration::from_millis(ms), || {
@@ -3389,6 +3486,7 @@ impl App {
             });
         } else if !on {
             self.lyr_timer.stop();
+            self.lyr_freeze();
         }
     }
 
@@ -3588,7 +3686,9 @@ fn main() -> Result<(), slint::PlatformError> {
         lyr_idle: Timer::default(),
         lyr_last: Instant::now(),
         lyr_shown: 0.0,
-        lyr_step: 0.066,
+        lyr_base: 0.0,
+        lyr_t0: 0.0,
+        lyr_rate: 0.0,
         lyr_still: [(-1, 0.0, Instant::now()); 3],
         lyr_still_model: lyr_still_model.clone(),
         lyr_wrap: 30,
@@ -3650,6 +3750,7 @@ fn main() -> Result<(), slint::PlatformError> {
         listened: 0.0,
         stats_saved: Instant::now(),
         stat_top: vec![],
+        stat_fav_for: String::new(),
         stat_artists: vec![],
         sleep_mode: 0,
         sleep_at: None,
@@ -3685,11 +3786,13 @@ fn main() -> Result<(), slint::PlatformError> {
         conn_pub: Default::default(),
         conn_adopted: String::new(),
         mirror: None,
+        discord_avatars: HashMap::new(),
         conn_held: None,
         conn_vol_hold: None,
         conn_vol_sent: None,
     };
     APP.with(|a| *a.borrow_mut() = Some(app));
+    ui.set_lyr_clock(true);
     with(|a| a.apply_settings());
     // MPRIS: панель, playerctl и медиа-клавиши видят и управляют плеером
     #[cfg(windows)]

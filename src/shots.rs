@@ -228,7 +228,16 @@ fn ui() {
     ui.set_st_more(Rc::new(VecModel::from(vec![art("Скриптонит", "12 ч")])).into());
     ui.set_st_tracks(tracks.clone().into());
     ui.set_page("stats".into());
+    ui.set_st_fav_track("Любимый трек — «Lovers Rock» · 42×".into());
     snap(&win, "12-stats");
+    // с фото: вместо него иконка приложения, фон из неё же
+    let icon = slint::Image::load_from_path(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icon-256.png"))).unwrap();
+    ui.set_st_fav_photo(icon.clone());
+    ui.set_st_fav_bg(icon.clone());
+    ui.set_st_fav_blob(icon);
+    ui.set_st_fav_has(true);
+    snap(&win, "12-stats-fav");
+    ui.set_st_fav_has(false);
     ui.set_local_tracks(tracks.clone().into());
     ui.set_music_dirs(Rc::new(VecModel::from(vec![slint::SharedString::from("/home/x/Музыка")])).into());
     ui.set_page("local".into());
@@ -280,6 +289,50 @@ fn ui() {
     snap(&win, "08-lyrics-karaoke");
     let kar_ms = frame_ms(&win);
     println!("перф: караоке {kar_ms:.1} мс/кадр");
+    // часы караоке в интерфейсе: три слога по 160 мс, кадры по 16 мс и ни одного тика Rust между ними.
+    // Заливка обязана двигаться на каждом кадре и ровно — раньше она стояла до тика и прыгала
+    // волну и ореол на время замера гасим: они сами меняют яркость строки
+    let glow = ui.get_lyr_glow();
+    ui.set_lyr_glow(0.0);
+    ui.set_still(Rc::new(VecModel::from(vec![5.0f32; 3])).into());
+    NOW.with(|t| t.set(t.get() + Duration::from_secs(2)));
+    slint::platform::update_timers_and_animations();
+    // строка из сплошных блоков: чернил в каждой букве поровну, значит и свет должен прибывать поровну
+    let real_lines = ui.get_lyr_lines();
+    ui.set_lyr_lines(Rc::new(VecModel::from(vec![line("x", 0.0, false), line("", 84.0, true), line("██████████████████", 84.0, false)])).into());
+    ui.set_lyr_clock(true);
+    ui.set_w0(LyrWin { s1: 10.0, e1: 10.16, a1: 0.0, b1: 0.3, s2: 10.16, e2: 10.32, a2: 0.3, b2: 0.6, s3: 10.32, e3: 10.48, a3: 0.6, b3: 0.9 });
+    ui.set_lyr_base(10.0);
+    ui.set_lyr_t0(ui.invoke_frame_time());
+    ui.set_lyr_rate(1.0);
+    let mut buf = vec![slint::Rgb8Pixel::default(); (W * H) as usize];
+    let lit: Vec<i32> = (0..28)
+        .map(|_| {
+            NOW.with(|t| t.set(t.get() + Duration::from_millis(16)));
+            slint::platform::update_timers_and_animations();
+            win.request_redraw();
+            win.draw_if_needed(|r| {
+                r.render(&mut buf, W as usize);
+            });
+            // сколько света в поющейся строке: растёт вместе с заливкой (сама она внутри буквы с мягким краем)
+            (270..345).flat_map(|y| (480..W).map(move |x| (y, x))).map(|(y, x)| buf[(y * W + x) as usize].r as i32).sum::<i32>() / 100
+        })
+        .collect();
+    let steps: Vec<i32> = lit.windows(2).map(|w| w[1] - w[0]).collect();
+    println!("караоке: прирост заливки по кадрам {steps:?}");
+    let mut sorted = steps.clone();
+    sorted.sort();
+    let mid = sorted[sorted.len() / 2];
+    // программный рендер красит букву целиком (градиент на тексте он не рисует), поэтому ровность тут видна
+    // только до буквы. Главное, что проверяем: между тиками Rust заливка идёт на каждом кадре и не скачет
+    let (lo, hi) = (sorted[0], *sorted.last().unwrap());
+    assert!(lo > 0, "заливка стоит между кадрами: шаги {steps:?}");
+    assert!(hi * 10 < mid * 25, "заливка прыгает: шаги {steps:?}");
+    ui.set_lyr_lines(real_lines);
+    ui.set_lyr_rate(0.0);
+    ui.set_lyr_clock(false);
+    ui.set_lyr_glow(glow);
+    ui.set_still(Rc::new(VecModel::from(Vec::<f32>::new())).into());
     // строка допета: по буквам (волна ещё гаснет) и потом цельным текстом — на месте, без сдвига
     ui.set_p0(1.0);
     let by_letters = snap(&win, "10-line-letters");

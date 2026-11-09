@@ -141,6 +141,8 @@ fn run(m: &str, a: &Value) -> Result<Value> {
             Value::Null
         }
         "stats" => stats_json(&stats_lock().with(&others_lock())),
+        // фото любимого артиста для карточки статистики (сеть — поэтому отдельно от "stats")
+        "artist_photo" => json!(ytmusic::artist_photo(s(a, "name"), serde_json::from_value::<Track>(a["track"].clone()).ok().as_ref())?),
         // своя доля статистики аккаунта — в облако, доли других устройств — к себе (как на ПК раз в минуту)
         // ── Connect: одна сессия на все устройства (как на ПК, см. connect.rs) ──
         "connect_start" => {
@@ -379,8 +381,9 @@ fn stats_json(s: &Stats) -> Value {
     let top: Vec<Value> = s.top_tracks(10).into_iter().map(|t| json!({ "track": t.track, "plays": t.plays, "ms": t.ms })).collect();
     let artists: Vec<Value> = s.top_artists(10).into_iter().map(|(n, ms)| json!({ "name": n, "ms": ms })).collect();
     json!({
-        "today": s.last(today, 1), "week": s.last(today, 7), "month": s.last(today, 30), "total": s.days.values().sum::<u64>(),
+        "today": s.last(today, 1), "week": s.last(today, 7), "month": s.this_month(today), "total": s.days.values().sum::<u64>(),
         "heat": heat, "heat_start_weekday": stats::weekday(start), "top": top, "artists": artists,
+        "fav": s.favorite().map(|(name, ms, t)| json!({ "name": name, "ms": ms, "track": t.map(|t| &t.track), "plays": t.map_or(0, |t| t.plays) })),
     })
 }
 

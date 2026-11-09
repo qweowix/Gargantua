@@ -90,6 +90,12 @@ pub fn search(q: &str, limit: usize) -> Result<Vec<Track>> {
     Ok(v["collection"].as_array().map(|a| a.iter().filter_map(parse).collect()).unwrap_or_default())
 }
 
+/// Аватар автора трека
+pub fn avatar(url: &str) -> Result<String> {
+    let v = get("/resolve", &[("url", url)])?;
+    Ok(v["user"]["avatar_url"].as_str().unwrap_or("").replace("-large.", "-t300x300."))
+}
+
 /// Прямая ссылка на звук трека (для телефона: на ПК это делает yt-dlp). Обычный файл, если есть, иначе HLS:
 /// многие треки SoundCloud отдаёт только так. Зашифрованные варианты (DRM) не сыграть
 #[allow(dead_code)] // зовёт только телефон

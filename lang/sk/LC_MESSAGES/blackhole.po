@@ -997,3 +997,6 @@ msgstr "Zdieľať odkaz"
 
 msgid "Ещё"
 msgstr "Viac"
+
+msgid "ЛЮБИМЫЙ ИСПОЛНИТЕЛЬ"
+msgstr "OBĽÚBENÝ INTERPRET"

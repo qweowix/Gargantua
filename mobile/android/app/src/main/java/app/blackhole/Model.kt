@@ -103,7 +103,12 @@ data class StatsSummary(
     val heat: List<Int> = emptyList(),
     val top: List<TopTrack> = emptyList(),
     val artists: List<TopArtist> = emptyList(),
+    val fav: FavArtist? = null,
 )
+
+/** Любимый артист и его трек, который включали чаще всех */
+@Serializable
+data class FavArtist(val name: String = "", val ms: Long = 0, val track: Track? = null, val plays: Int = 0)
 
 @Serializable
 data class Imported(val name: String = "", val tracks: List<Track> = emptyList(), val missing: Int = 0, val url: String = "")

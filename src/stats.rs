@@ -170,6 +170,11 @@ impl Stats {
         self.days.range(today - n + 1..=today).map(|(_, v)| v).sum()
     }
 
+    /// Миллисекунд за текущий календарный месяц: 9 ноября — это 9 дней, октябрь не считается
+    pub fn this_month(&self, today: i64) -> u64 {
+        self.last(today, ymd(today).2 as i64)
+    }
+
     pub fn top_tracks(&self, n: usize) -> Vec<&TrackStat> {
         let mut v: Vec<&TrackStat> = self.tracks.values().filter(|t| t.plays > 0).collect();
         v.sort_by(|a, b| b.plays.cmp(&a.plays).then(b.ms.cmp(&a.ms)));
@@ -183,6 +188,13 @@ impl Stats {
         v.sort_by(|a, b| b.last.cmp(&a.last));
         v.truncate(n);
         v
+    }
+
+    /// Любимый артист: (имя, сколько слушали, его трек, который включали чаще всех)
+    pub fn favorite(&self) -> Option<(&str, u64, Option<&TrackStat>)> {
+        let (name, ms) = self.top_artists(1).into_iter().next()?;
+        let track = self.tracks.values().filter(|t| artists(&t.track.artist).contains(&name)).max_by(|a, b| a.plays.cmp(&b.plays).then(a.ms.cmp(&b.ms)));
+        Some((name, ms, track))
     }
 
     pub fn top_artists(&self, n: usize) -> Vec<(&str, u64)> {
@@ -251,7 +263,15 @@ mod tests {
         s.play(&t);
         assert_eq!(s.last(100, 1), 90_000);
         assert_eq!(s.last(100, 7), 120_000);
+        let mut m = Stats::default();
+        m.add(&t, 10.0, days(2026, 10, 31));
+        m.add(&t, 20.0, days(2026, 11, 1));
+        m.add(&t, 40.0, days(2026, 11, 9));
+        assert_eq!(m.this_month(days(2026, 11, 9)), 60_000);
+        assert_eq!(m.this_month(days(2026, 10, 31)), 10_000);
         assert_eq!(s.top_artists(5).len(), 2);
+        let (name, _, fav) = s.favorite().unwrap();
+        assert!(fav.unwrap().track.artist.contains(name));
         assert_eq!(s.top_tracks(5)[0].plays, 1);
         assert_eq!((level(0), level(60_000), level(3_600_000 * 3)), (0, 1, 4));
     }

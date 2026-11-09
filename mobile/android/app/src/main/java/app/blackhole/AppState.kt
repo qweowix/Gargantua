@@ -458,7 +458,20 @@ class AppState(app: Application) : AndroidViewModel(app) {
         // сначала то, что есть, потом — вместе со свежими долями других устройств
         syncStats()
         stats = runCatching { core("stats").to<StatsSummary>() }.getOrDefault(stats)
+        val f = stats.fav ?: return@launch
+        if (favPhotoFor != f.name) {
+            favPhotoFor = f.name
+            favPhoto = ""
+            favPhoto = runCatching {
+                core("artist_photo") { put("name", JsonPrimitive(f.name)); f.track?.let { put("track", json.encodeToJsonElement(it)) } }.to<String>()
+            }.getOrDefault("")
+        }
     }
+
+    /** Фото любимого артиста для карточки статистики */
+    var favPhoto by mutableStateOf("")
+        private set
+    private var favPhotoFor = ""
 
     /** Статистика общая на аккаунт: своя доля — в облако, доли других устройств (ПК) — к себе */
     // ── вход YouTube ──

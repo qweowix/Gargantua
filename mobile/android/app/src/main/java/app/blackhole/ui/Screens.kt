@@ -65,12 +65,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -82,6 +84,7 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import app.blackhole.Album
 import app.blackhole.App
+import app.blackhole.FavArtist
 import app.blackhole.AppState
 import app.blackhole.Artist
 import app.blackhole.L
@@ -614,9 +617,10 @@ fun StatsScreen(vm: AppState) {
                 }
             }
         }
-        if (s.artists.isNotEmpty()) {
+        s.fav?.let { f -> item { FavArtistCard(vm, f, vm.favPhoto) } }
+        if (s.artists.size > 1) {
             item { Section(tr("Артисты", "Artists", "Артисти", "Interpreti")) }
-            items(s.artists.take(5)) { ar ->
+            items(s.artists.drop(1).take(4)) { ar ->
                 Row(Modifier.fillMaxWidth().clickable { vm.go(Screen.ArtistPage("", ar.name)) }.padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Text(ar.name, color = Pal.text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(fmtLong(ar.ms), color = Pal.dim, fontSize = 13.sp)
@@ -629,6 +633,44 @@ fun StatsScreen(vm: AppState) {
             itemsIndexed(s.top) { i, t -> TrackRow(vm, t.track, { vm.play(list, i) }, trailing = "${t.plays}×") }
         }
         item { Dim(tr("Всего: ${fmtLong(s.total)}", "Total: ${fmtLong(s.total)}", "Усього: ${fmtLong(s.total)}", "Spolu: ${fmtLong(s.total)}")) }
+    }
+}
+
+/** Любимый артист: фото, живой фон из него (как в текстах), время вместе и его самый частый трек */
+@UnstableApi
+@Composable
+private fun FavArtistCard(vm: AppState, f: FavArtist, photo: String) {
+    val clock = remember { LyrClock() }
+    LaunchedEffect(Unit) {
+        var last = 0L
+        while (true) withFrameNanos { n ->
+            if (last != 0L) clock.bg += ((n - last) / 1e9f).coerceAtMost(0.1f) * 1.2f
+            last = n
+        }
+    }
+    Box(
+        Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(260.dp).clip(RoundedCornerShape(24.dp))
+            .clickable { vm.go(Screen.ArtistPage("", f.name)) },
+    ) {
+        LyrBackdrop(photo, clock)
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color(0x22000000), Color(0xB0000000)))))
+        Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
+            Box(Modifier.size(96.dp).clip(CircleShape).background(LocalAccent.current.c1), contentAlignment = Alignment.Center) {
+                if (photo.isEmpty()) Text("#1", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                else CoverImage(photo, Modifier.matchParentSize())
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(tr("ЛЮБИМЫЙ ИСПОЛНИТЕЛЬ", "FAVORITE ARTIST", "УЛЮБЛЕНИЙ ВИКОНАВЕЦЬ", "OBĽÚBENÝ INTERPRET"), color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+            Text(f.name, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val time = fmtLong(f.ms)
+            Text(tr("$time вместе", "$time together", "$time разом", "$time spolu"), color = Color.White.copy(alpha = 0.88f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            f.track?.let { t ->
+                Text(
+                    tr("Любимый трек — «${t.title}» · ${f.plays}×", "Favorite track — “${t.title}” · ${f.plays}×", "Улюблений трек — «${t.title}» · ${f.plays}×", "Obľúbená skladba — „${t.title}“ · ${f.plays}×"),
+                    color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
