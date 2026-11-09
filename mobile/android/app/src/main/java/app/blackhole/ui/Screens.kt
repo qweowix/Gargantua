@@ -81,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import app.blackhole.Album
+import app.blackhole.App
 import app.blackhole.AppState
 import app.blackhole.Artist
 import app.blackhole.L
@@ -662,6 +663,19 @@ fun SettingsScreen(vm: AppState) {
                 ),
             )
         }
+        // размер считаем при открытии экрана: кеш меняется только пока что-то играет
+        var cached by remember { mutableStateOf(App.cache.cacheSpace) }
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("Кэш треков", "Track cache", "Кеш треків", "Vyrovnávacia pamäť"), color = Pal.text, fontWeight = FontWeight.Bold)
+                Text(tr("Прослушанное играет сразу и без интернета: ${cached / 1048576} МБ из 2 ГБ.", "Played tracks start instantly and offline: ${cached / 1048576} MB of 2 GB.", "Прослухане грає одразу й без інтернету: ${cached / 1048576} МБ із 2 ГБ.", "Prehraté skladby hrajú hneď aj offline: ${cached / 1048576} MB z 2 GB."), color = Pal.dim, fontSize = 13.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            Pill(tr("Очистить", "Clear", "Очистити", "Vymazať"), primary = false) {
+                App.cache.keys.toList().forEach { App.cache.removeResource(it) }
+                cached = App.cache.cacheSpace
+            }
+        }
         Section("YouTube")
         val ytOn by YtAuth.on.collectAsState()
         var login by remember { mutableStateOf(false) }
@@ -686,7 +700,7 @@ fun SettingsScreen(vm: AppState) {
         Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.MusicNote, null, tint = LocalAccent.current.c1)
             Spacer(Modifier.width(8.dp))
-            Text("Gargantua 0.1.0 · qweowix · GPL-3.0", color = Pal.dim, fontSize = 13.sp)
+            Text("Gargantua 0.2.0 · qweowix · GPL-3.0", color = Pal.dim, fontSize = 13.sp)
         }
     }
 }

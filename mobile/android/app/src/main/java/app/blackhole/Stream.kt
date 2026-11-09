@@ -3,6 +3,7 @@ package app.blackhole
 import android.net.Uri
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.cache.ContentMetadata
 import kotlinx.serialization.json.buildJsonObject
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -36,10 +37,15 @@ class NpDownloader(private val client: OkHttpClient) : Downloader() {
     }
 }
 
+/** Трек оказался HLS: его играет другой источник, а он выбирается по ссылке. PlayerService подменит элемент очереди.
+ *  FileNotFoundException — чтобы ExoPlayer не тратил секунды на повторы */
+class HlsNeeded(val key: String, val url: String) : java.io.FileNotFoundException("hls")
+
 /** Трек → прямая ссылка на звук. yt-dlp на телефоне нет — ссылку достаёт NewPipeExtractor */
 @UnstableApi
 object Streams {
     private const val TTL = 4 * 3600_000L // прямые ссылки YouTube живут ~6 ч
+    private const val OPEN_WAIT = 8000L
     private val cache = ConcurrentHashMap<String, Pair<String, Long>>()
 
     /** Треки очереди по ключу: плеер знает только bh://t/<ключ>, сам трек берём отсюда */
@@ -75,11 +81,36 @@ object Streams {
         if (spec.uri.scheme != "bh") return spec
         val key = spec.uri.lastPathSegment ?: throw IOException("нет трека")
         val url = urlFor(key)
+        if (isHls(url)) throw HlsNeeded(key, url)
+        waitOpen(key, url)
         return spec.buildUpon().setUri(Uri.parse(url)).setHttpRequestHeaders(headersFor(url)).build()
     }
 
-    /** Есть свежая ссылка — трек заиграет сразу */
-    fun ready(key: String) = cache[key]?.let { System.currentTimeMillis() - it.second < TTL } == true
+    fun isHls(url: String) = Uri.parse(url).path?.endsWith(".m3u8") == true
+
+    /** Без Премиума YouTube вешает рекламу: ссылка клиента-телевизора секунды 3 отвечает 403. Не тратим на это
+     *  попытки ExoPlayer (у него паузы растут, а потом ссылка выкидывается и таймер идёт заново) — щупаем сами, как на ПК */
+    private fun waitOpen(key: String, url: String) {
+        val got = cache[key]?.second ?: return
+        if (!url.contains("c=TVHTML5")) return
+        val end = got + OPEN_WAIT
+        while (System.currentTimeMillis() < end) {
+            val b = okhttp3.Request.Builder().url("$url&range=0-0")
+            headersFor(url).forEach { (k, v) -> b.header(k, v) }
+            val code = runCatching { App.http.newCall(b.build()).execute().use { it.code } }.getOrDefault(0)
+            if (code != 403) return
+            Thread.sleep(250)
+        }
+    }
+
+    /** Трек целиком на диске: ссылка не нужна, YouTube лишний раз не дёргаем */
+    private fun onDisk(key: String): Boolean {
+        val len = ContentMetadata.getContentLength(App.cache.getContentMetadata(key))
+        return len > 0 && App.cache.isCached(key, 0, len)
+    }
+
+    /** Есть свежая ссылка или сам звук — трек заиграет сразу */
+    fun ready(key: String) = onDisk(key) || cache[key]?.let { System.currentTimeMillis() - it.second < TTL } == true
 
     // плеер и предзагрузка могут попросить один трек одновременно — второй ждёт первого, а не достаёт заново
     private val locks = ConcurrentHashMap<String, Any>()
@@ -90,11 +121,7 @@ object Streams {
         cache[key]?.takeIf { System.currentTimeMillis() - it.second < TTL }?.let { return it.first }
         val t = tracks[key] ?: throw IOException("трек потерялся: $key")
         val page = coreNow("resolve", buildJsonObject { put("track", t) }).to<String>()
-        val url = audio(page) ?: run {
-            // SoundCloud отдаёт многие треки только кусками (HLS) — тогда тот же трек с YT Music
-            val yt = coreNow("yt_match", buildJsonObject { put("track", t) }).to<String>()
-            audio(yt) ?: throw IOException("нет звука")
-        }
+        val url = audio(page) ?: throw IOException("нет звука")
         cache[key] = url to System.currentTimeMillis()
         return url
     }
@@ -104,6 +131,8 @@ object Streams {
     private val extract = java.util.concurrent.locks.ReentrantLock(true)
 
     internal fun audio(page: String): String? {
+        // NewPipe не умеет AAC-треки SoundCloud («Could not get any stream») и не отдаёт HLS — разбираем сами, в ядре
+        if (page.contains("soundcloud.com")) return coreNow("sc_stream", buildJsonObject { put("url", kotlinx.serialization.json.JsonPrimitive(page)) }).to<String>()
         val url = page.replace("music.youtube.com", "www.youtube.com")
         // есть вход YouTube — сначала под аккаунтом, как ПК; не вышло — по-старому, анонимно
         val id = Regex("(?:[?&]v=|youtu\\.be/)([\\w-]{11})").find(url)?.groupValues?.get(1)

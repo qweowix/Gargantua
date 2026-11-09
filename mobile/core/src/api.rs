@@ -80,11 +80,7 @@ fn run(m: &str, a: &Value) -> Result<Value> {
         "all_songs" => json!(ytmusic::all_songs(s(a, "id"), s(a, "artist"))?),
         "radio" => json!(radio_for(&track(a)?)?),
         "resolve" => json!(resolve(&track(a)?)?),
-        // поток с SoundCloud не отдался обычным файлом (только HLS) — тот же трек на YT Music
-        "yt_match" => {
-            let t = track(a)?;
-            json!(ytmusic::best_match(&format!("{} {}", t.artist, t.title))?)
-        }
+        "sc_stream" => json!(crate::soundcloud::stream(s(a, "url"))?),
         "import" => import(s(a, "url"))?,
         // QR плейлиста (формат как на ПК): картинки PNG в кэше, пути — по порядку частей
         "qr_encode" => {

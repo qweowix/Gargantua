@@ -9,11 +9,13 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -64,10 +66,15 @@ class PlayerService : MediaSessionService() {
     private var unsent = 0.0
     private var counted = false
     private var autoFor = ""
+    private var curKey: String? = null
 
     override fun onCreate() {
         super.onCreate()
-        val ds = ResolvingDataSource.Factory(OkHttpDataSource.Factory(App.http)) { Streams.resolve(it) }
+        val net = ResolvingDataSource.Factory(OkHttpDataSource.Factory(App.http)) { Streams.resolve(it) }
+        // ссылка нужна, только когда байтов нет на диске: трек, что уже играл, стартует мгновенно, «назад» — тоже
+        val ds = CacheDataSource.Factory().setCache(App.cache).setUpstreamDataSourceFactory(net)
+            .setCacheKeyFactory { spec -> spec.key ?: cacheKey(spec.uri) }
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(ds))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
@@ -156,13 +163,21 @@ class PlayerService : MediaSessionService() {
 
     private fun MediaItem.withUri(): MediaItem {
         track()?.let { Streams.tracks[it.key] = it }
-        return buildUpon().setUri(Uri.parse("bh://t/" + Uri.encode(mediaId))).build()
+        return buildUpon().setUri(Uri.parse("bh://t/" + Uri.encode(mediaId))).setMimeType(null).setCustomCacheKey(mediaId).build()
     }
+
+    /** Куски HLS: подпись в ссылке каждый раз новая, а файл тот же. Сам плейлист не кешируем по пути — в нём свежие подписи */
+    private fun cacheKey(uri: Uri) = if (uri.path?.endsWith(".m3u8") == true) uri.toString() else uri.buildUpon().clearQuery().build().toString()
+
+    private fun indexOf(key: String) = (0 until player.mediaItemCount).firstOrNull { player.getMediaItemAt(it).mediaId == key }
 
     private val listener = object : Player.Listener {
         override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
             prefetch()
             refreshButtons()
+            // тот же трек: только подменили источник (HLS, повтор) — счётчики не трогаем
+            if (item?.mediaId == curKey) return
+            curKey = item?.mediaId
             flushListen()
             retries = 0
             listened = 0.0
@@ -175,7 +190,20 @@ class PlayerService : MediaSessionService() {
         override fun onShuffleModeEnabledChanged(on: Boolean) = prefetch()
         override fun onRepeatModeChanged(mode: Int) = prefetch()
 
+        // заиграло — прошлые сбои этого трека не считаем: иначе пара обрывов сети за трек его скипала
+        override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_READY) retries = 0
+        }
+
         override fun onPlayerError(error: PlaybackException) {
+            // ошибка может быть и про следующий трек, поэтому индекс ищем по ключу из неё
+            generateSequence<Throwable>(error) { it.cause }.filterIsInstance<HlsNeeded>().firstOrNull()?.let { h ->
+                val i = indexOf(h.key) ?: return
+                player.replaceMediaItem(i, player.getMediaItemAt(i).buildUpon().setUri(h.url).setMimeType(MimeTypes.APPLICATION_M3U8).setCustomCacheKey(null).build())
+                player.prepare()
+                player.play()
+                return
+            }
             val key = player.currentMediaItem?.mediaId ?: return
             Streams.forget(key) // протухла ссылка или YouTube не отдал — следующая попытка достанет заново
             val title = player.currentMediaItem?.mediaMetadata?.title ?: ""
@@ -202,6 +230,8 @@ class PlayerService : MediaSessionService() {
                 scope.launch {
                     delay(600L * retries)
                     if (player.currentMediaItem?.mediaId != key) return@launch
+                    // протухшая ссылка HLS: возвращаем bh://, чтобы достать свежую
+                    player.currentMediaItem?.let { if (it.localConfiguration?.uri?.scheme != "bh") player.replaceMediaItem(player.currentMediaItemIndex, it.withUri()) }
                     player.prepare()
                     player.play()
                 }

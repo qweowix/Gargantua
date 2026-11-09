@@ -2,6 +2,9 @@ package app.blackhole
 
 import android.app.Application
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.boolean
@@ -22,11 +25,17 @@ class App : Application() {
         }
         cloudOn = runCatching { coreNow("init", dirs).jsonObject["cloud"]?.jsonPrimitive?.boolean == true }.getOrDefault(false)
         Streams.init(http)
+        cache = SimpleCache(java.io.File(filesDir, "audio"), LeastRecentlyUsedCacheEvictor(CACHE_BYTES), StandaloneDatabaseProvider(this))
         YtAuth.init(this)
     }
 
     companion object {
         var cloudOn = false
+
+        /** Прослушанное лежит на диске, как на ПК: повторно играет мгновенно и без интернета. Давно не игравшее вытесняется */
+        lateinit var cache: SimpleCache
+        private const val CACHE_BYTES = 2L * 1024 * 1024 * 1024 // как на ПК
+
         val http: OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)

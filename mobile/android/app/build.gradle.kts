@@ -65,6 +65,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.2")
     implementation("androidx.lifecycle:lifecycle-process:2.9.2")
     implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.8.0") // SoundCloud
+    implementation("androidx.media3:media3-database:1.8.0") // дисковый кеш звука
     implementation("androidx.media3:media3-session:1.8.0")
     implementation("androidx.media3:media3-datasource-okhttp:1.8.0")
     implementation("io.coil-kt.coil3:coil-compose:3.3.0")

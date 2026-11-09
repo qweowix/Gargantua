@@ -90,6 +90,40 @@ pub fn search(q: &str, limit: usize) -> Result<Vec<Track>> {
     Ok(v["collection"].as_array().map(|a| a.iter().filter_map(parse).collect()).unwrap_or_default())
 }
 
+/// Прямая ссылка на звук трека (для телефона: на ПК это делает yt-dlp). Обычный файл, если есть, иначе HLS:
+/// многие треки SoundCloud отдаёт только так. Зашифрованные варианты (DRM) не сыграть
+#[allow(dead_code)] // зовёт только телефон
+pub fn stream(url: &str) -> Result<String> {
+    let v = get("/resolve", &[("url", url)])?;
+    let auth = v["track_authorization"].as_str().unwrap_or("");
+    // обычный файл лучше HLS, дальше — кто с большим битрейтом (из имени: aac_160k, mp3_128)
+    let rank = |t: &&Value| {
+        let kind = match t["format"]["protocol"].as_str() {
+            Some("progressive") => 2,
+            Some("hls") => 1,
+            _ => 0,
+        };
+        let rate: String = t["preset"].as_str().unwrap_or("").chars().filter(char::is_ascii_digit).collect();
+        (kind, rate.parse::<u32>().unwrap_or(0))
+    };
+    let Some(best) = v["media"]["transcodings"].as_array().and_then(|a| a.iter().filter(|t| !t["snipped"].as_bool().unwrap_or(false) && rank(t).0 > 0).max_by_key(rank)) else {
+        bail!("SoundCloud не отдаёт звук этого трека");
+    };
+    let link = best["url"].as_str().unwrap_or("");
+    for attempt in 0..2 {
+        let cid = client_id(attempt == 1)?;
+        match call(agent().get(link).query("client_id", &cid).query("track_authorization", auth)) {
+            Ok(r) => {
+                let j: Value = r.into_json()?;
+                return j["url"].as_str().map(String::from).ok_or_else(|| anyhow::anyhow!("SoundCloud не дал ссылку"));
+            }
+            Err(ureq::Error::Status(401 | 403, _)) if attempt == 0 => continue,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    bail!("SoundCloud не пускает")
+}
+
 pub fn import(url: &str) -> Result<(String, Vec<Track>)> {
     let v = get("/resolve", &[("url", url)])?;
     match v["kind"].as_str() {
@@ -114,5 +148,20 @@ pub fn import(url: &str) -> Result<(String, Vec<Track>)> {
             Ok((v["title"].as_str().unwrap_or("SoundCloud").into(), tracks))
         }
         _ => bail!("это не трек и не плейлист SoundCloud"),
+    }
+}
+
+#[cfg(test)]
+mod live {
+    /// Живой SoundCloud: какие варианты звука у треков и что выбрали. Не гонять в цикле
+    #[test]
+    #[ignore]
+    fn stream_picks() {
+        for t in super::search("one way ticket slowed", 8).unwrap() {
+            let v = super::get("/resolve", &[("url", &t.url)]).unwrap();
+            let kinds: Vec<String> = v["media"]["transcodings"].as_array().unwrap().iter().map(|x| format!("{}/{}/{}", x["preset"], x["format"]["protocol"], x["snipped"])).collect();
+            println!("{} {}s snip={} {:?}", t.title, t.dur, t.snip, kinds);
+            println!("  -> {:?}", super::stream(&t.url).map(|u| u.chars().take(70).collect::<String>()));
+        }
     }
 }
