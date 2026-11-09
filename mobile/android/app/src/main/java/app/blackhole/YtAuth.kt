@@ -78,9 +78,9 @@ object YtAuth {
             .joinToString(" ")
     }
 
-    /** id видео → прямая ссылка на лучший звук. Ошибки — исключением (тогда пробуем анонимно через NewPipe) */
-    fun audio(id: String): String {
-        val sts = runCatching { YoutubeJavaScriptPlayerManager.getSignatureTimestamp(id) }.getOrNull()
+    /** Ответ плеера YouTube. params=2AMB: без рекламы, и ссылка открыта сразу, а не через ~4 с (замер на ПК).
+     *  Параметр недокументирован: если с ним не вышло, спросим ещё раз без него */
+    private fun player(id: String, sts: Int?, noAds: Boolean): kotlinx.serialization.json.JsonObject {
         val body = buildJsonObject {
             putJsonObject("context") {
                 putJsonObject("client") {
@@ -95,6 +95,7 @@ object YtAuth {
                 }
             }
             put("videoId", id)
+            if (noAds) put("params", "2AMB")
             putJsonObject("playbackContext") {
                 putJsonObject("contentPlaybackContext") {
                     put("html5Preference", "HTML5_PREF_WANTS")
@@ -115,11 +116,19 @@ object YtAuth {
             .header("Authorization", authorization())
             .header("Cookie", jar.entries.joinToString("; ") { "${it.key}=${it.value}" })
             .build()
-        val v = App.http.newCall(req).execute().use { r ->
+        return App.http.newCall(req).execute().use { r ->
             absorb(r.headers("Set-Cookie"))
             if (!r.isSuccessful) throw IOException("YouTube HTTP ${r.code}")
             Json.parseToJsonElement(r.body!!.string()).jsonObject
         }
+    }
+
+    private fun playable(v: kotlinx.serialization.json.JsonObject) = v["playabilityStatus"]?.jsonObject?.get("status")?.jsonPrimitive?.contentOrNull == "OK"
+
+    /** id видео → прямая ссылка на лучший звук. Ошибки — исключением (тогда пробуем анонимно через NewPipe) */
+    fun audio(id: String): String {
+        val sts = runCatching { YoutubeJavaScriptPlayerManager.getSignatureTimestamp(id) }.getOrNull()
+        val v = runCatching { player(id, sts, true) }.getOrNull()?.takeIf(::playable) ?: player(id, sts, false)
         val ps = v["playabilityStatus"]?.jsonObject
         val status = ps?.get("status")?.jsonPrimitive?.contentOrNull
         if (status != "OK") throw IOException("YouTube: ${ps?.get("reason")?.jsonPrimitive?.contentOrNull ?: status}")

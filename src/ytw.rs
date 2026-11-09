@@ -1,7 +1,7 @@
 //! yt-dlp, который живёт в фоне: Python, сам yt-dlp, куки Firefox и плеер YouTube грузятся один раз,
 //! а не на каждый трек. Плюс быстрый путь — только tv_samsung-клиент, без страницы и initial data (меньше запросов
 //! к YouTube); не вышло — тот же трек обычным путём. Замер на i3: ~10 с запуском yt-dlp на трек
-//! против ~2 с здесь. Два процесса: для play (обычный приоритет) и для предзагрузки (nice 19, его
+//! против ~2 с здесь (без рекламы, см. FAST). Два процесса: для play (обычный приоритет) и для предзагрузки (nice 19, его
 //! запускает поток предзагрузки). Без дела процесс сам выходит, чтобы не держать ~80 МБ памяти зря
 
 use std::collections::HashMap;
@@ -27,8 +27,11 @@ except Exception:
     pass
 idle = float(sys.argv[2])
 # клиент «телевизор Samsung», как у свежего yt-dlp: обычный tv YouTube сломал («page needs to be reloaded»)
-# initial_data (запрос next) нам не нужен — только ссылка на звук, это минус секунда на трек
-FAST = ['--extractor-args', 'youtube:player_client=tv_samsung;player_skip=webpage,configs,initial_data']
+# initial_data (запрос next) нам не нужен — только ссылка на звук, это минус секунда на трек.
+# player_params=2AMB: YouTube не вешает рекламу, и ссылка открыта сразу, а не через ~4 с. Параметр недокументирован;
+# перестанет работать — останется ожидание по available_at или обычный путь ниже. Похожий adPlaybackContext.pyv
+# не брать: он тоже без рекламы, но отдаёт только начало файла (дальше 403)
+FAST = ['--extractor-args', 'youtube:player_client=tv_samsung;player_skip=webpage,configs,initial_data;player_params=2AMB']
 cache = {}
 def ydl(args, fast):
     k = (tuple(args), fast)
@@ -185,6 +188,9 @@ mod tests {
             let s = got.get(&u).expect("нет ссылки");
             let r = ureq::get(&format!("{s}&range=0-1000")).call();
             assert!(r.is_ok_and(|r| r.status() == 200), "googlevideo не отдал звук");
+            // и середину файла: бывают ссылки, которые отдают только начало
+            let r = ureq::get(&format!("{s}&range=1000000-1001000")).call();
+            assert!(r.is_ok_and(|r| r.status() == 200), "googlevideo не отдал середину файла");
         }
     }
 }
