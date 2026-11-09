@@ -994,3 +994,6 @@ msgstr "Opakovať skladbu"
 
 msgid "Поделиться ссылкой"
 msgstr "Zdieľať odkaz"
+
+msgid "Ещё"
+msgstr "Viac"

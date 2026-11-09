@@ -123,6 +123,7 @@ global Icons {
     out property <string> prev: "M19 5.5v13L9.5 12zM5.5 5H8v14H5.5z";
     out property <string> plus: "M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z";
     out property <string> link: "M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 0-10z";
+    out property <string> more: "M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z";
     out property <string> download: "M11 4h2v9.17l3.59-3.58L18 11l-6 6-6-6 1.41-1.41L11 13.17zM5 18h14v2H5z";
     out property <string> check: "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
     out property <string> folder: "M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8z";
@@ -228,6 +229,50 @@ component IconBtn inherits Rectangle {
                 Tip.bottom = root.absolute-position.y + root.height;
             } else if !self.has-hover && Tip.text == root.tip {
                 Tip.text = "";
+            }
+        }
+    }
+}
+
+component MenuItem inherits Rectangle {
+    in property <string> icon;
+    in property <string> text;
+    in property <bool> danger;
+    in property <bool> active;
+    in property <bool> off;
+    callback clicked();
+    height: 38px;
+    border-radius: 8px;
+    background: ta.has-hover && !root.off ? #ffffff14 : #ffffff00;
+    opacity: root.off ? 0.5 : 1;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                d: root.icon;
+                width: 16px;
+                height: 16px;
+                fill: root.danger ? #ff5a6e : root.active ? Theme.soft2 : Theme.text;
+            }
+        }
+
+        Text {
+            text: root.text;
+            color: root.danger ? #ff5a6e : root.active ? Theme.soft2 : Theme.text;
+            font-size: 13px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: root.off ? default : pointer;
+        clicked => {
+            if !root.off {
+                root.clicked();
             }
         }
     }
@@ -562,15 +607,12 @@ component Cover inherits Rectangle {
 
 component TrackRow inherits Rectangle {
     in property <TrackItem> item;
-    in property <bool> removable;
     callback play();
     callback add();
     callback like();
-    callback remove();
-    callback radio();
     callback artist();
-    callback download();
-    callback share();
+    // ⋯: радио, ссылка, скачать, убрать — общее меню окна, встаёт у этой кнопки
+    callback more(length, length);
     callback want-cover(string);
     height: 58px;
     border-radius: 10px;
@@ -662,47 +704,6 @@ component TrackRow inherits Rectangle {
             horizontal-alignment: right;
         }
 
-        VerticalLayout {
-            alignment: center;
-            IconBtn {
-                size: 30px;
-                icon: Icons.radio;
-                tip: @tr("Радио по этому треку");
-                clicked => {
-                    root.radio();
-                }
-            }
-        }
-
-        VerticalLayout {
-            alignment: center;
-            IconBtn {
-                size: 30px;
-                icon: Icons.link;
-                tip: @tr("Поделиться ссылкой");
-                clicked => {
-                    root.share();
-                }
-            }
-        }
-
-        VerticalLayout {
-            alignment: center;
-            // скачать в mp3: стрелка → пульсирует, пока качается → галочка
-            IconBtn {
-                size: 30px;
-                icon: root.item.dl == 2 ? Icons.check : Icons.download;
-                tip: root.item.dl == 2 ? @tr("Уже скачано") : root.item.dl == 1 ? @tr("Качается…") : @tr("Скачать в mp3");
-                active: root.item.dl != 0;
-                opacity: root.item.dl == 1 ? 0.45 : 1;
-                clicked => {
-                    if root.item.dl == 0 {
-                        root.download();
-                    }
-                }
-            }
-        }
-
         // ♥ — в любимые, не запуская трек
         VerticalLayout {
             alignment: center;
@@ -729,18 +730,18 @@ component TrackRow inherits Rectangle {
             }
         }
 
-        if root.removable: VerticalLayout {
+        VerticalLayout {
             alignment: center;
             IconBtn {
                 size: 30px;
-                icon: Icons.trash;
-                tip: @tr("Убрать из плейлиста");
-                danger: true;
+                icon: Icons.more;
+                tip: @tr("Ещё");
                 clicked => {
-                    root.remove();
+                    root.more(self.absolute-position.x, self.absolute-position.y);
                 }
             }
         }
+
     }
 }
 
@@ -1495,6 +1496,21 @@ export component AppWindow inherits Window {
         width: 0;
         height: 0;
     }
+    // меню ⋯ одно на всё окно: что за трек и где кнопка. kind — как в track_at, 2 — панель плеера
+    in-out property <bool> menu-open;
+    property <int> menu-i;
+    property <int> menu-kind;
+    property <int> menu-dl;
+    property <length> menu-ax;
+    property <length> menu-ay;
+    public function open-menu(i: int, kind: int, dl: int, x: length, y: length) {
+        root.menu-i = i;
+        root.menu-kind = kind;
+        root.menu-dl = dl;
+        root.menu-ax = x;
+        root.menu-ay = y;
+        root.menu-open = true;
+    }
     public function copy-text(s: string) {
         clip.text = s;
         clip.select-all();
@@ -1826,6 +1842,7 @@ export component AppWindow inherits Window {
     property <string> last-key;
     function on-key(e: KeyEvent) -> EventResult {
         if root.rebinding < 0 && e.text == Key.Escape {
+            if root.menu-open { root.menu-open = false; return accept; }
             if root.lyrics-open { root.set-lyrics-open(false); keys.focus(); return accept; }
             if root.modal != 0 { root.modal = 0; return accept; }
             if root.fx-open || root.queue-open || root.conn-open { root.fx-open = false; root.queue-open = false; root.conn-open = false; return accept; }
@@ -2235,14 +2252,8 @@ export component AppWindow inherits Window {
                                                 like => {
                                                     root.like-track(i, 8);
                                                 }
-                                                download => {
-                                                    root.download(i, 8);
-                                                }
-                                                radio => {
-                                                    root.radio(i, 8);
-                                                }
-                                                share => {
-                                                    root.share(i, 8);
+                                                more(x, y) => {
+                                                    root.open-menu(i, 8, self.item.dl, x, y);
                                                 }
                                                 artist => {
                                                     root.open-artist(i, 8);
@@ -2347,14 +2358,8 @@ export component AppWindow inherits Window {
                                             like => {
                                                 root.like-track(i, 0);
                                             }
-                                            download => {
-                                                root.download(i, 0);
-                                            }
-                                            radio => {
-                                                root.radio(i, 0);
-                                            }
-                                            share => {
-                                                root.share(i, 0);
+                                            more(x, y) => {
+                                                root.open-menu(i, 0, self.item.dl, x, y);
                                             }
                                             artist => {
                                                 root.open-artist(i, 0);
@@ -2609,7 +2614,6 @@ export component AppWindow inherits Window {
                                 ListView {
                                     for t[i] in root.pl-tracks: TrackRow {
                                         item: t;
-                                        removable: true;
                                         play => {
                                             root.play-pl(i);
                                         }
@@ -2619,20 +2623,11 @@ export component AppWindow inherits Window {
                                         like => {
                                             root.like-track(i, 1);
                                         }
-                                        download => {
-                                            root.download(i, 1);
-                                        }
-                                        radio => {
-                                            root.radio(i, 1);
-                                        }
-                                        share => {
-                                            root.share(i, 1);
+                                        more(x, y) => {
+                                            root.open-menu(i, 1, self.item.dl, x, y);
                                         }
                                         artist => {
                                             root.open-artist(i, 1);
-                                        }
-                                        remove => {
-                                            root.remove-track(i);
                                         }
                                         want-cover(u) => {
                                             root.want-cover(u);
@@ -2853,14 +2848,8 @@ export component AppWindow inherits Window {
                                     like => {
                                         root.like-track(i, 6);
                                     }
-                                    download => {
-                                        root.download(i, 6);
-                                    }
-                                    radio => {
-                                        root.radio(i, 6);
-                                    }
-                                    share => {
-                                        root.share(i, 6);
+                                    more(x, y) => {
+                                        root.open-menu(i, 6, self.item.dl, x, y);
                                     }
                                     artist => {
                                         root.open-artist(i, 6);
@@ -3145,14 +3134,8 @@ export component AppWindow inherits Window {
                                 like => {
                                     root.like-track(i, 7);
                                 }
-                                download => {
-                                    root.download(i, 7);
-                                }
-                                radio => {
-                                    root.radio(i, 7);
-                                }
-                                share => {
-                                    root.share(i, 7);
+                                more(x, y) => {
+                                    root.open-menu(i, 7, self.item.dl, x, y);
                                 }
                                 artist => {
                                     root.open-artist(i, 7);
@@ -3483,14 +3466,8 @@ export component AppWindow inherits Window {
                                         like => {
                                             root.like-track(i, 4);
                                         }
-                                        download => {
-                                            root.download(i, 4);
-                                        }
-                                        radio => {
-                                            root.radio(i, 4);
-                                        }
-                                        share => {
-                                            root.share(i, 4);
+                                        more(x, y) => {
+                                            root.open-menu(i, 4, self.item.dl, x, y);
                                         }
                                         artist => {
                                             root.open-artist(i, 4);
@@ -3668,14 +3645,8 @@ export component AppWindow inherits Window {
                                     like => {
                                         root.like-track(i, 5);
                                     }
-                                    download => {
-                                        root.download(i, 5);
-                                    }
-                                    radio => {
-                                        root.radio(i, 5);
-                                    }
-                                    share => {
-                                        root.share(i, 5);
+                                    more(x, y) => {
+                                        root.open-menu(i, 5, self.item.dl, x, y);
                                     }
                                     artist => {
                                         root.open-artist(i, 5);
@@ -4510,24 +4481,34 @@ export component AppWindow inherits Window {
 
                         if root.has-track: VerticalLayout {
                             alignment: center;
-                            IconBtn {
-                                size: 30px;
-                                icon: Icons.radio;
-                                tip: @tr("Радио по этому треку");
-                                clicked => {
-                                    root.radio(0, 2);
+                            Rectangle {
+                                width: 30px;
+                                height: 30px;
+                                IconBtn {
+                                    size: 30px;
+                                    icon: Icons.more;
+                                    tip: @tr("Ещё");
+                                    active: root.sleep-mode != 0 || !root.fx-default;
+                                    clicked => {
+                                        root.open-menu(0, 2, 0, self.absolute-position.x, self.absolute-position.y);
+                                    }
                                 }
-                            }
-                        }
 
-                        if root.has-track: VerticalLayout {
-                            alignment: center;
-                            IconBtn {
-                                size: 30px;
-                                icon: Icons.link;
-                                tip: @tr("Поделиться ссылкой");
-                                clicked => {
-                                    root.share(0, 2);
+                                if root.sleep-mode != 0: Rectangle {
+                                    x: parent.width - 14px;
+                                    y: -2px;
+                                    width: max(16px, sleep-badge.preferred-width + 8px);
+                                    height: 16px;
+                                    border-radius: 8px;
+                                    background: Theme.c1;
+                                    sleep-badge := Text {
+                                        text: root.sleep-mode == 4 ? "♪" : root.sleep-left;
+                                        color: white;
+                                        font-size: 9px;
+                                        font-weight: 800;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
                                 }
                             }
                         }
@@ -4630,9 +4611,9 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    // таймер сна + громкость + lyrics + очередь + звук
+                    // устройства + очередь + текст + громкость; таймер сна и эквалайзер — в меню ⋯
                     HorizontalLayout {
-                        width: root.conn-on ? 392px : 352px;
+                        width: root.conn-on ? 312px : 272px;
                         spacing: 8px;
                         // устройства Connect: куда идёт звук
                         if root.conn-on: VerticalLayout {
@@ -4651,54 +4632,6 @@ export component AppWindow inherits Window {
                         }
 
                         // луна: по кругу выкл → 15 → 30 → 60 мин → после трека; цифра — сколько минут осталось
-                        VerticalLayout {
-                            alignment: center;
-                            Rectangle {
-                                width: 32px;
-                                height: 32px;
-                                IconBtn {
-                                    size: 32px;
-                                    icon: Icons.moon;
-                                    active: root.sleep-mode != 0;
-                                    tip: root.sleep-mode == 0 ? @tr("Таймер сна") : root.sleep-mode == 4 ? @tr("Усну после этого трека") : @tr("Усну через {} мин", root.sleep-left);
-                                    clicked => {
-                                        root.set-sleep(Math.mod(root.sleep-mode + 1, 5));
-                                    }
-                                }
-
-                                if root.sleep-mode != 0: Rectangle {
-                                    x: parent.width - 14px;
-                                    y: -2px;
-                                    width: max(16px, sleep-badge.preferred-width + 8px);
-                                    height: 16px;
-                                    border-radius: 8px;
-                                    background: Theme.c1;
-                                    sleep-badge := Text {
-                                        text: root.sleep-mode == 4 ? "♪" : root.sleep-left;
-                                        color: white;
-                                        font-size: 9px;
-                                        font-weight: 800;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                            }
-                        }
-
-                        VerticalLayout {
-                            alignment: center;
-                            IconBtn {
-                                size: 32px;
-                                icon: Icons.eq;
-                                tip: @tr("Эквалайзер и скорость");
-                                active: root.fx-open || !root.fx-default;
-                                clicked => {
-                                    root.fx-open = !root.fx-open;
-                                    root.conn-open = false;
-                                }
-                            }
-                        }
-
                         VerticalLayout {
                             alignment: center;
                             IconBtn {
@@ -5762,6 +5695,97 @@ export component AppWindow inherits Window {
     }
 
     // ── подсказка кнопки: с задержкой, как обычные подсказки; у низа окна — над кнопкой ──
+    // ── меню ⋯ ──
+    if root.menu-open: Rectangle {
+        TouchArea {
+            clicked => {
+                root.menu-open = false;
+            }
+            scroll-event(e) => {
+                root.menu-open = false;
+                reject
+            }
+        }
+
+        Rectangle {
+            width: 240px;
+            height: menu-col.preferred-height;
+            x: min(max(8px, root.menu-ax + 30px - self.width), root.width - self.width - 8px);
+            // не влезает вниз — раскрываем вверх
+            y: root.menu-ay + 34px + self.height + 8px < root.height ? root.menu-ay + 34px : max(8px, root.menu-ay - self.height - 4px);
+            border-radius: 12px;
+            background: #16141f;
+            border-width: 1px;
+            border-color: #ffffff1a;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000099;
+            // клики мимо пунктов не закрывают меню
+            TouchArea { }
+
+            menu-col := VerticalLayout {
+                padding: 6px;
+                MenuItem {
+                    icon: Icons.radio;
+                    text: @tr("Радио по этому треку");
+                    clicked => {
+                        root.menu-open = false;
+                        root.radio(root.menu-i, root.menu-kind);
+                    }
+                }
+
+                MenuItem {
+                    icon: Icons.link;
+                    text: @tr("Поделиться ссылкой");
+                    clicked => {
+                        root.menu-open = false;
+                        root.share(root.menu-i, root.menu-kind);
+                    }
+                }
+
+                if root.menu-kind != 2: MenuItem {
+                    icon: root.menu-dl == 2 ? Icons.check : Icons.download;
+                    text: root.menu-dl == 2 ? @tr("Уже скачано") : root.menu-dl == 1 ? @tr("Качается…") : @tr("Скачать в mp3");
+                    off: root.menu-dl != 0;
+                    clicked => {
+                        root.menu-open = false;
+                        root.download(root.menu-i, root.menu-kind);
+                    }
+                }
+
+                if root.menu-kind == 1: MenuItem {
+                    icon: Icons.trash;
+                    text: @tr("Убрать из плейлиста");
+                    danger: true;
+                    clicked => {
+                        root.menu-open = false;
+                        root.remove-track(root.menu-i);
+                    }
+                }
+
+                // таймер перебирается кликами — меню не закрываем, видно, что выбралось
+                if root.menu-kind == 2: MenuItem {
+                    icon: Icons.moon;
+                    text: root.sleep-mode == 0 ? @tr("Таймер сна") : root.sleep-mode == 4 ? @tr("Усну после этого трека") : @tr("Усну через {} мин", root.sleep-left);
+                    active: root.sleep-mode != 0;
+                    clicked => {
+                        root.set-sleep(Math.mod(root.sleep-mode + 1, 5));
+                    }
+                }
+
+                if root.menu-kind == 2: MenuItem {
+                    icon: Icons.eq;
+                    text: @tr("Эквалайзер и скорость");
+                    active: !root.fx-default;
+                    clicked => {
+                        root.menu-open = false;
+                        root.fx-open = true;
+                        root.conn-open = false;
+                    }
+                }
+            }
+        }
+    }
+
     tip-box := Rectangle {
         property <bool> want: Tip.text != "";
         property <bool> on;

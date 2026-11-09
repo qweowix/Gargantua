@@ -145,6 +145,11 @@ fn ui() {
     ui.set_page("playlist".into());
     ui.set_pl_total(3);
     snap(&win, "02-playlist");
+    ui.invoke_open_menu(1, 1, 0, 1180.0, 317.0);
+    snap(&win, "02-playlist-menu");
+    ui.invoke_open_menu(0, 2, 0, 290.0, 725.0);
+    snap(&win, "02-bar-menu");
+    ui.set_menu_open(false);
 
     // перф: играет музыка, плейлист на 300 треков — главный экран стоит и рисуется быстро
     let big: Vec<TrackItem> = (0..300).map(|i| track(&format!("Track {i}"), "TV Girl", i % 3)).collect();
