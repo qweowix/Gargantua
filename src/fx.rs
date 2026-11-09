@@ -24,7 +24,9 @@ pub const PRESETS: [(&str, &str, [f32; 10]); 13] = [
 /// Строка для `af` в mpv. Пусто — фильтров нет вообще (ровный звук ничего не стоит).
 /// Полосы — колокола шириной в октаву и перекрываются: соседние складываются, и бас выходил выше
 /// ползунков (Bass +6 давал +7 на 31 Гц и +5.5 на 125). Поэтому усиления подгоняем по настоящей
-/// АЧХ, чтобы кривая шла ровно через ползунки, а общий уровень опускаем на её реальный пик — без клипа
+/// АЧХ, чтобы кривая шла ровно через ползунки. Опускать весь звук на пик кривой нельзя: голос и середина
+/// тоже становятся тише (Bass: -13.3 LUFS против -9.1 без эквалайзера). Опускаем на четверть пика, а
+/// остальные перегрузы ловит лимитер (Bass: -9.4 LUFS, пик в норме)
 pub fn af(gains: &[f32]) -> String {
     if gains.iter().all(|g| g.abs() < 0.05) {
         return String::new();
@@ -39,10 +41,15 @@ pub fn af(gains: &[f32]) -> String {
     // пик по всему слышимому диапазону с шагом 1/12 октавы
     let peak = (0..=120).map(|i| response(&set, 20.0 * 2f64.powf(i as f64 / 12.0))).fold(0.0, f64::max);
     let mut chain = vec![];
-    if peak > 0.05 {
-        chain.push(format!("volume=volume={:.1}dB", -peak));
+    // подгонка полос даёт и на чистых срезах всплеск на доли дБ — перегружать там нечему
+    let boosted = peak > 0.5;
+    if boosted {
+        chain.push(format!("volume=volume={:.1}dB", -peak / 4.0));
     }
     chain.extend(BANDS.iter().zip(&set).filter(|(_, g)| g.abs() >= 0.05).map(|(f, g)| format!("equalizer=f={f}:t=o:w=1:g={g:.1}")));
+    if boosted {
+        chain.push("alimiter=level=disabled:limit=0.97:attack=5:release=60:asc=1".into());
+    }
     format!("lavfi=[{}]", chain.join(","))
 }
 
@@ -79,7 +86,10 @@ mod tests {
     fn filter_string() {
         assert_eq!(super::af(&[0.0; 10]), "");
         let s = super::af(&[6.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -3.0]);
-        assert!(s.starts_with("lavfi=[volume=volume=-") && s.contains("equalizer=f=31:t=o:w=1:g=") && s.contains("equalizer=f=16000"), "{s}");
+        assert!(s.starts_with("lavfi=[volume=volume=-") && s.contains("equalizer=f=31:t=o:w=1:g=") && s.contains("equalizer=f=16000") && s.contains(",alimiter="), "{s}");
+        // только срезы: перегружать нечему, лимитер и запас не нужны
+        let cut = super::af(&[-6.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        assert!(!cut.contains("alimiter") && !cut.contains("volume="), "{cut}");
         assert_eq!(super::preset_of(&super::PRESETS[1].2), 1);
         assert_eq!(super::preset_of(&[1.0; 10]), -1);
     }
