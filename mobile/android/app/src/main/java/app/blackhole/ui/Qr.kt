@@ -47,7 +47,7 @@ import app.blackhole.tr
 import coil3.compose.AsyncImage
 import java.io.File
 
-private fun Context.shareUri(f: File): Uri = FileProvider.getUriForFile(this, "$packageName.files", f)
+internal fun Context.shareUri(f: File): Uri = FileProvider.getUriForFile(this, "$packageName.files", f)
 
 /** QR плейлиста: по коду на часть (большой плейлист — несколько), листаются стрелками. «Поделиться» отдаёт
  *  все картинки разом — на другом телефоне или компе их выбирают все вместе */

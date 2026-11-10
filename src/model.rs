@@ -189,7 +189,7 @@ impl Store {
             Err(e) => {
                 let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
                 let broken = p.with_extension(format!("json.broken-{secs}"));
-                eprintln!("data.json не читается ({e}), отложил в {}", broken.display());
+                crate::logln!("data.json не читается ({e}), отложил в {}", broken.display());
                 let _ = fs::rename(p, broken);
                 Self::default()
             }

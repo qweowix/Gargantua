@@ -273,3 +273,68 @@ mod tests {
         assert_eq!(super::ytdlp_error(b"ERROR: [youtube] x: Video unavailable"), "[youtube] x: Video unavailable");
     }
 }
+
+// ── журнал ошибок: всё, что раньше уходило в stderr и терялось, лежит в файле — его можно скопировать из настроек ──
+
+pub fn log_path() -> PathBuf {
+    dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("BlackHole").join("log.txt")
+}
+
+/// Строка в журнал (и в stderr, как раньше). Файл не растёт без конца: перевалил за 512 КБ — остаётся свежая половина
+pub fn log(msg: &str) {
+    use std::io::Write;
+    eprintln!("{msg}");
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let p = log_path();
+    if std::fs::metadata(&p).is_ok_and(|m| m.len() > 512 * 1024) {
+        if let Ok(old) = std::fs::read(&p) {
+            let tail = &old[old.len() - 256 * 1024..];
+            let cut = tail.iter().position(|&b| b == b'\n').map_or(0, |i| i + 1);
+            let _ = std::fs::write(&p, &tail[cut..]);
+        }
+    }
+    let _ = std::fs::create_dir_all(p.parent().unwrap_or(&p));
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
+        let _ = writeln!(f, "{} {msg}", stamp(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())));
+    }
+}
+
+/// Секунды Unix → «2026-11-10 09:41:07» (UTC), без сторонних библиотек дат
+fn stamp(secs: u64) -> String {
+    let (days, rem) = ((secs / 86400) as i64, secs % 86400);
+    // алгоритм civil_from_days (Howard Hinnant)
+    let z = days + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z.rem_euclid(146097);
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let (d, m) = (doy - (153 * mp + 2) / 5 + 1, if mp < 10 { mp + 3 } else { mp - 9 });
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}", rem / 3600, rem / 60 % 60, rem % 60)
+}
+
+/// Хвост журнала для кнопки «Скопировать»: последние строки, не больше ~40 КБ
+pub fn log_tail() -> String {
+    let all = std::fs::read(log_path()).unwrap_or_default();
+    let tail = &all[all.len().saturating_sub(40 * 1024)..];
+    let cut = if tail.len() < all.len() { tail.iter().position(|&b| b == b'\n').map_or(0, |i| i + 1) } else { 0 };
+    String::from_utf8_lossy(&tail[cut..]).into_owned()
+}
+
+/// Как eprintln!, но строка ещё и ложится в журнал
+#[macro_export]
+macro_rules! logln {
+    ($($a:tt)*) => { $crate::util::log(&format!($($a)*)) };
+}
+
+#[cfg(test)]
+mod log_tests {
+    #[test]
+    fn stamp_is_civil_time() {
+        assert_eq!(super::stamp(0), "1970-01-01 00:00:00");
+        assert_eq!(super::stamp(1_794_303_667), "2026-11-10 09:41:07");
+        assert_eq!(super::stamp(951_782_400), "2000-02-29 00:00:00");
+    }
+}

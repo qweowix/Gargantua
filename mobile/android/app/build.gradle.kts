@@ -7,6 +7,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// версия одна на всё — из Cargo.toml плеера: по ней же проверяются обновления
+val bhVersion = Regex("""(?m)^version\s*=\s*"([^"]+)"""").find(rootProject.file("../../Cargo.toml").readText())!!.groupValues[1]
+val bhCode = bhVersion.split(".").map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
+
 android {
     namespace = "app.blackhole"
     compileSdk = 36
@@ -15,8 +19,8 @@ android {
         applicationId = "app.blackhole"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = bhCode
+        versionName = bhVersion
         ndk { abiFilters += "arm64-v8a" }
     }
 
@@ -46,7 +50,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true // версия для журнала и проверки обновлений
+    }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 

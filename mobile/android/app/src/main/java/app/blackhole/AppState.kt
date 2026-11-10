@@ -46,6 +46,7 @@ sealed interface Screen {
     data object Account : Screen
     data object Settings : Screen
     data object Stats : Screen
+    data object Eq : Screen
     data class Pl(val name: String) : Screen
     data class ArtistPage(val id: String, val name: String) : Screen
     data class AlbumPage(val id: String) : Screen
@@ -82,6 +83,40 @@ class AppState(app: Application) : AndroidViewModel(app) {
     fun setAutoplayOn(on: Boolean) {
         autoplay = on
         prefs.edit { putBoolean("autoplay", on) }
+    }
+
+    /** кроссфейд, сек; 0 — выключен (сервис читает ту же настройку) */
+    var xfade by mutableStateOf(prefs.getInt("xfade", 0))
+        private set
+
+    fun setXfadeSecs(s: Int) {
+        xfade = s
+        prefs.edit { putInt("xfade", s) }
+    }
+
+    /** Таймер сна: минуты; 0 — выключить, -1 — после текущего трека */
+    fun setSleep(min: Int) {
+        App.sleepAt.value = when {
+            min == 0 -> 0L
+            min < 0 -> -1L
+            else -> System.currentTimeMillis() + min * 60_000L
+        }
+    }
+
+    /** Итоги месяца или года; null — ещё считаются */
+    var recap by mutableStateOf<Recap?>(null)
+    var recapYear by mutableStateOf(false)
+
+    fun loadRecap(year: Boolean) = viewModelScope.launch {
+        recapYear = year
+        recap = runCatching { core("recap") { put("year", JsonPrimitive(year)) }.to<Recap>() }.getOrNull() ?: Recap()
+    }
+
+    fun copyLog() = viewModelScope.launch {
+        val text = BhLog.tail()
+        val cm = getApplication<Application>().getSystemService(android.content.ClipboardManager::class.java)
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("Gargantua log", text))
+        toast(tr("Журнал скопирован", "Log copied", "Журнал скопійовано", "Záznam skopírovaný"))
     }
 
     fun setSpicy(k: String) {
@@ -887,6 +922,14 @@ class AppState(app: Application) : AndroidViewModel(app) {
         connSend("volume", JsonPrimitive(f))
     }
 
+    /** Кнопки громкости телефона, пока звук играет на другом устройстве: крутим громкость там. false — звук здесь */
+    fun connVolumeStep(up: Boolean): Boolean {
+        val r = remote ?: return false
+        val cur = remoteVol ?: r.vol?.toFloat() ?: 0.5f
+        connVolume((cur + if (up) 0.05f else -0.05f).coerceIn(0f, 1f), true)
+        return true
+    }
+
     /** Наша сессия как она есть */
     private fun localState(): ConnState? {
         val c = controller ?: return null
@@ -1022,6 +1065,11 @@ class AppState(app: Application) : AndroidViewModel(app) {
     init {
         L.lang = prefs.getString("lang", "en") ?: "en"
         connect()
+        // новая версия: спрашиваем GitHub один раз за запуск
+        viewModelScope.launch {
+            delay(5000)
+            Updater.check()
+        }
         // уведомлению — что сейчас в любимых и включена ли перемешка; от него — нажатия его кнопок
         viewModelScope.launch {
             snapshotFlow { playlists.firstOrNull { it.name == LIKED }?.tracks?.map { it.key }?.toSet() ?: emptySet() }.collect { App.liked.value = it }

@@ -106,6 +106,21 @@ data class StatsSummary(
     val fav: FavArtist? = null,
 )
 
+@Serializable
+data class RecapTrack(val track: Track = Track(), val ms: Long = 0, val plays: Int = 0)
+
+/** Итоги месяца (или года): время и дни точные, топы копятся с версии 0.3 */
+@Serializable
+data class Recap(
+    val year: Int = 0,
+    val month: Int = 0,
+    val ms: Long = 0,
+    val active: Int = 0,
+    val count: Int = 0,
+    val tracks: List<RecapTrack> = emptyList(),
+    val artists: List<TopArtist> = emptyList(),
+)
+
 /** Любимый артист и его трек, который включали чаще всех */
 @Serializable
 data class FavArtist(val name: String = "", val ms: Long = 0, val track: Track? = null, val plays: Int = 0)

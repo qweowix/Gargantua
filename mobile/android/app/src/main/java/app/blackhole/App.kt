@@ -12,6 +12,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -27,6 +30,9 @@ class App : Application() {
         Streams.init(http)
         cache = SimpleCache(java.io.File(filesDir, "audio"), LeastRecentlyUsedCacheEvictor(CACHE_BYTES), StandaloneDatabaseProvider(this))
         YtAuth.init(this)
+        BhLog.install()
+        Offline.init(this)
+        Eq.init(this)
     }
 
     companion object {
@@ -40,6 +46,21 @@ class App : Application() {
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .build()
+
+        /** Источник звука для плеера и для скачивания: диск (кеш) → сеть. Ссылка нужна, только когда байтов нет
+         *  на диске: трек, что уже играл, стартует мгновенно, «назад» — тоже */
+        fun cacheSource(): CacheDataSource.Factory {
+            val net = ResolvingDataSource.Factory(OkHttpDataSource.Factory(http)) { Streams.resolve(it) }
+            return CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(net)
+                .setCacheKeyFactory { spec -> spec.key ?: cacheKey(spec.uri) }
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        }
+
+        /** Куски HLS: подпись в ссылке каждый раз новая, а файл тот же. Сам плейлист не кешируем по пути — в нём свежие подписи */
+        private fun cacheKey(uri: android.net.Uri) = if (uri.path?.endsWith(".m3u8") == true) uri.toString() else uri.buildUpon().clearQuery().build().toString()
+
+        /** таймер сна: время (мс от эпохи), когда музыка затихнет; -1 — после текущего трека; 0 — выключен */
+        val sleepAt = MutableStateFlow(0L)
 
         /** Тосты из сервиса и фоновых задач — показывает MainActivity */
         val toasts = MutableSharedFlow<String>(extraBufferCapacity = 8)

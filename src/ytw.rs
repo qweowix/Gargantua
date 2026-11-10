@@ -31,12 +31,12 @@ idle = float(sys.argv[2])
 # player_params=2AMB: YouTube не вешает рекламу, и ссылка открыта сразу, а не через ~4 с. Параметр недокументирован;
 # перестанет работать — останется ожидание по available_at или обычный путь ниже. Похожий adPlaybackContext.pyv
 # не брать: он тоже без рекламы, но отдаёт только начало файла (дальше 403)
-FAST = ['--extractor-args', 'youtube:player_client=tv_samsung;player_skip=webpage,configs,initial_data;player_params=2AMB']
+FAST = 'youtube:player_client=tv_samsung;player_skip=webpage,configs,initial_data'
 cache = {}
-def ydl(args, fast):
-    k = (tuple(args), fast)
+def ydl(args, fast, noads=False):
+    k = (tuple(args), fast, noads)
     if k not in cache:
-        o = yt_dlp.parse_options(list(args) + (FAST if fast else []) + ['-f', 'bestaudio/best', '--no-playlist', '-q', '--no-warnings', '--no-progress']).ydl_opts
+        o = yt_dlp.parse_options(list(args) + (['--extractor-args', FAST + (';player_params=2AMB' if noads else '')] if fast else []) + ['-f', 'bestaudio/best', '--no-playlist', '-q', '--no-warnings', '--no-progress']).ydl_opts
         o['logger'] = Quiet()
         cache[k] = yt_dlp.YoutubeDL(o)
     return cache[k]
@@ -61,7 +61,7 @@ while True:
     for u in req['urls']:
         try:
             # music.youtube.com тянет ещё и клиент web_music — лишний запрос; звук тот же
-            got[u] = take(ydl(req['args'], True).extract_info(u.replace('//music.youtube.com/', '//www.youtube.com/'), download=False))
+            got[u] = take(ydl(req['args'], True, req.get('noads', True)).extract_info(u.replace('//music.youtube.com/', '//www.youtube.com/'), download=False))
         except Exception as e:
             if 'not a bot' in str(e) or 'Sign in to confirm' in str(e):
                 errs[u] = str(e)
@@ -71,7 +71,7 @@ while True:
             except Exception as e:
                 errs[u] = str(e)
     if not req['urls']:
-        ydl(req['args'], True)  # прогрев: куки и клиент заранее
+        ydl(req['args'], True, req.get('noads', True))  # прогрев: куки и клиент заранее
     print(json.dumps({'got': got, 'errs': errs, 'at': at}), flush=True)
 "#;
 
@@ -131,7 +131,8 @@ pub fn resolve(urls: &[String], args: &[String], bg: bool) -> Option<(HashMap<St
             *w = spawn(if bg { 120 } else { 900 });
         }
         let worker = w.as_mut()?;
-        let req = json!({"args": args, "urls": urls}).to_string() + "\n";
+        let noads = noads_ok();
+        let req = json!({"args": args, "urls": urls, "noads": noads}).to_string() + "\n";
         let mut line = String::new();
         let ok = worker.stdin.write_all(req.as_bytes()).and_then(|_| worker.stdin.flush()).is_ok() && worker.out.read_line(&mut line).is_ok_and(|n| n > 0);
         match serde_json::from_str::<Value>(&line) {
@@ -143,6 +144,12 @@ pub fn resolve(urls: &[String], args: &[String], bg: bool) -> Option<(HashMap<St
                 let at = std::time::UNIX_EPOCH + Duration::from_secs_f64(v["at"].as_f64().unwrap_or(0.0));
                 if let Ok(d) = at.duration_since(std::time::SystemTime::now()) {
                     wait_open(&got, d);
+                }
+                // 2AMB перестал работать (ссылка отдаёт только начало файла) — сутки берём ссылки по-старому
+                if noads && got.values().any(|u| broken_mid(u)) {
+                    crate::logln!("YouTube: ссылка без рекламы не отдаёт середину файла — сутки работаю без 2AMB");
+                    noads_off();
+                    return resolve(urls, args, bg);
                 }
                 return Some((got, errs));
             }
@@ -163,6 +170,27 @@ fn wait_open(got: &HashMap<String, String>, promised: Duration) {
             std::thread::sleep(Duration::from_millis(300));
         }
     }
+}
+
+fn noads_mark() -> std::path::PathBuf {
+    dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("BlackHole").join("no-2amb")
+}
+
+/// Параметр «без рекламы» недокументирован. Сломался — файл-метка выключает его на сутки, потом пробуем снова
+fn noads_ok() -> bool {
+    std::fs::metadata(noads_mark()).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_none_or(|d| d > Duration::from_secs(24 * 3600))
+}
+
+fn noads_off() {
+    let _ = std::fs::write(noads_mark(), "");
+}
+
+/// Середина файла отвечает 403 — так ломались похожие параметры: начало играет, дальше тишина и скип.
+/// Один запрос в один байт на трек
+fn broken_mid(url: &str) -> bool {
+    let Some(len) = url.split(['?', '&']).find_map(|p| p.strip_prefix("clen=")).and_then(|n| n.parse::<u64>().ok()) else { return false };
+    let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(5)).build();
+    matches!(agent.get(&format!("{url}&range={0}-{0}", len / 2)).call(), Err(ureq::Error::Status(403, _)))
 }
 
 /// Поднять процесс заранее (при запуске плеера), чтобы первый трек не ждал Python и куки

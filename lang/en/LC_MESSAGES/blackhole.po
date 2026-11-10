@@ -1006,3 +1006,57 @@ msgstr "Lyrics"
 
 msgid "Текст на весь экран"
 msgstr "Fullscreen lyrics"
+
+msgid "Вышла версия {}"
+msgstr "Version {} is out"
+
+msgid "Версия {}"
+msgstr "Version {}"
+
+msgid "Плеер скачает её, заменит себя и перезапустится. Музыка на минуту прервётся."
+msgstr "The player downloads it, replaces itself and restarts. Music stops for a moment."
+
+msgid "Новые версии проверяются при каждом запуске."
+msgstr "New versions are checked on every start."
+
+msgid "Качаю…"
+msgstr "Downloading…"
+
+msgid "Обновить"
+msgstr "Update"
+
+msgid "Журнал ошибок"
+msgstr "Error log"
+
+msgid "Если трек не грузится или что-то сломалось — скопируй журнал и пришли его."
+msgstr "If a track won't load or something broke — copy the log and send it."
+
+msgid "Скопировать"
+msgstr "Copy"
+
+msgid "Итоги месяца"
+msgstr "Month recap"
+
+msgid "Итоги года"
+msgstr "Year recap"
+
+msgid "ИТОГИ ГОДА"
+msgstr "YEAR RECAP"
+
+msgid "ИТОГИ МЕСЯЦА"
+msgstr "MONTH RECAP"
+
+msgid "ТРЕКИ"
+msgstr "TRACKS"
+
+msgid "АРТИСТЫ"
+msgstr "ARTISTS"
+
+msgid "Месяц"
+msgstr "Month"
+
+msgid "Год"
+msgstr "Year"
+
+msgid "Сохранить картинкой"
+msgstr "Save as image"

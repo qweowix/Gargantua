@@ -1,5 +1,7 @@
 package app.blackhole.ui
 
+import kotlinx.coroutines.launch
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.runtime.collectAsState
 import app.blackhole.YtAuth
 import androidx.compose.material.icons.rounded.PhotoCamera
@@ -415,6 +417,24 @@ fun PlaylistScreen(vm: AppState, name: String) {
         Box {
             RoundButton(Icons.Rounded.MoreHoriz, null) { menu = true }
             GlassMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                val have by app.blackhole.Offline.have.collectAsState()
+                val prog by app.blackhole.Offline.progress.collectAsState()
+                val got = p.tracks.count { it.key in have }
+                val pr = prog
+                DropdownMenuItem(
+                    text = {
+                        Text(when {
+                            pr != null -> tr("Качаю ${pr.first} из ${pr.second} — остановить", "Downloading ${pr.first} of ${pr.second} — stop", "Завантажую ${pr.first} з ${pr.second} — зупинити", "Sťahujem ${pr.first} z ${pr.second} — zastaviť")
+                            got == p.tracks.size && got > 0 -> tr("Скачан целиком", "Fully downloaded", "Завантажено повністю", "Stiahnutý celý")
+                            else -> tr("Скачать ($got из ${p.tracks.size} уже есть)", "Download ($got of ${p.tracks.size} done)", "Завантажити ($got з ${p.tracks.size} вже є)", "Stiahnuť ($got z ${p.tracks.size} hotovo)")
+                        })
+                    },
+                    leadingIcon = { Icon(Icons.Rounded.Download, null) },
+                    onClick = {
+                        menu = false
+                        if (pr != null) app.blackhole.Offline.stop() else app.blackhole.Offline.download(p.tracks)
+                    },
+                )
                 if (p.name != LIKED) {
                     DropdownMenuItem(text = { Text(tr("Лайкнуть все", "Like all", "Вподобати всі", "Lajknúť všetky")) }, leadingIcon = { Icon(Icons.Rounded.Favorite, null) }, onClick = { menu = false; vm.likeAll(p.tracks) })
                 }
@@ -595,8 +615,16 @@ fun StatsScreen(vm: AppState) {
     LaunchedEffect(Unit) { vm.loadStats() }
     val s = vm.stats
     val a = LocalAccent.current
+    var recapOpen by remember { mutableStateOf(false) }
+    if (recapOpen) RecapDialog(vm) { recapOpen = false }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomPad.current)) {
         item { Title(tr("Статистика", "Stats", "Статистика", "Štatistiky"), Modifier.statusBarsPadding()) }
+        item {
+            Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill(tr("Итоги месяца", "Month recap", "Підсумки місяця", "Zhrnutie mesiaca"), primary = false) { vm.recap = null; vm.loadRecap(false); recapOpen = true }
+                Pill(tr("Итоги года", "Year recap", "Підсумки року", "Zhrnutie roka"), primary = false) { vm.recap = null; vm.loadRecap(true); recapOpen = true }
+            }
+        }
         item {
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for ((label, ms) in listOf(tr("Сегодня", "Today", "Сьогодні", "Dnes") to s.today, tr("Неделя", "Week", "Тиждень", "Týždeň") to s.week, tr("Месяц", "Month", "Місяць", "Mesiac") to s.month)) {
@@ -705,6 +733,37 @@ fun SettingsScreen(vm: AppState) {
                 ),
             )
         }
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("Эквалайзер", "Equalizer", "Еквалайзер", "Ekvalizér"), color = Pal.text, fontWeight = FontWeight.Bold)
+                Text(tr("10 полос и пресеты — те же, что на компе.", "10 bands and presets — the same as on the PC.", "10 смуг і пресети — ті самі, що на компі.", "10 pásiem a predvoľby — rovnaké ako na PC."), color = Pal.dim, fontSize = 13.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            Pill(tr("Открыть", "Open", "Відкрити", "Otvoriť"), primary = false) { vm.go(Screen.Eq) }
+        }
+        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+            Text(tr("Кроссфейд", "Crossfade", "Кросфейд", "Crossfade"), color = Pal.text, fontWeight = FontWeight.Bold)
+            Text(tr("Конец трека плавно перетекает в начало следующего.", "The end of a track blends into the start of the next.", "Кінець треку плавно перетікає в початок наступного.", "Koniec skladby plynule prejde do ďalšej."), color = Pal.dim, fontSize = 13.sp)
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (x in listOf(0, 3, 5, 8, 12)) FilterChip(
+                    selected = vm.xfade == x, onClick = { vm.setXfadeSecs(x) },
+                    label = { Text(if (x == 0) tr("Выкл", "Off", "Вимк", "Vyp") else tr("$x с", "$x s", "$x с", "$x s")) },
+                )
+            }
+        }
+        val have by app.blackhole.Offline.have.collectAsState()
+        var offBytes by remember(have) { mutableStateOf(app.blackhole.Offline.size()) }
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("Скачанное", "Downloads", "Завантажене", "Stiahnuté"), color = Pal.text, fontWeight = FontWeight.Bold)
+                Text(tr("Треков: ${have.size}, ${offBytes / 1048576} МБ. Играют без интернета и не вытесняются. Скачать плейлист — в его меню «•••».", "Tracks: ${have.size}, ${offBytes / 1048576} MB. They play offline and are never evicted. Download a playlist from its “•••” menu.", "Треків: ${have.size}, ${offBytes / 1048576} МБ. Грають без інтернету і не витісняються. Завантажити плейлист — у його меню «•••».", "Skladieb: ${have.size}, ${offBytes / 1048576} MB. Hrajú offline a nemažú sa. Playlist stiahneš v jeho menu „•••“."), color = Pal.dim, fontSize = 13.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            Pill(tr("Удалить", "Delete", "Видалити", "Zmazať"), primary = false, enabled = have.isNotEmpty()) {
+                app.blackhole.Offline.clear()
+                offBytes = 0
+            }
+        }
         // размер считаем при открытии экрана: кеш меняется только пока что-то играет
         var cached by remember { mutableStateOf(App.cache.cacheSpace) }
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -742,7 +801,29 @@ fun SettingsScreen(vm: AppState) {
         Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.MusicNote, null, tint = LocalAccent.current.c1)
             Spacer(Modifier.width(8.dp))
-            Text("Gargantua 0.2.0 · qweowix · GPL-3.0", color = Pal.dim, fontSize = 13.sp)
+            Text("Gargantua ${app.blackhole.BuildConfig.VERSION_NAME} · qweowix · GPL-3.0", color = Pal.dim, fontSize = 13.sp)
+        }
+        val newVer by app.blackhole.Updater.version.collectAsState()
+        val updating by app.blackhole.Updater.busy.collectAsState()
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        if (newVer.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("Вышла версия $newVer", "Version $newVer is out", "Вийшла версія $newVer", "Vyšla verzia $newVer"), color = Pal.text, fontWeight = FontWeight.Bold)
+                Text(tr("Скачаю и открою установщик. Плейлисты и вход останутся.", "I'll download it and open the installer. Playlists and sign-in stay.", "Завантажу і відкрию встановлювач. Плейлисти і вхід залишаться.", "Stiahnem ju a otvorím inštalátor. Playlisty a prihlásenie zostanú."), color = Pal.dim, fontSize = 13.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            Pill(if (updating) tr("Качаю…", "Downloading…", "Завантажую…", "Sťahujem…") else tr("Обновить", "Update", "Оновити", "Aktualizovať"), enabled = !updating) {
+                scope.launch { app.blackhole.Updater.install(ctx) }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("Журнал ошибок", "Error log", "Журнал помилок", "Záznam chýb"), color = Pal.text, fontWeight = FontWeight.Bold)
+                Text(tr("Трек не играет или что-то сломалось — скопируй журнал и пришли его.", "A track won't play or something broke — copy the log and send it.", "Трек не грає або щось зламалося — скопіюй журнал і надішли його.", "Skladba nehrá alebo sa niečo pokazilo — skopíruj záznam a pošli ho."), color = Pal.dim, fontSize = 13.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            Pill(tr("Скопировать", "Copy", "Скопіювати", "Kopírovať"), primary = false) { vm.copyLog() }
         }
     }
 }

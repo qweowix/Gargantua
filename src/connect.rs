@@ -181,13 +181,13 @@ pub fn start(id: &str, name: &str, kind: &str, on_change: impl Fn() + Send + 'st
     }
     std::thread::spawn(|| loop {
         if let Err(e) = heartbeat() {
-            eprintln!("connect beat: {e:#}");
+            crate::logln!("connect beat: {e:#}");
         }
         std::thread::sleep(BEAT);
     });
     std::thread::spawn(|| loop {
         if let Err(e) = listen() {
-            eprintln!("connect: {e:#}");
+            crate::logln!("connect: {e:#}");
         }
         std::thread::sleep(Duration::from_secs(3));
     });
@@ -344,7 +344,7 @@ fn queue_job(j: Job) {
                     Job::Send(to, op, a) => send(to, op, a),
                 };
                 if let Err(e) = r {
-                    eprintln!("connect: {e:#}");
+                    crate::logln!("connect: {e:#}");
                 }
             }
         });

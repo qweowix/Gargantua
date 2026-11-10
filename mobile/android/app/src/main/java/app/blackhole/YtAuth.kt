@@ -123,12 +123,21 @@ object YtAuth {
         }
     }
 
+    /** params=2AMB недокументирован. Сломался (ссылка не открывается или отдаёт только начало) — сутки берём
+     *  ссылки по-старому, потом пробуем снова */
+    fun noAdsOk() = System.currentTimeMillis() - prefs.getLong("no2amb", 0) > 24 * 3600_000L
+
+    fun noAdsOff(why: String) {
+        BhLog.line("YouTube: ссылка без рекламы сломалась ($why) — сутки работаю без 2AMB")
+        prefs.edit().putLong("no2amb", System.currentTimeMillis()).apply()
+    }
+
     private fun playable(v: kotlinx.serialization.json.JsonObject) = v["playabilityStatus"]?.jsonObject?.get("status")?.jsonPrimitive?.contentOrNull == "OK"
 
     /** id видео → прямая ссылка на лучший звук. Ошибки — исключением (тогда пробуем анонимно через NewPipe) */
     fun audio(id: String): String {
         val sts = runCatching { YoutubeJavaScriptPlayerManager.getSignatureTimestamp(id) }.getOrNull()
-        val v = runCatching { player(id, sts, true) }.getOrNull()?.takeIf(::playable) ?: player(id, sts, false)
+        val v = (if (noAdsOk()) runCatching { player(id, sts, true) }.getOrNull()?.takeIf(::playable) else null) ?: player(id, sts, false)
         val ps = v["playabilityStatus"]?.jsonObject
         val status = ps?.get("status")?.jsonPrimitive?.contentOrNull
         if (status != "OK") throw IOException("YouTube: ${ps?.get("reason")?.jsonPrimitive?.contentOrNull ?: status}")

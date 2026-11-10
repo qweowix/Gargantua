@@ -178,7 +178,7 @@ fn run(rx: mpsc::Receiver<Option<Now>>) {
         let cmd = json!({"cmd": "SET_ACTIVITY", "args": {"pid": std::process::id(), "activity": activity(&want)}, "nonce": nonce.to_string()});
         match frame(s, 1, &cmd) {
             Ok(r) if r["evt"] == "ERROR" => {
-                eprintln!("discord: {}", r["data"]["message"]);
+                crate::logln!("discord: {}", r["data"]["message"]);
                 dirty = false;
             }
             Ok(_) => dirty = false,

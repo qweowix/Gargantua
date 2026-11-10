@@ -1,5 +1,6 @@
 package app.blackhole.ui
 
+import androidx.compose.material.icons.rounded.Bedtime
 import android.media.AudioManager
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.animation.core.Animatable
@@ -297,6 +298,18 @@ fun NowPlaying(vm: AppState) {
                         drawContent()
                         drawRect(Brush.verticalGradient(*coverFade), blendMode = BlendMode.DstIn)
                     }
+                    // жесты по обложке: двойной тап — в любимые, свайп влево/вправо — следующий/прошлый трек
+                    .pointerInput(t.key) { detectTapGestures(onDoubleTap = { vm.toggleLike(t) }) }
+                    .pointerInput(Unit) {
+                        var dx = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { dx = 0f },
+                            onDragEnd = { if (dx < -80.dp.toPx()) vm.next() else if (dx > 80.dp.toPx()) vm.prev() },
+                        ) { ch, d ->
+                            ch.consume()
+                            dx += d
+                        }
+                    }
                     .then(swipe),
             )
         }
@@ -411,6 +424,8 @@ private fun ModeButton(icon: androidx.compose.ui.graphics.vector.ImageVector, on
 private fun TrackActions(vm: AppState, t: Track) {
     var adding by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var sleep by remember { mutableStateOf(false) }
+    if (sleep) SleepDialog(vm) { sleep = false }
     // ♥ — в любимые; в плейлист — через «•••»
     val liked = vm.isLiked(t)
     val beat by animateFloatAsState(if (liked) 1f else 0f, spring(dampingRatio = 0.4f, stiffness = 500f), label = "heart")
@@ -444,6 +459,11 @@ private fun TrackActions(vm: AppState, t: Track) {
                 text = { Text(tr("Радио по треку", "Track radio", "Радіо за треком", "Rádio podľa skladby")) },
                 leadingIcon = { Icon(Icons.Rounded.Radio, null) },
                 onClick = { menu = false; vm.startRadio(t) },
+            )
+            DropdownMenuItem(
+                text = { Text(tr("Таймер сна", "Sleep timer", "Таймер сну", "Časovač spánku")) },
+                leadingIcon = { Icon(Icons.Rounded.Bedtime, null) },
+                onClick = { menu = false; sleep = true },
             )
             DropdownMenuItem(
                 text = { Text(tr("Артист", "Artist", "Артист", "Interpret")) },

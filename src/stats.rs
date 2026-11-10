@@ -25,6 +25,9 @@ pub struct Stats {
     pub days: BTreeMap<i64, u64>,
     pub tracks: HashMap<String, TrackStat>,
     pub artists: HashMap<String, u64>,
+    /// месяц (год·100 + месяц) → ключ трека → (миллисекунд, прослушиваний): из этого собираются итоги месяца и года.
+    /// Копится с версии 0.3 — за более ранние месяцы есть только общее время (days)
+    pub months: BTreeMap<u32, HashMap<String, (u64, u32)>>,
     /// чья это доля статистики аккаунта (поле st.<device> в облаке). Живёт в самом файле: копия файла
     /// на другой машине пишет в ту же долю, а не считается дважды
     pub device: String,
@@ -127,6 +130,14 @@ impl Stats {
         for (a, ms) in &o.artists {
             *self.artists.entry(a.clone()).or_default() += ms;
         }
+        for (m, ts) in &o.months {
+            let mine = self.months.entry(*m).or_default();
+            for (k, (ms, plays)) in ts {
+                let e = mine.entry(k.clone()).or_default();
+                e.0 += ms;
+                e.1 += plays;
+            }
+        }
     }
 
     /// Своя статистика вместе с долями других устройств аккаунта
@@ -157,12 +168,47 @@ impl Stats {
         for a in artists(&t.artist) {
             *self.artists.entry(a.to_string()).or_default() += ms;
         }
+        self.months.entry(month_of(day)).or_default().entry(t.key()).or_default().0 += ms;
     }
 
     pub fn play(&mut self, t: &Track) {
         let e = self.tracks.entry(t.key()).or_default();
         e.track = t.clone();
         e.plays += 1;
+        self.months.entry(month_of(today())).or_default().entry(t.key()).or_default().1 += 1;
+    }
+
+    /// Итоги месяца (month 1–12) или всего года (month 0)
+    pub fn recap(&self, year: i64, month: u32) -> Recap {
+        let (from, to) = if month == 0 { (days(year, 1, 1), days(year + 1, 1, 1)) } else { (days(year, month, 1), if month == 12 { days(year + 1, 1, 1) } else { days(year, month + 1, 1) }) };
+        let span = self.days.range(from..to);
+        let ms = span.clone().map(|(_, v)| v).sum();
+        let active = span.filter(|(_, v)| **v >= 60_000).count();
+        let ym = |m: u32| year as u32 * 100 + m;
+        let mut sum: HashMap<&str, (u64, u32)> = HashMap::new();
+        for (_, ts) in self.months.range(if month == 0 { ym(1)..=ym(12) } else { ym(month)..=ym(month) }) {
+            for (k, (ms, plays)) in ts {
+                let e = sum.entry(k.as_str()).or_default();
+                e.0 += ms;
+                e.1 += plays;
+            }
+        }
+        let mut by_artist: HashMap<&str, u64> = HashMap::new();
+        let mut tracks: Vec<(Track, u64, u32)> = Vec::new();
+        for (k, (ms, plays)) in &sum {
+            let Some(t) = self.tracks.get(*k) else { continue };
+            for a in artists(&t.track.artist) {
+                *by_artist.entry(a).or_default() += ms;
+            }
+            tracks.push((t.track.clone(), *ms, *plays));
+        }
+        let count = tracks.len();
+        tracks.sort_by(|a, b| b.2.cmp(&a.2).then(b.1.cmp(&a.1)).then(a.0.title.cmp(&b.0.title)));
+        tracks.truncate(5);
+        let mut artists: Vec<(String, u64)> = by_artist.into_iter().map(|(a, ms)| (a.to_string(), ms)).collect();
+        artists.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        artists.truncate(5);
+        Recap { ms, active, count, tracks, artists }
     }
 
     /// Миллисекунд за последние n дней, включая сегодня
@@ -205,6 +251,24 @@ impl Stats {
     }
 }
 
+/// Итоги периода: время и дни — точные (по дням), топы — из помесячных счётчиков
+#[derive(Default, Serialize)]
+pub struct Recap {
+    pub ms: u64,
+    /// дней, когда слушал хотя бы минуту
+    pub active: usize,
+    /// сколько разных треков звучало
+    pub count: usize,
+    /// (трек, миллисекунд, прослушиваний), самые заслушанные первыми
+    pub tracks: Vec<(Track, u64, u32)>,
+    pub artists: Vec<(String, u64)>,
+}
+
+fn month_of(day: i64) -> u32 {
+    let (y, m, _) = ymd(day);
+    y as u32 * 100 + m
+}
+
 /// "A, B & C feat. D" → каждый артист отдельно: фит не должен делать отдельного «любимого артиста»
 pub fn artists(s: &str) -> Vec<&str> {
     let mut out = vec![s];
@@ -228,6 +292,33 @@ pub fn level(ms: u64) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Итоги: время берётся по дням периода, топ — по счётчикам месяца; год складывает месяцы, чужой год не лезет
+    #[test]
+    fn recap_by_month_and_year() {
+        let t = |id: &str, artist: &str| Track { id: id.into(), title: id.into(), artist: artist.into(), ..Default::default() };
+        let (a, b, c) = (t("a", "X"), t("b", "Y & X"), t("c", "Z"));
+        let mut s = Stats::default();
+        s.add(&a, 600.0, days(2026, 10, 30));
+        s.add(&b, 120.0, days(2026, 11, 2));
+        s.add(&a, 60.0, days(2026, 11, 3));
+        s.add(&c, 30.0, days(2026, 11, 3));
+        s.add(&c, 900.0, days(2025, 12, 31));
+        // прослушивания считаются в текущий месяц — кладём руками в нужный
+        s.months.entry(202611).or_default().entry(b.key()).or_default().1 = 3;
+        s.months.entry(202611).or_default().entry(a.key()).or_default().1 = 1;
+        let nov = s.recap(2026, 11);
+        assert_eq!((nov.ms, nov.active, nov.count), (210_000, 2, 3));
+        assert_eq!(nov.tracks.iter().map(|t| t.0.id.as_str()).collect::<Vec<_>>(), ["b", "a", "c"]);
+        assert_eq!(nov.artists[0], ("X".to_string(), 180_000));
+        let year = s.recap(2026, 0);
+        assert_eq!((year.ms, year.active), (810_000, 3));
+        assert_eq!(year.artists[0], ("X".to_string(), 780_000));
+        assert!(year.tracks.iter().all(|t| t.1 < 900_000), "декабрь 2025 попал в 2026");
+        // две доли статистики (ПК и телефон) складываются и по месяцам
+        let both = s.with(&s);
+        assert_eq!(both.recap(2026, 11).tracks[0].2, 6);
+    }
 
     #[test]
     fn absorb() {

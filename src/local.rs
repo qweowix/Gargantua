@@ -93,7 +93,7 @@ mod tests {
             .is_ok_and(|s| s.success());
         std::fs::write(dir.join("notes.txt"), "не музыка").unwrap();
         if !ok {
-            eprintln!("нет ffmpeg — пропускаю");
+            crate::logln!("нет ffmpeg — пропускаю");
             return;
         }
         let t = super::scan(&[dir.clone()]);
@@ -116,7 +116,7 @@ mod tests {
             .status()
             .is_ok_and(|s| s.success());
         if !ok {
-            eprintln!("нет ffmpeg — пропускаю");
+            crate::logln!("нет ffmpeg — пропускаю");
             return;
         }
         let t = super::read(&f).unwrap();

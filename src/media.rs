@@ -32,7 +32,7 @@ impl Media {
         if cfg!(windows) && hwnd.is_none() {
             return None;
         }
-        let mut c = MediaControls::new(cfg).map_err(|e| eprintln!("медиа-контролы: {e:?}")).ok()?;
+        let mut c = MediaControls::new(cfg).map_err(|e| crate::logln!("медиа-контролы: {e:?}")).ok()?;
         c.attach(move |e| {
             let a = match e {
                 MediaControlEvent::Play => Action::Play,
@@ -50,7 +50,7 @@ impl Media {
             };
             on(a);
         })
-        .map_err(|e| eprintln!("медиа-контролы: {e:?}"))
+        .map_err(|e| crate::logln!("медиа-контролы: {e:?}"))
         .ok()?;
         Some(Self { c, playing: None, last_pos: Instant::now() })
     }

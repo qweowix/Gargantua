@@ -66,11 +66,11 @@ pub fn choose(all: &[Found]) -> Option<Found> {
             if let (Some(anchor), Lyrics::Synced(lines)) = (anchor, &mut f.lyr) {
                 if f.credit.provider != "LRCLIB" {
                     let Some(off) = offset(lines, anchor) else {
-                        eprintln!("lyrics: у {} другая версия трека, пропускаю", f.credit.provider);
+                        crate::logln!("lyrics: у {} другая версия трека, пропускаю", f.credit.provider);
                         return None;
                     };
                     if off.abs() > 0.1 {
-                        eprintln!("lyrics: сдвигаю {} на {off:.2} с", f.credit.provider);
+                        crate::logln!("lyrics: сдвигаю {} на {off:.2} с", f.credit.provider);
                         shift(lines, off);
                     }
                 }
@@ -338,7 +338,7 @@ pub fn fetch_liriqo(q: &Query) -> Result<Option<Found>> {
         let r = call(req.clone()).map_err(anyhow::Error::from).and_then(|r| Ok(r.into_json::<Value>()?));
         match r {
             Err(e) if tries < 4 && !matches!(e.downcast_ref(), Some(ureq::Error::Status(400..=499, _))) => {
-                eprintln!("liriqo: {e:#}, повторяю");
+                crate::logln!("liriqo: {e:#}, повторяю");
                 tries += 1;
                 std::thread::sleep(Duration::from_secs(2));
             }

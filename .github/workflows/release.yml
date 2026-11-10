@@ -74,8 +74,59 @@ jobs:
           name: windows
           path: Gargantua-windows-x86_64.zip
 
+  # APK для телефона. Нужны секреты с ключом подписи (тем же, что у прошлых APK, иначе обновление поверх не встанет):
+  #   ANDROID_KEYSTORE — release.jks в base64 (base64 -w0 mobile/android/release.jks)
+  #   ANDROID_STORE_PASSWORD, ANDROID_KEY_PASSWORD — пароли из local.properties
+  # Секретов нет — шаг пропускается, релиз выйдет без APK
+  android:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Есть ли ключ подписи
+        id: key
+        run: |
+          if [ -n "$KEYSTORE" ]; then echo "ok=1" >> "$GITHUB_OUTPUT"; else echo "Секрета ANDROID_KEYSTORE нет — APK не собираю"; fi
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.key.outputs.ok
+        with:
+          targets: aarch64-linux-android
+      - uses: actions/setup-java@v4
+        if: steps.key.outputs.ok
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Ключ подписи
+        if: steps.key.outputs.ok
+        run: |
+          echo "$KEYSTORE" | base64 -d > mobile/android/release.jks
+          printf 'bh.storePassword=%s\nbh.keyPassword=%s\n' "$STORE_PW" "$KEY_PW" > mobile/android/local.properties
+        env:
+          STORE_PW: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      - name: Rust-ядро
+        if: steps.key.outputs.ok
+        run: ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" sh mobile/build-core.sh
+        env:
+          BLACKHOLE_FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
+          BLACKHOLE_FIREBASE_PROJECT: ${{ secrets.FIREBASE_PROJECT }}
+          BLACKHOLE_FIREBASE_DB: ${{ secrets.FIREBASE_DB }}
+      - name: APK
+        if: steps.key.outputs.ok
+        run: |
+          cd mobile/android
+          chmod +x gradlew
+          ./gradlew assembleRelease -q
+          cp app/build/outputs/apk/release/app-release.apk ../../Gargantua-android-arm64.apk
+      - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.ok
+        with:
+          name: android
+          path: Gargantua-android-arm64.apk
+
   release:
-    needs: [linux, windows]
+    needs: [linux, windows, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -90,3 +141,4 @@ jobs:
           files: |
             Gargantua-linux-x86_64.tar.gz
             Gargantua-windows-x86_64.zip
+            Gargantua-android-arm64.apk

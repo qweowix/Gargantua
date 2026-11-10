@@ -1006,3 +1006,57 @@ msgstr "Text"
 
 msgid "Текст на весь экран"
 msgstr "Text na celú obrazovku"
+
+msgid "Вышла версия {}"
+msgstr "Vyšla verzia {}"
+
+msgid "Версия {}"
+msgstr "Verzia {}"
+
+msgid "Плеер скачает её, заменит себя и перезапустится. Музыка на минуту прервётся."
+msgstr "Prehrávač ju stiahne, nahradí sa a reštartuje. Hudba sa na chvíľu preruší."
+
+msgid "Новые версии проверяются при каждом запуске."
+msgstr "Nové verzie sa kontrolujú pri každom spustení."
+
+msgid "Качаю…"
+msgstr "Sťahujem…"
+
+msgid "Обновить"
+msgstr "Aktualizovať"
+
+msgid "Журнал ошибок"
+msgstr "Záznam chýb"
+
+msgid "Если трек не грузится или что-то сломалось — скопируй журнал и пришли его."
+msgstr "Ak sa skladba nenačíta alebo sa niečo pokazilo — skopíruj záznam a pošli ho."
+
+msgid "Скопировать"
+msgstr "Kopírovať"
+
+msgid "Итоги месяца"
+msgstr "Zhrnutie mesiaca"
+
+msgid "Итоги года"
+msgstr "Zhrnutie roka"
+
+msgid "ИТОГИ ГОДА"
+msgstr "ZHRNUTIE ROKA"
+
+msgid "ИТОГИ МЕСЯЦА"
+msgstr "ZHRNUTIE MESIACA"
+
+msgid "ТРЕКИ"
+msgstr "SKLADBY"
+
+msgid "АРТИСТЫ"
+msgstr "INTERPRETI"
+
+msgid "Месяц"
+msgstr "Mesiac"
+
+msgid "Год"
+msgstr "Rok"
+
+msgid "Сохранить картинкой"
+msgstr "Uložiť ako obrázok"

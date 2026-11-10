@@ -184,7 +184,7 @@ pub fn codes(pl: &Playlist) -> Vec<String> {
     match crate::cloud::share(&c, &pl.name, &miniz_oxide::deflate::compress_to_vec(serialize(pl).as_bytes(), 9)) {
         Ok(id) => pack(&format!("BHPL3\n{}\n#{id}\n", clean(&pl.name))),
         Err(e) => {
-            eprintln!("qr cloud: {e:#}");
+            crate::logln!("qr cloud: {e:#}");
             local
         }
     }

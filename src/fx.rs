@@ -29,8 +29,32 @@ pub const PRESETS: [(&str, &str, [f32; 10]); 13] = [
 /// тоже становятся тише (Bass: -13.3 LUFS против -9.1 без эквалайзера). Опускаем на четверть пика, а
 /// остальные перегрузы ловит лимитер (Bass: -9.4 LUFS, пик в норме)
 pub fn af(gains: &[f32]) -> String {
+    let Some(p) = plan(gains) else { return String::new() };
+    let mut chain = vec![];
+    if p.limit {
+        chain.push(format!("volume=volume={:.1}dB", p.pre));
+    }
+    chain.extend(BANDS.iter().zip(&p.set).filter(|(_, g)| g.abs() >= 0.05).map(|(f, g)| format!("equalizer=f={f}:t=o:w=1:g={g:.1}")));
+    if p.limit {
+        chain.push("alimiter=level=disabled:limit=0.97:attack=5:release=60:asc=1".into());
+    }
+    format!("lavfi=[{}]", chain.join(","))
+}
+
+/// Что делать со звуком: общий для ПК (строка фильтров mpv) и телефона (свой обработчик с теми же формулами)
+pub struct Plan {
+    /// усиления колоколов по полосам, подогнанные так, чтобы кривая шла через ползунки
+    pub set: Vec<f64>,
+    /// запас громкости перед колоколами, дБ (отрицательный)
+    pub pre: f64,
+    /// нужны ли запас и лимитер: есть ли подъём, который может перегрузить
+    pub limit: bool,
+}
+
+/// None — ползунки в нуле, звук не трогаем
+pub fn plan(gains: &[f32]) -> Option<Plan> {
     if gains.iter().all(|g| g.abs() < 0.05) {
-        return String::new();
+        return None;
     }
     let target: Vec<f64> = gains.iter().map(|&g| g as f64).collect();
     let mut set = target.clone();
@@ -41,17 +65,8 @@ pub fn af(gains: &[f32]) -> String {
     }
     // пик по всему слышимому диапазону с шагом 1/12 октавы
     let peak = (0..=120).map(|i| response(&set, 20.0 * 2f64.powf(i as f64 / 12.0))).fold(0.0, f64::max);
-    let mut chain = vec![];
     // подгонка полос даёт и на чистых срезах всплеск на доли дБ — перегружать там нечему
-    let boosted = peak > 0.5;
-    if boosted {
-        chain.push(format!("volume=volume={:.1}dB", -peak / 4.0));
-    }
-    chain.extend(BANDS.iter().zip(&set).filter(|(_, g)| g.abs() >= 0.05).map(|(f, g)| format!("equalizer=f={f}:t=o:w=1:g={g:.1}")));
-    if boosted {
-        chain.push("alimiter=level=disabled:limit=0.97:attack=5:release=60:asc=1".into());
-    }
-    format!("lavfi=[{}]", chain.join(","))
+    Some(Plan { set, pre: -peak / 4.0, limit: peak > 0.5 })
 }
 
 /// Все фильтры для mpv: эквалайзер и, если скорость меняют с сохранением тона, растяжение через rubberband.

@@ -67,6 +67,13 @@ export struct HeatCell {
     tip: string,
 }
 
+// строка итогов: название, подпись (артист или время), число справа
+export struct RecapRow {
+    a: string,
+    b: string,
+    n: string,
+}
+
 export struct MonthMark {
     col: int,
     text: string,
@@ -623,6 +630,14 @@ component TrackRow inherits Rectangle {
     // ⋯: радио, ссылка, скачать, убрать — общее меню окна, встаёт у этой кнопки
     callback more(length, length);
     callback want-cover(string);
+    // перетаскивание мышью: строка сообщает списку, где сейчас курсор, список рисует линию вставки
+    in property <bool> can-drag;
+    in property <bool> dragged;
+    callback drag-at(length);
+    callback drag-end();
+    property <bool> drag-on;
+    property <bool> drag-was;
+    opacity: root.dragged ? 0.35 : 1;
     height: 58px;
     border-radius: 10px;
     background: root.item.playing ? Theme.c1.transparentize(0.88) : (ta.has-hover ? #ffffff0c : #ffffff00);
@@ -651,8 +666,26 @@ component TrackRow inherits Rectangle {
 
     ta := TouchArea {
         mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.drag-was = false;
+            }
+            if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) && root.drag-on {
+                root.drag-on = false;
+                root.drag-end();
+            }
+        }
+        moved => {
+            if root.can-drag && self.pressed && (root.drag-on || abs(self.mouse-y - self.pressed-y) > 8px) {
+                root.drag-on = true;
+                root.drag-was = true;
+                root.drag-at(root.absolute-position.y + self.mouse-y);
+            }
+        }
         clicked => {
-            root.play();
+            if !root.drag-was {
+                root.play();
+            }
         }
     }
 
@@ -763,6 +796,14 @@ component QueueRow inherits Rectangle {
     callback move(int);
     callback remove();
     callback want-cover(string);
+    // перетаскивание мышью: строка сообщает списку, где сейчас курсор, список рисует линию вставки
+    in property <bool> can-drag;
+    in property <bool> dragged;
+    callback drag-at(length);
+    callback drag-end();
+    property <bool> drag-on;
+    property <bool> drag-was;
+    opacity: root.dragged ? 0.35 : 1;
     height: 52px;
     border-radius: 10px;
     background: ta.has-hover ? #ffffff0c : #ffffff00;
@@ -778,8 +819,26 @@ component QueueRow inherits Rectangle {
     }
     ta := TouchArea {
         mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.drag-was = false;
+            }
+            if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) && root.drag-on {
+                root.drag-on = false;
+                root.drag-end();
+            }
+        }
+        moved => {
+            if root.can-drag && self.pressed && (root.drag-on || abs(self.mouse-y - self.pressed-y) > 8px) {
+                root.drag-on = true;
+                root.drag-was = true;
+                root.drag-at(root.absolute-position.y + self.mouse-y);
+            }
+        }
         clicked => {
-            root.play();
+            if !root.drag-was {
+                root.play();
+            }
         }
     }
 
@@ -1784,6 +1843,7 @@ export component AppWindow inherits Window {
     callback queue-jump(int);
     callback history-jump(int);
     callback queue-move(int, int);
+    callback pl-move(int, int); // трек плейлиста перетащили: с какой строки на какую
     callback queue-remove(int);
     callback set-lyrics-open(bool);
     callback lyr-activity();
@@ -1844,6 +1904,16 @@ export component AppWindow inherits Window {
     in property <string> st-total;
     in property <[HeatCell]> st-heat;
     in property <[MonthMark]> st-months;
+    // итоги месяца и года: карточка поверх окна, её можно сохранить картинкой
+    in-out property <bool> recap-open;
+    in property <bool> recap-year;
+    in property <string> recap-title;
+    in property <string> recap-time;
+    in property <string> recap-sub;
+    in property <[RecapRow]> recap-tracks;
+    in property <[RecapRow]> recap-artists;
+    callback open-recap(bool);
+    callback save-recap(length, length, length, length);
     in property <[TrackItem]> st-tracks;
     in property <[StatArtist]> st-artists;
     // карточка любимого артиста: фото, фон и пятна из него (как в текстах), его самый частый трек
@@ -1879,6 +1949,11 @@ export component AppWindow inherits Window {
     callback set-offline(bool);
     callback set-cache-gb(float);
     callback clear-cache();
+    in property <string> app-version;
+    in property <string> update-ver; // вышла версия новее — в настройках кнопка «Обновить»
+    in property <bool> update-busy;
+    callback do-update();
+    callback copy-log();
     // локальная музыка
     in property <[TrackItem]> local-tracks;
     in property <[string]> music-dirs;
@@ -1900,6 +1975,7 @@ export component AppWindow inherits Window {
             if root.menu-open { root.menu-open = false; return accept; }
             if root.lyrics-open { root.set-lyrics-open(false); keys.focus(); return accept; }
             if root.modal != 0 { root.modal = 0; return accept; }
+            if root.recap-open { root.recap-open = false; return accept; }
             if root.fx-open || root.conn-open { root.fx-open = false; root.conn-open = false; return accept; }
             if root.deck-open { root.deck-open = false; return accept; }
             keys.focus(); // из поля ввода — обратно к горячим клавишам
@@ -2665,11 +2741,28 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            Rectangle {
+                            pl-box := Rectangle {
                                 vertical-stretch: 1;
-                                ListView {
+                                // порядок треков меняется мышью — только в виде «как добавлены» и без поиска
+                                property <int> drag-from: -1;
+                                property <length> drag-y;
+                                property <int> drag-to: max(0, min(root.pl-tracks.length, Math.round((self.drag-y - pl-list.viewport-y) / 58px)));
+                                property <length> from-y: self.drag-from * 58px + pl-list.viewport-y;
+                                pl-list := ListView {
                                     for t[i] in root.pl-tracks: TrackRow {
                                         item: t;
+                                        can-drag: root.pl-sort == 0 && root.pl-query == "";
+                                        dragged: i == pl-box.drag-from;
+                                        drag-at(y) => {
+                                            pl-box.drag-from = i;
+                                            pl-box.drag-y = y - pl-box.absolute-position.y;
+                                        }
+                                        drag-end => {
+                                            if pl-box.drag-to != i && pl-box.drag-to != i + 1 {
+                                                root.pl-move(i, pl-box.drag-to > i ? pl-box.drag-to - 1 : pl-box.drag-to);
+                                            }
+                                            pl-box.drag-from = -1;
+                                        }
                                         play => {
                                             root.play-pl(i);
                                         }
@@ -2687,6 +2780,29 @@ export component AppWindow inherits Window {
                                         }
                                         want-cover(u) => {
                                             root.want-cover(u);
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    x: 6px;
+                                    y: pl-box.drag-to * 58px + pl-list.viewport-y - 1px;
+                                    width: parent.width - 12px;
+                                    height: 2px;
+                                    border-radius: 1px;
+                                    background: Theme.soft2;
+                                    visible: pl-box.drag-from >= 0 && pl-box.from-y > -58px && pl-box.from-y < pl-box.height;
+                                }
+
+                                // курсор у края списка — список сам подъезжает, пока перетаскиваемая строка ещё на экране
+                                Timer {
+                                    interval: 30ms;
+                                    running: pl-box.drag-from >= 0;
+                                    triggered => {
+                                        if pl-box.drag-y < 40px && pl-box.from-y < pl-box.height - 70px {
+                                            pl-list.viewport-y = min(0px, pl-list.viewport-y + 14px);
+                                        } else if pl-box.drag-y > pl-box.height - 40px && pl-box.from-y > 12px {
+                                            pl-list.viewport-y = max(min(0px, pl-box.height - pl-list.viewport-height), pl-list.viewport-y - 14px);
                                         }
                                     }
                                 }
@@ -2928,11 +3044,37 @@ export component AppWindow inherits Window {
                             padding: 26px;
                             spacing: 16px;
                             alignment: start;
-                            Text {
-                                text: @tr("Статистика");
-                                color: Theme.text;
-                                font-size: 28px;
-                                font-weight: 800;
+                            HorizontalLayout {
+                                spacing: 10px;
+                                Text {
+                                    text: @tr("Статистика");
+                                    color: Theme.text;
+                                    font-size: 28px;
+                                    font-weight: 800;
+                                    horizontal-stretch: 1;
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: @tr("Итоги месяца");
+                                        primary: false;
+                                        clicked => {
+                                            root.open-recap(false);
+                                        }
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: @tr("Итоги года");
+                                        primary: false;
+                                        clicked => {
+                                            root.open-recap(true);
+                                        }
+                                    }
+                                }
                             }
 
                             HorizontalLayout {
@@ -4152,6 +4294,69 @@ export component AppWindow inherits Window {
                                 }
                             }
 
+                            HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text {
+                                        text: root.update-ver != "" ? @tr("Вышла версия {}", root.update-ver) : @tr("Версия {}", root.app-version);
+                                        color: Theme.text;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+
+                                    Text {
+                                        text: root.update-ver != "" ? @tr("Плеер скачает её, заменит себя и перезапустится. Музыка на минуту прервётся.") : @tr("Новые версии проверяются при каждом запуске.");
+                                        color: Theme.dim;
+                                        font-size: 13px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                if root.update-ver != "": VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: root.update-busy ? @tr("Качаю…") : @tr("Обновить");
+                                        clicked => {
+                                            root.do-update();
+                                        }
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text {
+                                        text: @tr("Журнал ошибок");
+                                        color: Theme.text;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+
+                                    Text {
+                                        text: @tr("Если трек не грузится или что-то сломалось — скопируй журнал и пришли его.");
+                                        color: Theme.dim;
+                                        font-size: 13px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: @tr("Скопировать");
+                                        primary: false;
+                                        clicked => {
+                                            root.copy-log();
+                                        }
+                                    }
+                                }
+                            }
+
                             VerticalLayout {
                                 spacing: 6px;
                                 Text {
@@ -4837,6 +5042,206 @@ export component AppWindow inherits Window {
     }
     }
 
+    // ── итоги месяца и года: карточка, которую можно сохранить картинкой ──
+    if root.recap-open: Rectangle {
+        background: #000000c8;
+        TouchArea {
+            clicked => {
+                root.recap-open = false;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 14px;
+            HorizontalLayout {
+                alignment: center;
+                recap-card := Rectangle {
+                    width: 400px;
+                    height: min(600px, root.height - 120px);
+                    border-radius: 26px;
+                    clip: true;
+                    background: @linear-gradient(160deg, Theme.deep1 0%, #0a0812 55%, Theme.deep2 100%);
+                    TouchArea { }
+                    Rectangle {
+                        x: -80px;
+                        y: -90px;
+                        width: 300px;
+                        height: 300px;
+                        border-radius: 150px;
+                        background: @radial-gradient(circle, Theme.c1.transparentize(0.45) 0%, Theme.c1.transparentize(1) 100%);
+                    }
+
+                    Rectangle {
+                        x: parent.width - 200px;
+                        y: parent.height - 190px;
+                        width: 300px;
+                        height: 300px;
+                        border-radius: 150px;
+                        background: @radial-gradient(circle, Theme.c2.transparentize(0.6) 0%, Theme.c2.transparentize(1) 100%);
+                    }
+
+                    VerticalLayout {
+                        padding: 26px;
+                        spacing: 6px;
+                        Text {
+                            text: "GARGANTUA · " + (root.recap-year ? @tr("ИТОГИ ГОДА") : @tr("ИТОГИ МЕСЯЦА"));
+                            color: #ffffffa0;
+                            font-size: 11px;
+                            font-weight: 800;
+                            letter-spacing: 2px;
+                        }
+
+                        Text {
+                            text: root.recap-title;
+                            color: white;
+                            font-size: 30px;
+                            font-weight: 900;
+                        }
+
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        Text {
+                            text: root.recap-time;
+                            color: Theme.soft2;
+                            font-size: 40px;
+                            font-weight: 900;
+                        }
+
+                        Text {
+                            text: root.recap-sub;
+                            color: #ffffffb8;
+                            font-size: 13px;
+                            wrap: word-wrap;
+                        }
+
+                        Rectangle {
+                            height: 10px;
+                        }
+
+                        if root.recap-tracks.length > 0: Text {
+                            text: @tr("ТРЕКИ");
+                            color: #ffffff80;
+                            font-size: 11px;
+                            font-weight: 800;
+                            letter-spacing: 1.5px;
+                        }
+
+                        for r[i] in root.recap-tracks: HorizontalLayout {
+                            spacing: 10px;
+                            Text {
+                                text: i + 1;
+                                width: 14px;
+                                color: Theme.soft1;
+                                font-size: 14px;
+                                font-weight: 800;
+                                vertical-alignment: center;
+                            }
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                Text {
+                                    text: r.a;
+                                    color: white;
+                                    font-size: 14px;
+                                    font-weight: 700;
+                                    overflow: elide;
+                                }
+
+                                Text {
+                                    text: r.b;
+                                    color: #ffffff90;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                }
+                            }
+
+                            Text {
+                                text: r.n;
+                                color: #ffffffb8;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Rectangle {
+                            height: 8px;
+                        }
+
+                        if root.recap-artists.length > 0: Text {
+                            text: @tr("АРТИСТЫ");
+                            color: #ffffff80;
+                            font-size: 11px;
+                            font-weight: 800;
+                            letter-spacing: 1.5px;
+                        }
+
+                        for r[i] in root.recap-artists: HorizontalLayout {
+                            spacing: 10px;
+                            Text {
+                                text: i + 1;
+                                width: 14px;
+                                color: Theme.soft2;
+                                font-size: 14px;
+                                font-weight: 800;
+                            }
+
+                            Text {
+                                text: r.a;
+                                color: white;
+                                font-size: 14px;
+                                font-weight: 700;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+
+                            Text {
+                                text: r.n;
+                                color: #ffffffb8;
+                                font-size: 12px;
+                            }
+                        }
+
+                        Rectangle {
+                            vertical-stretch: 1;
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: 8px;
+                Chip {
+                    text: @tr("Месяц");
+                    accent: Theme.soft1;
+                    active: !root.recap-year;
+                    clicked => {
+                        root.open-recap(false);
+                    }
+                }
+
+                Chip {
+                    text: @tr("Год");
+                    accent: Theme.soft1;
+                    active: root.recap-year;
+                    clicked => {
+                        root.open-recap(true);
+                    }
+                }
+
+                Pill {
+                    text: @tr("Сохранить картинкой");
+                    clicked => {
+                        root.save-recap(recap-card.absolute-position.x, recap-card.absolute-position.y, recap-card.width, recap-card.height);
+                    }
+                }
+            }
+        }
+    }
+
     // ── панель «Сейчас играет»: обложка, спектр и текст или очередь. Раздвигает контент, а не лежит поверх ──
     deck := Rectangle {
         property <length> w: 340px;
@@ -5120,11 +5525,37 @@ export component AppWindow inherits Window {
                     letter-spacing: 1.5px;
                 }
 
-                ListView {
+                q-box := Rectangle {
                     vertical-stretch: 1;
+                    property <int> drag-from: -1;
+                    property <length> drag-y;
+                    property <int> drag-to: max(0, min(root.q-next.length, Math.round((self.drag-y - q-list.viewport-y) / 52px)));
+                    Rectangle {
+                        x: 4px;
+                        y: q-box.drag-to * 52px + q-list.viewport-y - 1px;
+                        width: parent.width - 8px;
+                        height: 2px;
+                        border-radius: 1px;
+                        background: Theme.soft2;
+                        visible: q-box.drag-from >= 0;
+                    }
+
+                    q-list := ListView {
                     for t[i] in root.q-next: QueueRow {
                         item: t;
                         editable: true;
+                        can-drag: true;
+                        dragged: i == q-box.drag-from;
+                        drag-at(y) => {
+                            q-box.drag-from = i;
+                            q-box.drag-y = y - q-box.absolute-position.y;
+                        }
+                        drag-end => {
+                            if q-box.drag-to != i && q-box.drag-to != i + 1 {
+                                root.queue-move(i, (q-box.drag-to > i ? q-box.drag-to - 1 : q-box.drag-to) - i);
+                            }
+                            q-box.drag-from = -1;
+                        }
                         play => {
                             root.queue-jump(i);
                         }
@@ -5138,6 +5569,7 @@ export component AppWindow inherits Window {
                             root.want-cover(u);
                         }
                     }
+                }
                 }
 
                 if root.q-next.length == 0: Text {

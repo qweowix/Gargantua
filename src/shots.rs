@@ -312,6 +312,16 @@ fn ui() {
     ui.set_act0(1);
     win.set_size(slint::PhysicalSize::new(W, H));
     snap(&win, "16-deck-closed");
+    // итоги месяца: карточка поверх окна
+    ui.set_recap_title("Ноябрь 2026".into());
+    ui.set_recap_time("42 ч 10 мин".into());
+    ui.set_recap_sub("дней с музыкой: 9 · разных треков: 214".into());
+    let row = |a: &str, b: &str, n: &str| RecapRow { a: a.into(), b: b.into(), n: n.into() };
+    ui.set_recap_tracks(Rc::new(VecModel::from(vec![row("Not Allowed", "TV Girl", "×31"), row("Lovers Rock", "TV Girl", "×24"), row("one way ticket", "ONDA ANDAR", "×19")])).into());
+    ui.set_recap_artists(Rc::new(VecModel::from(vec![row("TV Girl", "", "11 ч 2 мин"), row("ONDA ANDAR", "", "3 ч 40 мин")])).into());
+    ui.set_recap_open(true);
+    snap(&win, "17-recap");
+    ui.set_recap_open(false);
     ui.set_lyrics_open(true);
     snap(&win, "08-lyrics");
     // lyrics тикает 20 fps: главный интерфейс под ним рисоваться не должен, кадр — дешёвый

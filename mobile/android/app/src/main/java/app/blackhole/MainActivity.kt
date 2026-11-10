@@ -102,6 +102,14 @@ class MainActivity : ComponentActivity() {
         vm.importUrl(url)
     }
 
+    /** Звук играет на другом устройстве — кнопки громкости телефона крутят громкость там, а не здесь */
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (vm.connVolumeStep(keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP)) return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     override fun onStop() {
         vm.pushNow()
         super.onStop()
@@ -137,6 +145,7 @@ private fun Root(vm: AppState) {
                     Screen.Account -> AccountScreen(vm)
                     Screen.Settings -> SettingsScreen(vm)
                     Screen.Stats -> StatsScreen(vm)
+                    Screen.Eq -> app.blackhole.ui.EqScreen(vm)
                     is Screen.Pl -> PlaylistScreen(vm, s.name)
                     is Screen.ArtistPage -> ArtistScreen(vm, s.id, s.name)
                     is Screen.AlbumPage -> AlbumScreen(vm, s.id)

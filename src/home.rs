@@ -96,7 +96,7 @@ pub fn build(
     let mut mixes = vec![];
     for t in &top {
         radios.push(radio(t).unwrap_or_else(|e| {
-            eprintln!("микс по {}: {e:#}", t.title);
+            crate::logln!("микс по {}: {e:#}", t.title);
             vec![]
         }));
     }

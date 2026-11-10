@@ -70,7 +70,7 @@ pub fn fetch(key: String, url: String, limit: u64, done: fn(u64)) {
                     continue;
                 }
                 if let Err(e) = download(&key, &url) {
-                    eprintln!("офлайн-кэш: {e:#}");
+                    crate::logln!("офлайн-кэш: {e:#}");
                 }
                 evict(limit);
                 done(size());

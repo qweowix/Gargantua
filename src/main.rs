@@ -21,6 +21,7 @@ mod soundcloud;
 mod spicy;
 mod spotify;
 mod stats;
+mod update;
 mod util;
 mod ytw;
 mod yandex;
@@ -85,7 +86,7 @@ fn open_url(url: &str) {
     #[cfg(all(unix, not(target_os = "macos")))]
     let r = std::process::Command::new("xdg-open").arg(url).spawn();
     if let Err(e) = r {
-        eprintln!("не смог открыть {url}: {e}");
+        crate::logln!("не смог открыть {url}: {e}");
     }
 }
 
@@ -173,6 +174,7 @@ struct App {
     lyr_timer: Timer,
     lyr_idle: Timer, // через 2 с без движения мыши прячет управление на экране текста
     lyr_last: Instant,
+    update_url: String, // архив новой версии, если она вышла (см. update.rs)
     speed_at: Instant, // когда меняли скорость: пару секунд после этого mpv врёт про позицию
     lyr_shown: f64, // позиция, которую уже показал текст: назад на доли секунды не откатываем
     // часы караоке в интерфейсе: позиция = lyr_base + (время кадров − lyr_t0) · lyr_rate (см. lyr-pos в app.slint)
@@ -807,7 +809,7 @@ impl App {
         // большое фото и размытый фон под шапку — как на экране текстов
         let (photo, gen) = (ar.photo.clone(), self.art_gen);
         std::thread::spawn(move || {
-            let Ok(b) = covers::big(&photo).map_err(|e| eprintln!("фото артиста: {e:#}")) else { return };
+            let Ok(b) = covers::big(&photo).map_err(|e| crate::logln!("фото артиста: {e:#}")) else { return };
             post(move |a| {
                 if a.art_gen == gen {
                     a.ui.set_artist_photo(Image::from_rgba8(b.cover));
@@ -954,7 +956,7 @@ impl App {
             3 => "sk",
             _ => "",
         }) {
-            eprintln!("перевод: {e}");
+            crate::logln!("перевод: {e}");
         }
         self.ui.set_lang(lang.into());
         // перевод текста был на прошлый язык — переводим заново
@@ -1108,10 +1110,10 @@ impl App {
                 let q2 = q.clone();
                 let albums = std::thread::spawn(move || ytmusic::search_cards(&q2, ytmusic::ALBUMS, 12));
                 let artists = ytmusic::search_cards(&q, ytmusic::ARTISTS, 8).unwrap_or_else(|e| {
-                    eprintln!("поиск артистов: {e:#}");
+                    crate::logln!("поиск артистов: {e:#}");
                     vec![]
                 });
-                let albums = albums.join().ok().and_then(|r| r.map_err(|e| eprintln!("поиск альбомов: {e:#}")).ok()).unwrap_or_default();
+                let albums = albums.join().ok().and_then(|r| r.map_err(|e| crate::logln!("поиск альбомов: {e:#}")).ok()).unwrap_or_default();
                 post(move |a| {
                     if a.gen == gen {
                         a.set_cards(artists, albums);
@@ -1143,7 +1145,7 @@ impl App {
                             a.rebuild_view();
                         }
                         Err(e) => {
-                            eprintln!("{src:?}: {e:#}");
+                            crate::logln!("{src:?}: {e:#}");
                             a.results[i].clear(); // висели от прошлого запроса
                             a.rebuild_view();
                             // Яндекс за пределами РФ/СНГ отвечает 451 — это не ошибка плеера
@@ -1513,7 +1515,7 @@ impl App {
                             }
                         }
                         Err(e) => {
-                            eprintln!("скачивание {}: {e:#}", t.title);
+                            crate::logln!("скачивание {}: {e:#}", t.title);
                             a.toast(&tr!("Не скачалось «{}»: {}", "Couldn't download “{}”: {}", "Не завантажилось «{}»: {}", "Nestiahlo sa „{}“: {}", t.title, e));
                         }
                     }
@@ -1696,7 +1698,7 @@ impl App {
         std::thread::spawn(move || {
             let r = if first { cloud::load(&c) } else { cloud::sync(&c, &local) };
             // статистика аккаунта: своя доля — в облако, чужие — к себе. Ошибка тут плейлистам не мешает
-            let others = cloud::sync_stats(&c, &own).map_err(|e| eprintln!("stats sync: {e:#}")).ok();
+            let others = cloud::sync_stats(&c, &own).map_err(|e| crate::logln!("stats sync: {e:#}")).ok();
             post(move |a| {
                 if r.is_ok() {
                     a.conn_start(); // аккаунт живой — подключаемся к общей сессии устройств
@@ -1947,7 +1949,7 @@ impl App {
         // большой плейлист уходит в облако — это сеть, поэтому в фоне
         let pl = pl.clone();
         std::thread::spawn(move || {
-            let imgs: Vec<_> = qr::codes(&pl).iter().filter_map(|c| qr::render(c, 6).map_err(|e| eprintln!("qr: {e:#}")).ok()).collect();
+            let imgs: Vec<_> = qr::codes(&pl).iter().filter_map(|c| qr::render(c, 6).map_err(|e| crate::logln!("qr: {e:#}")).ok()).collect();
             post(move |a| {
                 a.qr_imgs = imgs;
                 a.qr_page = 0;
@@ -2158,7 +2160,7 @@ impl App {
                 }
                 Err(e) => post(move |a| {
                     if a.token.load(Ordering::SeqCst) == tok {
-                        eprintln!("поток {}: {e:#}", t.title);
+                        crate::logln!("поток {}: {e:#}", t.title);
                         a.track_failed(&e.to_string());
                     }
                 }),
@@ -2169,6 +2171,7 @@ impl App {
     /// Трек не заиграл: пропускаем, но если подряд не играет уже третий — дальше листать бессмысленно
     /// (обычно YouTube упёрся в проверку на бота), останавливаемся и говорим, что делать
     fn track_failed(&mut self, e: &str) {
+        crate::logln!("не играет {}: {e}", self.ui.get_now_title());
         self.fail_streak += 1;
         let bot = e.contains(util::BOT);
         let msg = if bot {
@@ -2243,7 +2246,7 @@ impl App {
                 let urls: Vec<(Track, Option<String>)> = batch.iter().map(|t| (t.clone(), resolve(t).ok())).collect();
                 let want: Vec<String> = urls.iter().filter_map(|(_, u)| u.clone()).collect();
                 let got = if want.is_empty() { Default::default() } else { ytmusic::stream_urls(&want).unwrap_or_else(|e| {
-                    eprintln!("prefetch: {e:#}");
+                    crate::logln!("prefetch: {e:#}");
                     Default::default()
                 }) };
                 post(move |a| {
@@ -2307,9 +2310,26 @@ impl App {
     fn queue_move(&mut self, i: usize, delta: i32) {
         let j = i as i64 + delta as i64;
         if i < self.upnext.len() && j >= 0 && (j as usize) < self.upnext.len() {
-            self.upnext.swap(i, j as usize);
+            // стрелки двигают на одну строку, мышью можно унести трек куда угодно
+            let t = self.upnext.remove(i);
+            self.upnext.insert(j as usize, t);
             self.queue_changed();
         }
+    }
+
+    /// Трек плейлиста перетащили мышью: from и to — строки в списке «как добавлены» без поиска, то есть сами индексы
+    fn pl_move(&mut self, from: usize, to: usize) {
+        let Some(i) = self.open_pl.filter(|&i| i < self.store.playlists.len()) else { return };
+        let n = self.store.playlists[i].tracks.len();
+        if self.pl_sort != 0 || self.pl_view.len() != n || from >= n || to >= n || from == to {
+            return;
+        }
+        let t = self.store.playlists[i].tracks.remove(from);
+        self.store.playlists[i].tracks.insert(to, t);
+        self.save();
+        self.pl_rebuild();
+        self.mark_playing();
+        self.refresh_playlists();
     }
 
     fn queue_remove(&mut self, i: usize) {
@@ -2458,6 +2478,7 @@ impl App {
                 self.ui.set_loading(loading);
                 self.count_listen(!loading && !paused);
                 if loading && self.load_started.elapsed() > LOAD_TIMEOUT {
+                    crate::logln!("поток не загрузился за {} с: {}", LOAD_TIMEOUT.as_secs(), self.ui.get_now_title());
                     self.toast(&tr!("Поток не грузится — пропускаю", "The stream won't load — skipping", "Потік не вантажиться — пропускаю", "Stream sa nenačítava — preskakujem"));
                     self.advance();
                     return;
@@ -2499,7 +2520,7 @@ impl App {
             // закэшированная ссылка протухла — молча резолвим заново
             // протухшая ссылка из кэша или кривой формат от YouTube — молча перезапрашиваем поток
             Ev::Failed(tok, e) if tok == cur && (self.from_cache || self.retries < 2) => {
-                eprintln!("поток не открылся ({e}), пробую ещё раз");
+                crate::logln!("поток не открылся ({e}), пробую ещё раз");
                 if let Some(t) = &self.current {
                     self.stream_cache.remove(&key(t));
                     cache::forget(&key(t));
@@ -2531,7 +2552,7 @@ impl App {
     // ── кроссфейд ──
 
     fn spawn_player(&self, volume: f64) -> Option<Player> {
-        let p = Player::spawn(volume, |ev| post(move |a| a.on_ev(ev))).map_err(|e| eprintln!("{e:#}")).ok()?;
+        let p = Player::spawn(volume, |ev| post(move |a| a.on_ev(ev))).map_err(|e| crate::logln!("{e:#}")).ok()?;
         let st = &self.store.settings;
         p.send(Cmd::Af(fx::chain(&st.eq, st.speed, st.keep_pitch, self.viz_used)));
         p.send(Cmd::Speed(st.speed as f64));
@@ -2717,6 +2738,61 @@ impl App {
         }
     }
 
+    /// Итоги текущего месяца или года карточкой
+    fn open_recap(&mut self, year: bool) {
+        let (y, m, _) = stats::ymd(stats::today());
+        let s = self.stats.with(&self.stats_others);
+        let r = s.recap(y, if year { 0 } else { m });
+        let names = [
+            tr!("Январь", "January", "Січень", "Január"), tr!("Февраль", "February", "Лютий", "Február"), tr!("Март", "March", "Березень", "Marec"),
+            tr!("Апрель", "April", "Квітень", "Apríl"), tr!("Май", "May", "Травень", "Máj"), tr!("Июнь", "June", "Червень", "Jún"),
+            tr!("Июль", "July", "Липень", "Júl"), tr!("Август", "August", "Серпень", "August"), tr!("Сентябрь", "September", "Вересень", "September"),
+            tr!("Октябрь", "October", "Жовтень", "Október"), tr!("Ноябрь", "November", "Листопад", "November"), tr!("Декабрь", "December", "Грудень", "December"),
+        ];
+        let ui = &self.ui;
+        ui.set_recap_year(year);
+        ui.set_recap_title(if year { y.to_string() } else { format!("{} {y}", names[m as usize - 1]) }.into());
+        ui.set_recap_time(fmt_long(r.ms).into());
+        let days = tr!("дней с музыкой: {}", "days with music: {}", "днів з музикою: {}", "dní s hudbou: {}", r.active);
+        ui.set_recap_sub(
+            if r.count > 0 {
+                format!("{days} · {}", tr!("разных треков: {}", "different tracks: {}", "різних треків: {}", "rôznych skladieb: {}", r.count))
+            } else {
+                // помесячные счётчики появились в 0.3: за время до неё топа нет, только общее время
+                format!("{days}\n{}", tr!("Топ треков и артистов копится с этой версии — загляни сюда позже.", "Top tracks and artists are counted from this version on — check back later.", "Топ треків і артистів збирається з цієї версії — зазирни сюди пізніше.", "Top skladby a interpreti sa počítajú od tejto verzie — pozri sa neskôr."))
+            }
+            .into(),
+        );
+        let tracks: Vec<RecapRow> = r.tracks.iter().map(|(t, _, plays)| RecapRow { a: t.title.as_str().into(), b: t.artist.as_str().into(), n: format!("×{plays}").into() }).collect();
+        let artists: Vec<RecapRow> = r.artists.iter().map(|(a, ms)| RecapRow { a: a.as_str().into(), b: "".into(), n: fmt_long(*ms).into() }).collect();
+        ui.set_recap_tracks(Rc::new(VecModel::from(tracks)).into());
+        ui.set_recap_artists(Rc::new(VecModel::from(artists)).into());
+        ui.set_recap_open(true);
+    }
+
+    /// Карточка итогов → PNG в «Изображения»: снимок окна, вырезанный по карточке (x, y, w, h — в логических пикселях)
+    fn save_recap(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        let r = (|| -> Result<std::path::PathBuf> {
+            let shot = self.ui.window().take_snapshot().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let k = self.ui.window().scale_factor();
+            let img = image::RgbaImage::from_raw(shot.width(), shot.height(), shot.as_bytes().to_vec()).context("пустой снимок")?;
+            let (x, y) = ((x * k).max(0.0) as u32, (y * k).max(0.0) as u32);
+            let (w, h) = (((w * k) as u32).min(img.width().saturating_sub(x)), ((h * k) as u32).min(img.height().saturating_sub(y)));
+            let dir = dirs::picture_dir().or_else(dirs::home_dir).context("нет папки для картинок")?;
+            let name = self.ui.get_recap_title().replace(' ', "-");
+            let path = dir.join(format!("Gargantua-{name}.png"));
+            image::imageops::crop_imm(&img, x, y, w, h).to_image().save(&path)?;
+            Ok(path)
+        })();
+        match r {
+            Ok(p) => self.toast(&tr!("Сохранено: {}", "Saved: {}", "Збережено: {}", "Uložené: {}", p.display())),
+            Err(e) => {
+                crate::logln!("итоги картинкой: {e:#}");
+                self.toast(&tr!("Не сохранилось: {}", "Couldn't save: {}", "Не збереглося: {}", "Nepodarilo sa uložiť: {}", format!("{e:#}")));
+            }
+        }
+    }
+
     fn open_stats(&mut self) {
         let today = stats::today();
         let s = &self.stats.with(&self.stats_others);
@@ -2766,7 +2842,7 @@ impl App {
                 let (name, track) = (name.to_string(), fav.map(|t| t.track.clone()));
                 std::thread::spawn(move || {
                     let big = ytmusic::artist_photo(&name, track.as_ref()).and_then(|p| covers::big(&p));
-                    let Ok(b) = big.map_err(|e| eprintln!("фото любимого артиста: {e:#}")) else { return };
+                    let Ok(b) = big.map_err(|e| crate::logln!("фото любимого артиста: {e:#}")) else { return };
                     post(move |a| {
                         if a.stat_fav_for == name {
                             a.ui.set_st_fav_photo(Image::from_rgba8(b.cover));
@@ -2796,7 +2872,7 @@ impl App {
         std::thread::spawn(move || {
             let r = radio_for(&seed);
             post(move |a| {
-                let Ok(tracks) = r.map_err(|e| eprintln!("дальше похожее: {e:#}")) else { return };
+                let Ok(tracks) = r.map_err(|e| crate::logln!("дальше похожее: {e:#}")) else { return };
                 if a.repeat > 0 || a.upnext.len() >= 2 {
                     return; // пока искали, юзер сам набил очередь
                 }
@@ -3178,7 +3254,7 @@ impl App {
         // большая обложка и размытый фон для экрана lyrics
         std::thread::spawn(move || {
             // нет обложки (локальный файл без картинки) — убираем фон и цвета прошлого трека
-            let Ok(b) = covers::big(&cover).map_err(|e| eprintln!("big cover: {e:#}")) else {
+            let Ok(b) = covers::big(&cover).map_err(|e| crate::logln!("big cover: {e:#}")) else {
                 post(move |a| {
                     if a.lyr_gen == tok {
                         a.ui.set_has_big(false);
@@ -3209,7 +3285,7 @@ impl App {
             return;
         }
         let found = r.unwrap_or_else(|e| {
-            eprintln!("lyrics {from}: {e:#}");
+            crate::logln!("lyrics {from}: {e:#}");
             None
         });
         self.lyr_results.extend(found);
@@ -3240,7 +3316,7 @@ impl App {
             None => f64::MAX,
         };
         if chosen.rank() > self.lyr_rank && (!self.ui.get_lyrics_open() || self.pos < first - 1.0) {
-            eprintln!("lyrics: {} опоздал, но текст лучше — подменяю", chosen.credit.provider);
+            crate::logln!("lyrics: {} опоздал, но текст лучше — подменяю", chosen.credit.provider);
             self.lyr_rank = chosen.rank();
             self.apply_lyrics(Some(chosen));
         }
@@ -3314,7 +3390,7 @@ impl App {
                     }
                     Ok(None) if manual => a.toast(&tr!("Текст и так на твоём языке", "Lyrics are already in your language", "Текст і так твоєю мовою", "Text už je v tvojom jazyku")),
                     Err(e) if manual => {
-                        eprintln!("{e:#}");
+                        crate::logln!("{e:#}");
                         a.toast(&tr!("Не удалось перевести текст", "Couldn't translate the lyrics", "Не вдалося перекласти текст", "Text sa nepodarilo preložiť"));
                     }
                     _ => {}
@@ -3705,6 +3781,7 @@ fn crash_log() {
         let dir = Store::dir();
         let _ = std::fs::create_dir_all(&dir);
         let msg = format!("{info}\n{}\n\n", std::backtrace::Backtrace::force_capture());
+        crate::logln!("ПАДЕНИЕ: {info}");
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("crash.log")) {
             use std::io::Write;
             let _ = f.write_all(msg.as_bytes());
@@ -3720,10 +3797,20 @@ fn main() -> Result<(), slint::PlatformError> {
     // BLACKHOLE_RENDER=femtovg — старый лёгкий рендер (для сравнения)
     let render = std::env::var("BLACKHOLE_RENDER").unwrap_or_else(|_| "skia".into());
     if let Err(e) = slint::BackendSelector::new().renderer_name(render.clone()).select() {
-        eprintln!("рендер {render} не завёлся ({e}), беру по умолчанию");
+        crate::logln!("рендер {render} не завёлся ({e}), беру по умолчанию");
     }
-    let Ok(_lock) = single_instance() else {
-        eprintln!("Gargantua уже запущен");
+    update::cleanup();
+    // после обновления новый экземпляр стартует, пока старый ещё закрывается, — даём ему пару секунд
+    let mut lock = single_instance();
+    for _ in 0..25 {
+        if lock.is_ok() || std::env::var_os("BLACKHOLE_AFTER_UPDATE").is_none() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        lock = single_instance();
+    }
+    let Ok(_lock) = lock else {
+        crate::logln!("Gargantua уже запущен");
         return Ok(());
     };
     let ui = AppWindow::new()?;
@@ -3736,7 +3823,7 @@ fn main() -> Result<(), slint::PlatformError> {
     }
 
     let player = Player::spawn(store.settings.volume as f64 * 100.0, |ev| post(move |a| a.on_ev(ev)))
-        .map_err(|e| eprintln!("{e:#}"))
+        .map_err(|e| crate::logln!("{e:#}"))
         .ok();
 
     let res_model = Rc::new(VecModel::default());
@@ -3813,6 +3900,7 @@ fn main() -> Result<(), slint::PlatformError> {
         lyr_timer: Timer::default(),
         lyr_idle: Timer::default(),
         lyr_last: Instant::now(),
+        update_url: String::new(),
         speed_at: Instant::now(),
         lyr_shown: 0.0,
         lyr_base: 0.0,
@@ -4108,6 +4196,15 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_history_jump(|i| {
         with(|a| a.history_jump(i as usize));
     });
+    ui.on_open_recap(|year| {
+        with(|a| a.open_recap(year));
+    });
+    ui.on_save_recap(|x, y, w, h| {
+        with(|a| a.save_recap(x, y, w, h));
+    });
+    ui.on_pl_move(|from, to| {
+        with(|a| a.pl_move(from as usize, to as usize));
+    });
     ui.on_queue_move(|i, d| {
         with(|a| a.queue_move(i as usize, d));
     });
@@ -4305,6 +4402,53 @@ fn main() -> Result<(), slint::PlatformError> {
             a.store.settings.cache_gb = g;
             a.ui.set_cache_gb(g);
             a.save();
+        });
+    });
+    ui.set_app_version(update::VERSION.into());
+    // новая версия: спрашиваем GitHub один раз за запуск, не мешая старту
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_secs(6));
+        match update::check() {
+            Ok(Some((ver, url))) => post(move |a| {
+                a.update_url = url;
+                a.ui.set_update_ver(ver.as_str().into());
+                a.toast(&tr!("Вышла версия {} — обновиться можно в настройках", "Version {} is out — update in Settings", "Вийшла версія {} — оновитися можна в налаштуваннях", "Vyšla verzia {} — aktualizuj v nastaveniach", ver));
+            }),
+            Ok(None) => {}
+            Err(e) => crate::logln!("проверка обновлений: {e:#}"),
+        }
+    });
+    ui.on_do_update(|| {
+        with(|a| {
+            if a.update_url.is_empty() || a.ui.get_update_busy() {
+                return;
+            }
+            a.ui.set_update_busy(true);
+            let url = a.update_url.clone();
+            std::thread::spawn(move || {
+                let r = update::install(&url);
+                post(move |a| {
+                    a.ui.set_update_busy(false);
+                    match r {
+                        Ok(exe) => {
+                            a.store.save();
+                            let _ = util::command(&exe).env("BLACKHOLE_AFTER_UPDATE", "1").spawn();
+                            let _ = slint::quit_event_loop();
+                        }
+                        Err(e) => {
+                            crate::logln!("обновление: {e:#}");
+                            a.toast(&tr!("Не обновилось: {}", "Update failed: {}", "Не оновилося: {}", "Aktualizácia zlyhala: {}", format!("{e:#}")));
+                        }
+                    }
+                });
+            });
+        });
+    });
+    ui.on_copy_log(|| {
+        with(|a| {
+            let head = format!("Gargantua {} · {} {}\n", update::VERSION, std::env::consts::OS, std::env::consts::ARCH);
+            a.ui.invoke_copy_text((head + &util::log_tail()).into());
+            a.toast(&tr!("Журнал скопирован", "Log copied", "Журнал скопійовано", "Záznam skopírovaný"));
         });
     });
     ui.on_clear_cache(|| {

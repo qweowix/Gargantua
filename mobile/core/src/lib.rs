@@ -34,6 +34,8 @@ pub mod cloud;
 pub mod qr;
 #[path = "../../../src/connect.rs"]
 pub mod connect;
+#[path = "../../../src/fx.rs"]
+pub mod fx;
 
 mod api;
 #[cfg(target_os = "android")]

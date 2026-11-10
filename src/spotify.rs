@@ -50,8 +50,8 @@ fn import_embed(kind: &str, sid: &str) -> Result<(String, Vec<Track>)> {
         if let Some(tok) = v["props"]["pageProps"]["state"]["settings"]["session"]["accessToken"].as_str() {
             match pathfinder_playlist(sid, tok) {
                 Ok(t) if !t.is_empty() => return Ok((name, t)),
-                Ok(_) => eprintln!("pathfinder: пусто, беру embed"),
-                Err(e) => eprintln!("pathfinder: {e:#}, беру embed"),
+                Ok(_) => crate::logln!("pathfinder: пусто, беру embed"),
+                Err(e) => crate::logln!("pathfinder: {e:#}, беру embed"),
             }
         }
     }

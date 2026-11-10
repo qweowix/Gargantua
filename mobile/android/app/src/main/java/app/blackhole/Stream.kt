@@ -80,9 +80,18 @@ object Streams {
     fun resolve(spec: DataSpec): DataSpec {
         if (spec.uri.scheme != "bh") return spec
         val key = spec.uri.lastPathSegment ?: throw IOException("нет трека")
-        val url = urlFor(key)
+        var url = urlFor(key)
         if (isHls(url)) throw HlsNeeded(key, url)
-        waitOpen(key, url)
+        // ссылка «без рекламы» обязана открыться сразу и отдавать весь файл. Нет — параметр сломали:
+        // выключаем его на сутки и берём ссылку по-старому (она откроется через несколько секунд)
+        if (!waitOpen(key, url) || brokenMid(url)) {
+            if (url.contains("c=TVHTML5") && YtAuth.noAdsOk()) {
+                YtAuth.noAdsOff(if (brokenMid(url)) "середина файла 403" else "не открылась")
+                forget(key)
+                url = urlFor(key)
+                waitOpen(key, url)
+            }
+        }
         return spec.buildUpon().setUri(Uri.parse(url)).setHttpRequestHeaders(headersFor(url)).build()
     }
 
@@ -90,17 +99,29 @@ object Streams {
 
     /** Без Премиума YouTube вешает рекламу: ссылка клиента-телевизора секунды 3 отвечает 403. Не тратим на это
      *  попытки ExoPlayer (у него паузы растут, а потом ссылка выкидывается и таймер идёт заново) — щупаем сами, как на ПК */
-    private fun waitOpen(key: String, url: String) {
-        val got = cache[key]?.second ?: return
-        if (!url.contains("c=TVHTML5")) return
+    private fun probe(url: String, range: String): Int {
+        val b = okhttp3.Request.Builder().url("$url&range=$range")
+        headersFor(url).forEach { (k, v) -> b.header(k, v) }
+        return runCatching { App.http.newCall(b.build()).execute().use { it.code } }.getOrDefault(0)
+    }
+
+    /** true — ссылка открыта (или это не ссылка телевизора и ждать нечего) */
+    private fun waitOpen(key: String, url: String): Boolean {
+        val got = cache[key]?.second ?: return true
+        if (!url.contains("c=TVHTML5")) return true
         val end = got + OPEN_WAIT
         while (System.currentTimeMillis() < end) {
-            val b = okhttp3.Request.Builder().url("$url&range=0-0")
-            headersFor(url).forEach { (k, v) -> b.header(k, v) }
-            val code = runCatching { App.http.newCall(b.build()).execute().use { it.code } }.getOrDefault(0)
-            if (code != 403) return
+            if (probe(url, "0-0") != 403) return true
             Thread.sleep(250)
         }
+        return false
+    }
+
+    /** Середина файла отвечает 403 — так ломались похожие параметры: начало играет, дальше тишина. Один байт на трек */
+    private fun brokenMid(url: String): Boolean {
+        if (!url.contains("c=TVHTML5")) return false
+        val len = Regex("[?&]clen=(\\d+)").find(url)?.groupValues?.get(1)?.toLongOrNull() ?: return false
+        return probe(url, "${len / 2}-${len / 2}") == 403
     }
 
     /** Трек целиком на диске: ссылка не нужна, YouTube лишний раз не дёргаем */

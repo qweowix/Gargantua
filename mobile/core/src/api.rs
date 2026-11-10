@@ -141,6 +141,30 @@ fn run(m: &str, a: &Value) -> Result<Value> {
             Value::Null
         }
         "stats" => stats_json(&stats_lock().with(&others_lock())),
+        // итоги месяца (month 1–12) или года (month 0) — те же, что на ПК
+        "recap" => {
+            let (y, m, _) = stats::ymd(stats::today());
+            let r = stats_lock().with(&others_lock()).recap(y, if a["year"].as_bool().unwrap_or(false) { 0 } else { m });
+            json!({
+                "year": y, "month": m, "ms": r.ms, "active": r.active, "count": r.count,
+                "tracks": r.tracks.iter().map(|(t, ms, plays)| json!({"track": t, "ms": ms, "plays": plays})).collect::<Vec<_>>(),
+                "artists": r.artists.iter().map(|(n, ms)| json!({"name": n, "ms": ms})).collect::<Vec<_>>(),
+            })
+        }
+        // ── эквалайзер: пресеты и расчёт те же, что на ПК (fx.rs); сам звук крутит обработчик в Kotlin ──
+        "eq_presets" => json!(crate::fx::PRESETS.iter().map(|(ru, en, g)| json!({"ru": ru, "en": en, "gains": g})).collect::<Vec<_>>()),
+        "eq_plan" => {
+            let gains: Vec<f32> = serde_json::from_value(a["gains"].clone())?;
+            match crate::fx::plan(&gains) {
+                Some(p) => json!({"on": true, "freqs": crate::fx::BANDS, "set": p.set, "pre": p.pre, "limit": p.limit}),
+                None => json!({"on": false}),
+            }
+        }
+        "log" => {
+            crate::util::log(s(a, "msg"));
+            Value::Null
+        }
+        "log_tail" => json!(crate::util::log_tail()),
         // фото любимого артиста для карточки статистики (сеть — поэтому отдельно от "stats")
         "artist_photo" => json!(ytmusic::artist_photo(s(a, "name"), serde_json::from_value::<Track>(a["track"].clone()).ok().as_ref())?),
         // своя доля статистики аккаунта — в облако, доли других устройств — к себе (как на ПК раз в минуту)
