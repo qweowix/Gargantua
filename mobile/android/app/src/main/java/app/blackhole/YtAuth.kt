@@ -158,7 +158,16 @@ object YtAuth {
     private fun playable(v: kotlinx.serialization.json.JsonObject) = v["playabilityStatus"]?.jsonObject?.get("status")?.jsonPrimitive?.contentOrNull == "OK"
 
     /** id видео → прямая ссылка на лучший звук. Ошибки — исключением (тогда пробуем анонимно через NewPipe) */
-    fun audio(id: String): String {
+    fun audio(id: String): String = try {
+        audioOnce(id)
+    } catch (e: org.schabi.newpipe.extractor.exceptions.ParsingException) {
+        // YouTube сменил плеер, а у NewPipe в памяти старый — разбор подписи падает. Сбрасываем и берём свежий
+        BhLog.line("YouTube: плеер устарел ($e) — беру свежий")
+        YoutubeJavaScriptPlayerManager.clearAllCaches()
+        audioOnce(id)
+    }
+
+    private fun audioOnce(id: String): String {
         val sts = runCatching { YoutubeJavaScriptPlayerManager.getSignatureTimestamp(id) }.getOrNull()
         val v = (if (noAdsOk()) runCatching { player(id, sts, true) }.getOrNull()?.takeIf(::playable) else null) ?: player(id, sts, false)
         val ps = v["playabilityStatus"]?.jsonObject

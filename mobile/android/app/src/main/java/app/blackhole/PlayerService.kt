@@ -108,6 +108,7 @@ class PlayerService : MediaSessionService() {
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_notif) })
         scope.launch { tick() }
         scope.launch { xfadeLoop() }
+        scope.launch { App.smartKick.collect { maybeSmart() } }
         // скорость и тон из экрана эквалайзера
         scope.launch { Eq.tempo.collect { player.playbackParameters = tempoParams(); ghost?.playbackParameters = tempoParams() } }
         // сердечко и значок перемешки следуют за состоянием
@@ -220,6 +221,7 @@ class PlayerService : MediaSessionService() {
             listened = 0.0
             counted = false
             maybeAutoplay()
+            maybeSmart()
         }
 
         // очередь поменялась (добавили, перемешали, докинулось похожее) — соседи могли смениться
@@ -510,6 +512,39 @@ class PlayerService : MediaSessionService() {
                 }
             }
         }
+    }
+
+    private val smartPool = ArrayDeque<Track>()
+    private var smartAsked = 0L
+
+    /** Умное перемешивание, по той же логике, что «дальше похожее»: радио по случайному треку очереди даёт запас,
+     *  из него в очередь встаёт по одному треку так, чтобы между подмешанными было 2–3 своих */
+    private fun maybeSmart() {
+        if (!prefs.getBoolean("shuffle", false) || !prefs.getBoolean("smart_shuffle", false)) return
+        val n = player.mediaItemCount
+        val cur = player.currentMediaItemIndex
+        if (n < 3 || cur == C.INDEX_UNSET) return
+        val ids = (0 until n).map { player.getMediaItemAt(it).mediaId }
+        val now = System.currentTimeMillis()
+        if (smartPool.size < 3 && now - smartAsked > 45_000) {
+            smartAsked = now
+            val seed = ids.filter { it !in App.smartIds }.randomOrNull()?.let { id -> player.getMediaItemAt(ids.indexOf(id)).track() }
+            if (seed != null) scope.launch {
+                val tracks = runCatching { withContext(Dispatchers.IO) { core("radio") { put("track", seed) }.to<List<Track>>() } }
+                    .onFailure { BhLog.line("умное перемешивание: $it") }.getOrNull() ?: return@launch
+                val have = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).track() }
+                val songs = (have + smartPool).map { it.title.lowercase() + "|" + it.artist.lowercase() }.toSet()
+                val keys = have.map { it.key }.toSet()
+                smartPool.addAll(tracks.filter { it.key !in keys && (it.title.lowercase() + "|" + it.artist.lowercase()) !in songs }.shuffled().take(6))
+                maybeSmart()
+            }
+        }
+        if (ids[cur] in App.smartIds || cur >= n - 1) return
+        if ((cur + 1..minOf(cur + 3, n - 1)).any { ids[it] in App.smartIds }) return
+        var t = smartPool.removeLastOrNull() ?: return
+        while (t.key in ids) t = smartPool.removeLastOrNull() ?: return
+        App.smartIds.add(t.key)
+        player.addMediaItem(minOf(cur + 2 + (0..1).random(), n), t.item().withUri())
     }
 
     /** Очередь кончается — докидываем похожие по играющему (как «дальше похожее» на ПК) */

@@ -80,7 +80,7 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5")
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.27.1")
     testImplementation("junit:junit:4.13.2")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
 }

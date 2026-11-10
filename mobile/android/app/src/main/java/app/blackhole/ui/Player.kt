@@ -1,5 +1,6 @@
 package app.blackhole.ui
 
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Bedtime
 import android.media.AudioManager
@@ -593,7 +594,7 @@ private fun QueueView(vm: AppState) {
     // как у Apple: «Далее» и переключатели перемешки и повтора над списком
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(tr("Далее", "Playing Next", "Далі", "Ďalej"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-        QueueToggle(Icons.Rounded.Shuffle, vm.shuffle) { vm.toggleShuffle() }
+        QueueToggle(if (vm.smartShuffle && vm.shuffle && vm.remote == null) Icons.Rounded.AutoAwesome else Icons.Rounded.Shuffle, vm.shuffle) { vm.toggleShuffle() }
         Spacer(Modifier.width(10.dp))
         QueueToggle(if (vm.repeat == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, vm.repeat != Player.REPEAT_MODE_OFF) { vm.cycleRepeat() }
     }

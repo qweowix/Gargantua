@@ -143,6 +143,9 @@ class EqProcessor : BaseAudioProcessor() {
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
+        // пустой вход бывает общим пустым буфером Media3 — тем же самым, что у нас выходной по умолчанию:
+        // put() буфера в самого себя бросает исключение, и плеер не играл вообще ничего
+        if (!inputBuffer.hasRemaining()) return
         if (seen != Eq.ver) rebuild()
         val out = replaceOutputBuffer(inputBuffer.remaining())
         if (bands == 0) {

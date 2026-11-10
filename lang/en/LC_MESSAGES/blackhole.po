@@ -1084,3 +1084,12 @@ msgstr "Type a few words and press Enter — the note lands on the current secon
 
 msgid "Заметка на {}"
 msgstr "Note at {}"
+
+msgid "Умное перемешивание: раз в 2–3 трека — похожий"
+msgstr "Smart shuffle: a similar track every 2–3 songs"
+
+msgid "Перемешано. Ещё раз — умное перемешивание"
+msgstr "Shuffled. Press again for smart shuffle"
+
+msgid "Включить следующим"
+msgstr "Play next"

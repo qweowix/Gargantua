@@ -254,6 +254,10 @@ struct App {
     local: Vec<Track>,
     local_model: Rc<VecModel<TrackItem>>,
     auto_for: String, // по какому треку уже подобрали «дальше похожее»
+    // умное перемешивание: запас похожих треков, ключи уже подмешанных в очередь и когда последний раз искали
+    smart_pool: Vec<Track>,
+    smart_keys: HashSet<String>,
+    smart_asked: Option<Instant>,
     cover_pal: Option<[[u8; 3]; 8]>,
     muted: Option<f32>, // громкость до M
     rebinding: i32,     // какую горячую клавишу сейчас переназначают (-1 — никакую)
@@ -1410,6 +1414,18 @@ impl App {
         }
     }
 
+    /// «Включить следующим»: трек встаёт первым в очереди (если он там уже был дальше — переезжает)
+    fn play_next(&mut self, t: Track) {
+        if self.current.is_none() {
+            return self.play_queue(vec![t], 0);
+        }
+        self.upnext.retain(|x| !x.same(&t));
+        let msg = tr!("Следующим: {}", "Up next: {}", "Наступним: {}", "Ďalšia: {}", t.title);
+        self.upnext.insert(0, t);
+        self.queue_changed();
+        self.toast(&msg);
+    }
+
     fn share(&mut self, t: &Track) {
         let msg = match t.share_url() {
             Some(u) => {
@@ -2109,7 +2125,18 @@ impl App {
     fn refresh_queue(&self) {
         // история — сверху свежие
         let hist: Vec<TrackItem> = self.played.iter().rev().take(100).map(|t| self.item(t)).collect();
-        let next: Vec<TrackItem> = self.upnext.iter().map(|t| self.item(t)).collect();
+        let next: Vec<TrackItem> = self
+            .upnext
+            .iter()
+            .map(|t| {
+                let mut it = self.item(t);
+                // подмешанное умным перемешиванием — со звёздочкой, чтобы было видно, что это не из плейлиста
+                if self.smart_keys.contains(&key(t)) {
+                    it.artist = format!("✦ {}", t.artist).into();
+                }
+                it
+            })
+            .collect();
         self.hist_model.set_vec(hist);
         self.next_model.set_vec(next);
     }
@@ -2506,7 +2533,13 @@ impl App {
                 self.pos = pos;
                 self.pos_at = Instant::now();
                 if dur > 0.0 {
+                    // у трека без длины в данных она узнаётся только тут — точки заметок встают на места
+                    let known = self.current.as_ref().is_some_and(|t| t.dur > 0);
+                    let changed = !known && (self.dur - dur).abs() > 1.0;
                     self.dur = dur;
+                    if changed {
+                        self.refresh_notes();
+                    }
                     self.ui.set_position((pos / dur) as f32);
                     self.ui.set_dur_text(fmt_dur(dur as u64).into());
                 }
@@ -2529,6 +2562,7 @@ impl App {
                     self.fail_streak = 0;
                     self.prefetch();
                     self.maybe_autoplay();
+                    self.smart_feed();
                 }
                 if !loading && self.ui.get_playing() == paused {
                     self.ui.set_playing(!paused);
@@ -2810,10 +2844,18 @@ impl App {
     // ── заметки к моментам трека (лежат в кеше, см. journal.rs) ──
 
     fn show_notes(&mut self, notes: Vec<journal::Note>) {
-        let dur = if self.dur > 0.0 { self.dur } else { self.current.as_ref().map_or(0.0, |t| t.dur as f64) };
+        // длина — у самого трека: self.dur в момент смены трека ещё от прошлого, и точки вставали не туда
+        let dur = self.current.as_ref().map(|t| t.dur as f64).filter(|d| *d > 0.0).unwrap_or(self.dur);
         let items: Vec<NoteItem> = notes
             .iter()
-            .map(|n| NoteItem { time: fmt_dur(n.pos as u64).into(), text: n.text.as_str().into(), frac: if dur > 0.0 { (n.pos / dur).clamp(0.0, 1.0) as f32 } else { 0.0 } })
+            .map(|n| {
+                let time = fmt_dur(n.pos as u64);
+                let time = if time.is_empty() { "0:00".to_string() } else { time };
+                // подсказка не должна растягиваться на пол-окна из-за длинной заметки
+                let short: String = n.text.chars().take(60).collect();
+                let tip = format!("{time}  {short}{}", if n.text.chars().count() > 60 { "…" } else { "" });
+                NoteItem { time: time.into(), text: n.text.as_str().into(), frac: if dur > 0.0 { (n.pos / dur).clamp(0.0, 1.0) as f32 } else { 0.0 }, tip: tip.into() }
+            })
             .collect();
         self.ui.set_notes(Rc::new(VecModel::from(items)).into());
     }
@@ -3082,13 +3124,74 @@ impl App {
         self.set_repeat((self.repeat + 1) % 3);
     }
 
+    /// Кнопка ходит по кругу: выкл → перемешка → умная перемешка → выкл
     fn toggle_shuffle(&mut self) {
+        if self.shuffle && !self.store.settings.smart_shuffle && self.mirror.is_none() {
+            // очередь уже перемешана — просто начинаем подмешивать похожее
+            self.set_smart(true);
+            self.toast(&tr!("Умное перемешивание: раз в 2–3 трека — похожий не из плейлиста", "Smart shuffle: every 2–3 tracks, a similar one from outside the playlist", "Розумне перемішування: раз на 2–3 треки — схожий не з плейлиста", "Inteligentné miešanie: každé 2–3 skladby podobná mimo playlistu"));
+            return self.smart_feed();
+        }
+        self.set_smart(false);
         self.set_shuffle(!self.shuffle);
         // очередь сразу перестраивается: перемешанная целиком или снова по порядку
         if let Some(c) = self.current.clone() {
             self.upnext = self.build_upnext(&c);
             self.queue_changed();
         }
+    }
+
+    fn set_smart(&mut self, on: bool) {
+        self.ui.set_smart_shuffle(on);
+        if self.store.settings.smart_shuffle != on {
+            self.store.settings.smart_shuffle = on;
+            self.save();
+        }
+        if !on {
+            // подмешанное, но ещё не сыгранное, из очереди уходит
+            let n = self.upnext.len();
+            let keys = std::mem::take(&mut self.smart_keys);
+            self.upnext.retain(|t| !keys.contains(&key(t)));
+            self.smart_pool.clear();
+            if self.upnext.len() != n {
+                self.queue_changed();
+            }
+        }
+    }
+
+    /// Умное перемешивание, по той же логике, что «дальше похожее»: радио YT Music по случайному треку
+    /// плейлиста даёт запас, из него в очередь встаёт по одному треку так, чтобы между подмешанными было
+    /// 2–3 своих. Зовётся на старте каждого трека
+    fn smart_feed(&mut self) {
+        if !self.shuffle || !self.store.settings.smart_shuffle || self.mirror.is_some() || self.source.len() < 3 {
+            return;
+        }
+        let Some(cur) = self.current.clone() else { return };
+        if self.smart_pool.len() < 3 && self.smart_asked.is_none_or(|t| t.elapsed() > Duration::from_secs(45)) {
+            self.smart_asked = Some(Instant::now());
+            let seed = self.source[rand_below(self.source.len())].clone();
+            std::thread::spawn(move || {
+                let r = radio_for(&seed);
+                post(move |a| {
+                    let Ok(tracks) = r.map_err(|e| crate::logln!("умное перемешивание: {e:#}")) else { return };
+                    let seen: HashSet<String> = a.played.iter().chain(&a.upnext).chain(&a.current).chain(&a.source).chain(&a.smart_pool).map(same_song).collect();
+                    let fresh: Vec<Track> = tracks.into_iter().filter(|t| !seen.contains(&same_song(t))).collect();
+                    a.smart_pool.extend(shuffled(fresh).into_iter().take(6));
+                    a.smart_feed();
+                });
+            });
+        }
+        let mine = |t: &Track| self.smart_keys.contains(&key(t));
+        if mine(&cur) || self.upnext.is_empty() || self.upnext.iter().take(3).any(mine) {
+            return;
+        }
+        // плейлист могли сменить — трек из запаса не должен оказаться его же треком
+        let own: HashSet<String> = self.source.iter().map(same_song).collect();
+        let Some(t) = std::iter::from_fn(|| self.smart_pool.pop()).find(|t| !own.contains(&same_song(t))) else { return };
+        let at = (1 + rand_below(2)).min(self.upnext.len());
+        self.smart_keys.insert(key(&t));
+        self.upnext.insert(at, t);
+        self.queue_changed();
     }
 
     fn binding(&self, act: &str) -> String {
@@ -4095,6 +4198,9 @@ fn main() -> Result<(), slint::PlatformError> {
         pl_view: vec![],
         pl_query: String::new(),
         pl_sort: 0,
+        smart_pool: vec![],
+        smart_keys: HashSet::new(),
+        smart_asked: None,
         home: home::load(),
         smart: vec![],
         lyr_hits: vec![],
@@ -4301,6 +4407,7 @@ fn main() -> Result<(), slint::PlatformError> {
             a.save();
         });
     });
+    ui.set_smart_shuffle(with(|a| a.store.settings.smart_shuffle).unwrap_or(false));
     ui.on_toggle_shuffle(|| {
         with(|a| a.toggle_shuffle());
     });
@@ -4827,6 +4934,13 @@ fn main() -> Result<(), slint::PlatformError> {
         with(|a| {
             if let Some(t) = a.track_at(kind, i as usize) {
                 a.ask(Confirm::Radio(t));
+            }
+        });
+    });
+    ui.on_play_next(|i, kind| {
+        with(|a| {
+            if let Some(t) = a.track_at(kind, i as usize) {
+                a.play_next(t);
             }
         });
     });

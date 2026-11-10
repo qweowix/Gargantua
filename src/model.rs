@@ -111,6 +111,8 @@ pub struct Settings {
     pub setup_done: bool,  // первичная настройка пройдена
     pub xfade: f32,        // кроссфейд, сек; 0 — выкл
     #[serde(default)]
+    pub smart_shuffle: bool, // умное перемешивание: раз в 2–3 трека — похожий не из плейлиста
+    #[serde(default)]
     pub yt_share: bool, // вход YouTube уже отправляли на телефон — дальше обновляем его сами
     pub autoplay: bool,    // очередь кончилась — дальше похожее
     pub cover_theme: bool, // цвета интерфейса из обложки играющего трека
@@ -127,7 +129,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { volume: 0.7, lite: false, karaoke: true, lyr_anim: 0, lyr_exit: 3, lang: String::new(), lyr_tr: false, lyr_edge: 90.0, shuffle: false, hole_always: true, fall_stay: 2.0, glow: 0.7, eq: vec![0.0; 10], speed: 1.0, keep_pitch: true, spicy_key: String::new(), dl_dir: String::new(), cookies: String::new(), theme: 0, setup_done: false, xfade: 0.0, yt_share: false, autoplay: true, cover_theme: false, discord: true, music_dirs: vec![], keys: Default::default(), offline: true, cache_gb: 2.0 }
+        Self { volume: 0.7, lite: false, karaoke: true, lyr_anim: 0, lyr_exit: 3, lang: String::new(), lyr_tr: false, lyr_edge: 90.0, shuffle: false, hole_always: true, fall_stay: 2.0, glow: 0.7, eq: vec![0.0; 10], speed: 1.0, keep_pitch: true, spicy_key: String::new(), dl_dir: String::new(), cookies: String::new(), theme: 0, setup_done: false, xfade: 0.0, yt_share: false, smart_shuffle: false, autoplay: true, cover_theme: false, discord: true, music_dirs: vec![], keys: Default::default(), offline: true, cache_gb: 2.0 }
     }
 }
 

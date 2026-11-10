@@ -283,6 +283,7 @@ pub fn log_path() -> PathBuf {
 /// Строка в журнал (и в stderr, как раньше). Файл не растёт без конца: перевалил за 512 КБ — остаётся свежая половина
 pub fn log(msg: &str) {
     use std::io::Write;
+    let msg = &redact(msg);
     eprintln!("{msg}");
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -298,6 +299,26 @@ pub fn log(msg: &str) {
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
         let _ = writeln!(f, "{} {msg}", stamp(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())));
     }
+}
+
+/// Журнал копируют и пересылают — токенов входа в нём быть не должно. Ошибки сети печатают адрес запроса
+/// целиком, вместе с «auth=<токен>»: значение вырезаем
+fn redact(msg: &str) -> String {
+    let mut cur = msg.to_string();
+    for key in ["auth=", "key=", "access_token=", "id_token=", "refresh_token="] {
+        let mut out = String::with_capacity(cur.len());
+        let mut rest = cur.as_str();
+        while let Some(i) = rest.find(key) {
+            let from = i + key.len();
+            let len = rest[from..].find(|c: char| c == '&' || c == ':' || c == '"' || c == '\'' || c.is_whitespace()).unwrap_or(rest.len() - from);
+            out.push_str(&rest[..from]);
+            out.push('…');
+            rest = &rest[from + len..];
+        }
+        out.push_str(rest);
+        cur = out;
+    }
+    cur
 }
 
 /// Секунды Unix → «2026-11-10 09:41:07» (UTC), без сторонних библиотек дат
@@ -331,6 +352,15 @@ macro_rules! logln {
 
 #[cfg(test)]
 mod log_tests {
+    #[test]
+    fn tokens_never_reach_the_log() {
+        let r = super::redact("connect: https://x.app/connect/uid.json?auth=eyJhbGci.abc-DEF_123&print=silent: Dns Failed");
+        assert_eq!(r, "connect: https://x.app/connect/uid.json?auth=…&print=silent: Dns Failed");
+        assert_eq!(super::redact("https://a/b?key=AIzaSECRET"), "https://a/b?key=…");
+        assert_eq!(super::redact("refresh_token=abc id_token=def"), "refresh_token=… id_token=…");
+        assert_eq!(super::redact("обычная строка: без секретов"), "обычная строка: без секретов");
+    }
+
     #[test]
     fn stamp_is_civil_time() {
         assert_eq!(super::stamp(0), "1970-01-01 00:00:00");

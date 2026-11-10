@@ -567,7 +567,7 @@ fun BigSection(text: String) {
 @Composable
 fun AccountScreen(vm: AppState) {
     val a = LocalAccent.current
-    Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = LocalBottomPad.current + 16.dp)) {
         Title(tr("Аккаунт", "Account", "Акаунт", "Účet"))
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(64.dp).clip(CircleShape).background(a.brush()), contentAlignment = Alignment.Center) {
@@ -714,7 +714,7 @@ private fun FavArtistCard(vm: AppState, f: FavArtist, photo: String) {
 @UnstableApi
 @Composable
 fun SettingsScreen(vm: AppState) {
-    Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = LocalBottomPad.current + 16.dp)) {
         Title(tr("Настройки", "Settings", "Налаштування", "Nastavenia"))
         Section(tr("Язык", "Language", "Мова", "Jazyk"))
         Box(Modifier.padding(horizontal = 16.dp)) { LangChips { vm.setLang(it) } }

@@ -724,7 +724,31 @@ class AppState(app: Application) : AndroidViewModel(app) {
     }
     /** Перемешка как в Spotify: треки после текущего переставляются по-настоящему, очередь показывает ровно то,
      *  что заиграет. Выключили — оставшиеся встают в исходный порядок (добавленные потом — в конце, как были) */
+    /** умное перемешивание: раз в 2–3 трека сервис подмешивает похожий не из плейлиста */
+    var smartShuffle by mutableStateOf(prefs.getBoolean("smart_shuffle", false))
+        private set
+
+    private fun setSmart(on: Boolean) {
+        smartShuffle = on
+        prefs.edit { putBoolean("smart_shuffle", on) }
+        if (on) {
+            App.smartKick.tryEmit(Unit)
+            return
+        }
+        // подмешанное, но ещё не сыгранное, из очереди уходит
+        controller?.let { c ->
+            for (i in c.mediaItemCount - 1 downTo c.currentMediaItemIndex + 1) if (c.getMediaItemAt(i).mediaId in App.smartIds) c.removeMediaItem(i)
+        }
+        App.smartIds.clear()
+    }
+
+    /** Кнопка ходит по кругу: выкл → перемешка → умная перемешка → выкл */
     fun toggleShuffle() {
+        if (remote == null && shuffle && !smartShuffle) {
+            setSmart(true)
+            return toast(tr("Умное перемешивание: раз в 2–3 трека — похожий не из плейлиста", "Smart shuffle: every 2–3 tracks, a similar one from outside the playlist", "Розумне перемішування: раз на 2–3 треки — схожий не з плейлиста", "Inteligentné miešanie: každé 2–3 skladby podobná mimo playlistu"))
+        }
+        if (remote == null) setSmart(false)
         remote?.let { r ->
             val on = !r.shuffle
             val at = r.source.withIndex().associate { it.value.key to it.index }
@@ -771,6 +795,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
             val next = (r.repeat + 1) % 3
             remote = r.copy(repeat = next)
             repeat = modeOf(next)
+            repeatHeldUntil = System.currentTimeMillis() + 3000 // пока команда едет, из базы ещё приходит старое значение
             return connSend("repeat", JsonPrimitive(next))
         }
         cycleRepeatLocal()
@@ -919,7 +944,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         duration = (t?.dur ?: 0) * 1000
         position = (posNow(st) * 1000).toLong()
         shuffle = st.shuffle
-        repeat = modeOf(st.repeat)
+        if (System.currentTimeMillis() >= repeatHeldUntil) repeat = modeOf(st.repeat) else remote = st.copy(repeat = repeatOf(repeat))
         val items = (st.played + listOfNotNull(t) + st.upnext).map { it.item() }
         if (items.map { it.mediaId } != queue.map { it.mediaId }) {
             queue.clear()
@@ -951,6 +976,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
     var remoteVol by mutableStateOf<Float?>(null)
         private set
     private var volHeldUntil = 0L
+    private var repeatHeldUntil = 0L
     private var volSentAt = 0L
 
     /** Ползунок на зеркале: уходит хозяину. Пока тянут (end = false) — не чаще 5 раз в секунду, каждая команда — запись в базу */

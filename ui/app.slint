@@ -72,6 +72,7 @@ export struct NoteItem {
     time: string,
     text: string,
     frac: float,
+    tip: string, // подсказка у точки на полосе: время и начало текста
 }
 
 // строка итогов: название, подпись (артист или время), число справа
@@ -400,8 +401,18 @@ component Field inherits Rectangle {
             }
 
             inp := TextInput {
-                width: 100%;
+                // длинный текст едет за курсором, а не уходит за край поля, где его не видно
+                property <length> shift;
+                x: min(0px, max(parent.width - self.preferred-width - self.text-cursor-width, self.shift));
+                width: max(parent.width - self.text-cursor-width, self.preferred-width);
                 height: 100%;
+                cursor-position-changed(pos) => {
+                    if pos.x + self.shift < 0px {
+                        self.shift = -pos.x;
+                    } else if pos.x + self.shift > parent.width - self.text-cursor-width {
+                        self.shift = parent.width - pos.x - self.text-cursor-width;
+                    }
+                }
                 text <=> root.text;
                 color: Theme.text;
                 font-size: 15px;
@@ -1754,6 +1765,7 @@ export component AppWindow inherits Window {
     callback qr-save();
     callback radio(int, int);
     callback share(int, int);
+    callback play-next(int, int); // трек из списка — первым в очередь
     in property <bool> hole-always: true;
     in property <string> version;
     callback set-lang(string);
@@ -1886,6 +1898,7 @@ export component AppWindow inherits Window {
     callback seek(float);
     callback set-volume(float);
     callback toggle-shuffle();
+    in property <bool> smart-shuffle; // перемешка с подмешиванием похожих треков
     callback toggle-repeat();
     callback do-import(string);
     callback set-lite(bool);
@@ -4866,8 +4879,9 @@ export component AppWindow inherits Window {
                                 IconBtn {
                                     size: 32px;
                                     icon: Icons.shuffle;
-                                    tip: @tr("Перемешать");
+                                    tip: root.smart-shuffle ? @tr("Умное перемешивание: раз в 2–3 трека — похожий") : root.shuffle ? @tr("Перемешано. Ещё раз — умное перемешивание") : @tr("Перемешать");
                                     active: root.shuffle;
+                                    glow: root.smart-shuffle ? 1 : 0;
                                     clicked => {
                                         root.toggle-shuffle();
                                     }
@@ -4941,14 +4955,41 @@ export component AppWindow inherits Window {
                                     }
                                 }
 
-                                // заметки к моментам — точками над полосой
-                                for n in root.notes: Rectangle {
-                                    x: n.frac * parent.width - 2px;
-                                    y: parent.height / 2 - 9px;
-                                    width: 4px;
-                                    height: 4px;
-                                    border-radius: 2px;
-                                    background: Theme.soft2;
+                                // заметки к моментам — точками над полосой. Навёл — подсказка со временем и текстом,
+                                // клик — перемотка ровно на заметку
+                                for n[i] in root.notes: Rectangle {
+                                    x: n.frac * parent.width - 7px;
+                                    y: parent.height / 2 - 16px;
+                                    width: 14px;
+                                    height: 14px;
+                                    Rectangle {
+                                        property <length> d: note-dot.has-hover ? 8px : 4px;
+                                        x: (parent.width - self.d) / 2;
+                                        y: parent.height - self.d - 3px;
+                                        width: self.d;
+                                        height: self.d;
+                                        border-radius: self.d / 2;
+                                        background: note-dot.has-hover ? white : Theme.soft2;
+                                        animate d { duration: 120ms; }
+                                    }
+
+                                    note-dot := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            Tip.text = "";
+                                            root.note-seek(i);
+                                        }
+                                        changed has-hover => {
+                                            if self.has-hover {
+                                                Tip.text = n.tip;
+                                                Tip.x = parent.absolute-position.x + parent.width / 2;
+                                                Tip.top = parent.absolute-position.y;
+                                                Tip.bottom = parent.absolute-position.y + parent.height;
+                                            } else if Tip.text == n.tip {
+                                                Tip.text = "";
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
@@ -6242,8 +6283,9 @@ export component AppWindow inherits Window {
                                         IconBtn {
                                             size: 34px;
                                             icon: Icons.shuffle;
-                                            tip: @tr("Перемешать");
+                                            tip: root.smart-shuffle ? @tr("Умное перемешивание: раз в 2–3 трека — похожий") : root.shuffle ? @tr("Перемешано. Ещё раз — умное перемешивание") : @tr("Перемешать");
                                             active: root.shuffle;
+                                            glow: root.smart-shuffle ? 1 : 0;
                                             clicked => {
                                                 root.toggle-shuffle();
                                             }
@@ -6616,6 +6658,15 @@ export component AppWindow inherits Window {
                     clicked => {
                         root.menu-open = false;
                         root.radio(root.menu-i, root.menu-kind);
+                    }
+                }
+
+                if root.menu-kind != 2: MenuItem {
+                    icon: Icons.queue;
+                    text: @tr("Включить следующим");
+                    clicked => {
+                        root.menu-open = false;
+                        root.play-next(root.menu-i, root.menu-kind);
                     }
                 }
 

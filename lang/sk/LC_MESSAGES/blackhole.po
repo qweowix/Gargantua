@@ -1084,3 +1084,12 @@ msgstr "Napíš pár slov a stlač Enter — poznámka sa uloží na aktuálnu s
 
 msgid "Заметка на {}"
 msgstr "Poznámka na {}"
+
+msgid "Умное перемешивание: раз в 2–3 трека — похожий"
+msgstr "Inteligentné miešanie: každé 2–3 skladby podobná"
+
+msgid "Перемешано. Ещё раз — умное перемешивание"
+msgstr "Zamiešané. Ešte raz — inteligentné miešanie"
+
+msgid "Включить следующим"
+msgstr "Prehrať ako ďalšiu"

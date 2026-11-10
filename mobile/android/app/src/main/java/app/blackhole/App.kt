@@ -59,6 +59,12 @@ class App : Application() {
         /** Куски HLS: подпись в ссылке каждый раз новая, а файл тот же. Сам плейлист не кешируем по пути — в нём свежие подписи */
         private fun cacheKey(uri: android.net.Uri) = if (uri.path?.endsWith(".m3u8") == true) uri.toString() else uri.buildUpon().clearQuery().build().toString()
 
+        /** умное перемешивание: ключи треков, которые сервис подмешал в очередь (не из плейлиста) */
+        val smartIds: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+        /** включили умное перемешивание — сервису пора подмешать первый трек, не дожидаясь смены трека */
+        val smartKick = MutableSharedFlow<Unit>(extraBufferCapacity = 2)
+
         /** таймер сна: время (мс от эпохи), когда музыка затихнет; -1 — после текущего трека; 0 — выключен */
         val sleepAt = MutableStateFlow(0L)
 
