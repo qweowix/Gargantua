@@ -1060,3 +1060,27 @@ msgstr "Rok"
 
 msgid "Сохранить картинкой"
 msgstr "Uložiť ako obrázok"
+
+msgid "В текстах"
+msgstr "V textoch"
+
+msgid "История"
+msgstr "História"
+
+msgid "Заметки к треку · {}"
+msgstr "Poznámky k skladbe · {}"
+
+msgid "Заметка к моменту"
+msgstr "Poznámka k momentu"
+
+msgid "Заметки · {}"
+msgstr "Poznámky · {}"
+
+msgid "Удалить заметку"
+msgstr "Zmazať poznámku"
+
+msgid "Напиши пару слов и нажми Enter — заметка встанет на текущую секунду трека."
+msgstr "Napíš pár slov a stlač Enter — poznámka sa uloží na aktuálnu sekundu skladby."
+
+msgid "Заметка на {}"
+msgstr "Poznámka na {}"

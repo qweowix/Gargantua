@@ -11,6 +11,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
@@ -91,6 +92,11 @@ class PlayerService : MediaSessionService() {
             .build()
     }
 
+    private fun tempoParams(): PlaybackParameters {
+        val (speed, keep) = Eq.tempo.value
+        return PlaybackParameters(speed, if (keep) 1f else speed)
+    }
+
     override fun onCreate() {
         super.onCreate()
         player = newPlayer(true)
@@ -102,6 +108,8 @@ class PlayerService : MediaSessionService() {
         setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_notif) })
         scope.launch { tick() }
         scope.launch { xfadeLoop() }
+        // скорость и тон из экрана эквалайзера
+        scope.launch { Eq.tempo.collect { player.playbackParameters = tempoParams(); ghost?.playbackParameters = tempoParams() } }
         // сердечко и значок перемешки следуют за состоянием
         scope.launch { combine(App.liked, App.shuffleOn) { _, _ -> }.collect { refreshButtons() } }
     }
@@ -353,7 +361,8 @@ class PlayerService : MediaSessionService() {
     }
 
     private fun xfadeStep() {
-        val x = prefs.getInt("xfade", 0) * 1000L
+        // длина перехода задана в настоящих секундах, а позиции трека на скорости идут быстрее или медленнее
+        val x = (prefs.getInt("xfade", 0) * 1000L * Eq.tempo.value.first).toLong()
         // «сон после трека» — трек должен доиграть до конца сам, без перехода
         if (x <= 0 || fade?.isActive == true || App.sleepAt.value == -1L) return
         val dur = player.duration
@@ -377,6 +386,7 @@ class PlayerService : MediaSessionService() {
             // второй плеер заранее встаёт на точку начала перехода и ждёт
             ghost = newPlayer(false).apply {
                 setMediaItem(cur, dur - x)
+                playbackParameters = tempoParams()
                 volume = sleepK
                 playWhenReady = false
                 prepare()
@@ -402,7 +412,7 @@ class PlayerService : MediaSessionService() {
                     continue
                 }
                 if (!g.isPlaying && g.playbackState == Player.STATE_READY) g.play()
-                done += 40
+                done += (40 * Eq.tempo.value.first).toLong()
                 val k = (done.toFloat() / x).coerceIn(0f, 1f)
                 // равная мощность: суммарная громкость не проваливается в середине
                 xfK = kotlin.math.sin(k * Math.PI / 2).toFloat()

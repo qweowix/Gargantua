@@ -133,9 +133,77 @@ pub fn build(
     Home { day: stats::today(), seeds: seed_key(st), mixes, similar_to, similar }
 }
 
+/// Умные подборки из статистики — без сети, считаются на лету при каждом открытии главной.
+/// names: (давно не слушал, заслушано в этом месяце, лайкнул и забыл). Подборка меньше 5 треков не показывается
+pub fn smart(st: &Stats, liked: &[Track], names: (String, String, String)) -> Vec<Mix> {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+    smart_at(st, liked, names, now, stats::today())
+}
+
+fn smart_at(st: &Stats, liked: &[Track], names: (String, String, String), now_ms: i64, today: i64) -> Vec<Mix> {
+    let mut out = vec![];
+    let mut push = |title: String, tracks: Vec<Track>| {
+        if tracks.len() >= 5 {
+            let who = tracks.iter().map(|t| t.artist.clone()).fold(vec![], |mut v: Vec<String>, a| {
+                if !v.contains(&a) && v.len() < 3 {
+                    v.push(a);
+                }
+                v
+            });
+            out.push(Mix { title, sub: who.join(", "), cover: tracks[0].cover.clone(), tracks });
+        }
+    };
+    // давно не слушал: когда-то включал не раз, но больше месяца не трогал
+    let month_ms = 30 * 86_400_000i64;
+    let mut old: Vec<&stats::TrackStat> = st.tracks.values().filter(|t| t.plays >= 3 && t.last > 0 && now_ms - t.last > month_ms).collect();
+    old.sort_by(|a, b| b.plays.cmp(&a.plays).then(a.last.cmp(&b.last)).then(a.track.title.cmp(&b.track.title)));
+    push(names.0, old.into_iter().take(50).map(|t| t.track.clone()).collect());
+    // заслушано в этом месяце
+    let (y, m, _) = stats::ymd(today);
+    let mut hot: Vec<(&String, &(u64, u32))> = st.months.get(&(y as u32 * 100 + m)).into_iter().flatten().filter(|(_, v)| v.1 >= 2).collect();
+    hot.sort_by(|a, b| b.1 .1.cmp(&a.1 .1).then(b.1 .0.cmp(&a.1 .0)).then(a.0.cmp(b.0)));
+    push(names.1, hot.into_iter().take(50).filter_map(|(k, _)| st.tracks.get(k).map(|t| t.track.clone())).collect());
+    // лайкнул и забыл: в любимых, а включал меньше двух раз
+    push(names.2, liked.iter().filter(|t| st.tracks.get(&t.key()).is_none_or(|s| s.plays < 2)).take(50).cloned().collect());
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn smart_lists() {
+        let t = |id: &str| Track { id: id.into(), title: format!("song {id}"), artist: format!("A{id}"), ..Default::default() };
+        let day = 86_400_000i64;
+        let (now, today) = (1000 * day, 20_000);
+        let mut st = Stats::default();
+        let (y, m, _) = stats::ymd(today);
+        for i in 0..12 {
+            let tr = t(&i.to_string());
+            // первые шесть — старые и заслушанные, остальные — свежие, из этого месяца
+            let e = st.tracks.entry(tr.key()).or_default();
+            e.track = tr.clone();
+            e.plays = 4;
+            e.last = if i < 6 { now - 40 * day } else { now - day };
+            if i >= 6 {
+                st.months.entry(y as u32 * 100 + m).or_default().insert(tr.key(), (1000, 3 + i as u32));
+            }
+        }
+        let liked: Vec<Track> = (20..26).map(|i| t(&i.to_string())).chain([t("0")]).collect();
+        let s = smart_at(&st, &liked, ("old".into(), "hot".into(), "forgot".into()), now, today);
+        let get = |n: &str| s.iter().find(|m| m.title == n).unwrap_or_else(|| panic!("нет подборки {n}"));
+        assert_eq!(get("old").tracks.len(), 6);
+        assert!(get("old").tracks.iter().all(|t| t.id.parse::<u32>().unwrap() < 6));
+        // самый заслушанный в месяце — первым
+        assert_eq!(get("hot").tracks[0].id, "11");
+        assert_eq!(get("hot").tracks.len(), 6);
+        // «0» лайкнут, но заслушан — в забытые не попадает
+        assert_eq!(get("forgot").tracks.len(), 6);
+        assert!(get("forgot").tracks.iter().all(|t| t.id != "0"));
+        // мало треков — подборки нет
+        assert!(smart_at(&Stats::default(), &liked[..3], ("a".into(), "b".into(), "c".into()), now, today).is_empty());
+    }
 
     #[test]
     fn mixes_from_stats() {

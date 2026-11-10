@@ -1,5 +1,17 @@
 package app.blackhole.ui
 
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Slider
 import android.content.Intent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -68,7 +80,7 @@ fun EqScreen(vm: AppState) {
     val gains = Eq.gains
     val cur = Eq.presetIndex()
     Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = LocalBottomPad.current)) {
-        Title(tr("Эквалайзер", "Equalizer", "Еквалайзер", "Ekvalizér"))
+        Title(tr("Эквалайзер и скорость", "Equalizer and speed", "Еквалайзер і швидкість", "Ekvalizér a rýchlosť"))
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(Eq.presets) { i, p ->
                 FilterChip(selected = i == cur, onClick = { Eq.set(p.gains) }, label = { Text(if (L.lang == "ru" || L.lang == "uk") p.ru else p.en) })
@@ -84,8 +96,32 @@ fun EqScreen(vm: AppState) {
                 }
             }
         }
+        // скорость — как на ПК: ползунок 0.5–2×, быстрые кнопки и «сохранять тон»
+        Section(tr("Скорость", "Speed", "Швидкість", "Rýchlosť"))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Slider(
+                value = Eq.speed, onValueChange = { Eq.setSpeed(it) }, valueRange = 0.5f..2f, modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = LocalAccent.current.c1, inactiveTrackColor = Color(0x26FFFFFF)),
+            )
+            Text("%.2f×".format(Eq.speed), color = Pal.text, fontWeight = FontWeight.Bold, modifier = Modifier.width(56.dp).padding(start = 8.dp))
+        }
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            itemsIndexed(listOf(0.75f, 0.85f, 1f, 1.15f, 1.25f, 1.5f)) { _, v ->
+                FilterChip(selected = kotlin.math.abs(Eq.speed - v) < 0.01f, onClick = { Eq.setSpeed(v) }, label = { Text(if (v == 1f) "1×" else "$v×") })
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("Сохранять тон", "Keep pitch", "Зберігати тон", "Zachovať výšku tónu"), color = Pal.text, fontWeight = FontWeight.Bold)
+                Text(tr("Выключи — замедление опустит голос, ускорение поднимет: тот самый slowed и sped up.", "Turn it off and slowing down lowers the voice, speeding up raises it: the classic slowed and sped up sound.", "Вимкни — сповільнення опустить голос, прискорення підніме: той самий slowed і sped up.", "Vypni — spomalenie zníži hlas, zrýchlenie ho zvýši: klasický slowed a sped up."), color = Pal.dim, fontSize = 13.sp)
+            }
+            Switch(
+                Eq.keepPitch, { Eq.setSpeed(Eq.speed, it) },
+                colors = SwitchDefaults.colors(checkedTrackColor = LocalAccent.current.c1, checkedThumbColor = Color.White, uncheckedTrackColor = Color(0x26FFFFFF), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent),
+            )
+        }
         Dim(tr(
-            "Громкость не проседает: подъём частично уходит в запас, остальное ловит лимитер — как на компе.",
+            "Эквалайзер: громкость не проседает — подъём частично уходит в запас, остальное ловит лимитер — как на компе.",
             "Loudness stays put: part of the boost goes into headroom, a limiter catches the rest — same as on the PC.",
             "Гучність не просідає: підйом частково йде в запас, решту ловить лімітер — як на компі.",
             "Hlasitosť neklesá: časť zosilnenia ide do rezervy, zvyšok zachytí limiter — ako na PC.",
@@ -248,5 +284,28 @@ fun SleepDialog(vm: AppState, close: () -> Unit) {
             Pill(tr("После трека", "After this track", "Після треку", "Po skladbe"), primary = false) { vm.setSleep(-1); close() }
             if (at != 0L) Pill(tr("Выключить", "Turn off", "Вимкнути", "Vypnúť"), primary = false, danger = true) { vm.setSleep(0); close() }
         }
+    }
+}
+
+/** Заметки к моментам трека: новая встаёт на текущую секунду, тап по заметке — перемотка к ней */
+@UnstableApi
+@Composable
+fun NotesDialog(vm: AppState, t: app.blackhole.Track, close: () -> Unit) {
+    LaunchedEffect(t.key) { vm.loadNotes(t) }
+    var text by remember { mutableStateOf("") }
+    GlassDialog(close, tr("Заметки", "Notes", "Нотатки", "Poznámky"), buttons = {
+        Pill(tr("Закрыть", "Close", "Закрити", "Zavrieť"), primary = false, onClick = close)
+        Pill(tr("Добавить", "Add", "Додати", "Pridať"), enabled = text.isNotBlank()) { vm.addNote(t, text); text = "" }
+    }) {
+        if (vm.notes.isEmpty()) Text(tr("Заметка встанет на текущую секунду трека.", "The note lands on the current second of the track.", "Нотатка стане на поточну секунду треку.", "Poznámka sa uloží na aktuálnu sekundu skladby."), color = Pal.dim, fontSize = 13.sp)
+        vm.notes.forEachIndexed { i, n ->
+            Row(Modifier.fillMaxWidth().clickable { vm.seek((n.pos * 1000).toLong()) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(app.blackhole.fmtDur(n.pos.toLong()).ifEmpty { "0:00" }, color = LocalAccent.current.c1, fontWeight = FontWeight.Bold, modifier = Modifier.width(52.dp))
+                Text(n.text, color = Pal.text, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                IconButton(onClick = { vm.removeNote(t, i) }) { Icon(Icons.Rounded.Delete, null, tint = Pal.dim) }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        GlassField(text, { text = it }, placeholder = { Text(tr("Что здесь?", "What's here?", "Що тут?", "Čo je tu?")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
     }
 }

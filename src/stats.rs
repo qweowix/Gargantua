@@ -35,8 +35,17 @@ pub struct Stats {
 
 /// Сейчас по местному времени (поля C-шного tm: год от 1900, месяц с 0)
 fn local_now() -> libc::tm {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
-    let t = now as libc::time_t;
+    local_tm(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64))
+}
+
+/// Момент (секунды Unix) по местному времени: (номер дня, часы, минуты) — для истории прослушиваний
+pub fn local(secs: i64) -> (i64, i32, i32) {
+    let tm = local_tm(secs);
+    (days(tm.tm_year as i64 + 1900, tm.tm_mon as u32 + 1, tm.tm_mday as u32), tm.tm_hour, tm.tm_min)
+}
+
+fn local_tm(secs: i64) -> libc::tm {
+    let t = secs as libc::time_t;
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     #[cfg(unix)]
     unsafe {
@@ -175,6 +184,9 @@ impl Stats {
         let e = self.tracks.entry(t.key()).or_default();
         e.track = t.clone();
         e.plays += 1;
+        // тесты зовут play() пачками — в настоящую историю пользователя им писать нельзя
+        #[cfg(not(test))]
+        crate::journal::record(t);
         self.months.entry(month_of(today())).or_default().entry(t.key()).or_default().1 += 1;
     }
 

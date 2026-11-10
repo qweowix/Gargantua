@@ -112,6 +112,33 @@ class AppState(app: Application) : AndroidViewModel(app) {
         recap = runCatching { core("recap") { put("year", JsonPrimitive(year)) }.to<Recap>() }.getOrNull() ?: Recap()
     }
 
+    /** История прослушиваний: свежие сверху. Открывается обычным списком треков — его можно сохранить плейлистом */
+    fun openHistory() = viewModelScope.launch {
+        val h = runCatching { core("history").to<List<Played>>() }.getOrDefault(emptyList())
+        go(Screen.Tracks(
+            tr("История", "History", "Історія", "História"),
+            tr("Последние прослушивания: ${h.size}", "Recent plays: ${h.size}", "Останні прослуховування: ${h.size}", "Posledné prehratia: ${h.size}"),
+            h.firstOrNull()?.track?.cover ?: "", h.map { it.track },
+        ))
+    }
+
+    // ── заметки к моментам трека ──
+    var notes by mutableStateOf<List<Note>>(emptyList())
+
+    fun loadNotes(t: Track) = viewModelScope.launch {
+        notes = runCatching { core("notes") { put("key", JsonPrimitive(t.key)) }.to<List<Note>>() }.getOrDefault(emptyList())
+    }
+
+    fun addNote(t: Track, text: String) = viewModelScope.launch {
+        if (text.isBlank()) return@launch
+        val pos = (controller?.currentPosition ?: position) / 1000.0
+        notes = runCatching { core("note_add") { put("key", JsonPrimitive(t.key)); put("pos", JsonPrimitive(pos)); put("text", JsonPrimitive(text)) }.to<List<Note>>() }.getOrDefault(notes)
+    }
+
+    fun removeNote(t: Track, i: Int) = viewModelScope.launch {
+        notes = runCatching { core("note_remove") { put("key", JsonPrimitive(t.key)); put("i", JsonPrimitive(i)) }.to<List<Note>>() }.getOrDefault(notes)
+    }
+
     fun copyLog() = viewModelScope.launch {
         val text = BhLog.tail()
         val cm = getApplication<Application>().getSystemService(android.content.ClipboardManager::class.java)
@@ -425,6 +452,11 @@ class AppState(app: Application) : AndroidViewModel(app) {
         if (text.isEmpty()) return
         val gen = ++searchGen
         searching = 4
+        // по строчке из песни — среди текстов, которые уже открывались (с диска, без сети)
+        viewModelScope.launch {
+            val h = runCatching { core("lyr_search") { put("q", JsonPrimitive(text)) }.to<List<LyrHit>>() }.getOrDefault(emptyList())
+            if (gen == searchGen) lyrHits = h
+        }
         listOf("yt", "sc", "ya").forEachIndexed { i, src ->
             viewModelScope.launch {
                 val r = runCatching { core("search") { put("q", JsonPrimitive(text)); put("src", JsonPrimitive(src)) }.to<List<Track>>() }.getOrDefault(emptyList())
@@ -444,8 +476,10 @@ class AppState(app: Application) : AndroidViewModel(app) {
     }
 
     /** Все сервисы вперемешку по кругу, чтобы сверху был каждый — как на ПК */
+    var lyrHits by mutableStateOf<List<LyrHit>>(emptyList())
+
     val shownResults: List<Track>
-        get() = if (filter == 0) {
+        get() = if (filter == 4) lyrHits.map { it.track } else if (filter == 0) {
             val n = results.maxOfOrNull { it.size } ?: 0
             (0 until n).flatMap { i -> results.mapNotNull { it.getOrNull(i) } }
         } else results[filter - 1]
@@ -481,7 +515,14 @@ class AppState(app: Application) : AndroidViewModel(app) {
             home = runCatching {
                 core("home") {
                     put("force", JsonPrimitive(force))
-                    put("names", kotlinx.serialization.json.JsonArray(listOf(tr("Твой микс", "Your mix", "Твій мікс", "Tvoj mix"), tr("Открытия", "Discover", "Відкриття", "Objavy"), tr("Микс: {}", "{} mix", "Мікс: {}", "Mix: {}")).map(::JsonPrimitive)))
+                    put("names", kotlinx.serialization.json.JsonArray(listOf(
+                        tr("Твой микс", "Your mix", "Твій мікс", "Tvoj mix"), tr("Открытия", "Discover", "Відкриття", "Objavy"), tr("Микс: {}", "{} mix", "Мікс: {}", "Mix: {}"),
+                        // умные подборки из статистики — идут после миксов, сохранить себе можно кнопкой «+» внутри
+                        tr("Давно не слушал", "Long time no hear", "Давно не слухав", "Dlho nepočuté"),
+                        tr("Заслушано в этом месяце", "On repeat this month", "Заслухано цього місяця", "Najhranejšie tento mesiac"),
+                        tr("Лайкнул и забыл", "Liked and forgotten", "Лайкнув і забув", "Lajknuté a zabudnuté"),
+                    ).map(::JsonPrimitive)))
+                    put("liked", json.encodeToJsonElement(playlists.firstOrNull { it.name == LIKED }?.tracks ?: emptyList()))
                 }.to<Home>()
             }.getOrDefault(home)
             homeLoading = false

@@ -67,6 +67,13 @@ export struct HeatCell {
     tip: string,
 }
 
+// заметка к моменту трека: время текстом, сама заметка и место на полосе прогресса (0..1)
+export struct NoteItem {
+    time: string,
+    text: string,
+    frac: float,
+}
+
 // строка итогов: название, подпись (артист или время), число справа
 export struct RecapRow {
     a: string,
@@ -1913,6 +1920,15 @@ export component AppWindow inherits Window {
     in property <[RecapRow]> recap-tracks;
     in property <[RecapRow]> recap-artists;
     callback open-recap(bool);
+    callback open-history();
+    in property <string> st-lyr; // сколько треков нашлось по строчке из текста
+    // заметки к моментам играющего трека
+    in-out property <bool> notes-open;
+    in property <[NoteItem]> notes;
+    callback open-notes();
+    callback note-add(string);
+    callback note-remove(int);
+    callback note-seek(int);
     callback save-recap(length, length, length, length);
     in property <[TrackItem]> st-tracks;
     in property <[StatArtist]> st-artists;
@@ -1976,6 +1992,7 @@ export component AppWindow inherits Window {
             if root.lyrics-open { root.set-lyrics-open(false); keys.focus(); return accept; }
             if root.modal != 0 { root.modal = 0; return accept; }
             if root.recap-open { root.recap-open = false; return accept; }
+            if root.notes-open { root.notes-open = false; return accept; }
             if root.fx-open || root.conn-open { root.fx-open = false; root.conn-open = false; return accept; }
             if root.deck-open { root.deck-open = false; return accept; }
             keys.focus(); // из поля ввода — обратно к горячим клавишам
@@ -2300,6 +2317,16 @@ export component AppWindow inherits Window {
                                     active: root.filter == 3;
                                     clicked => {
                                         root.set-filter(3);
+                                    }
+                                }
+
+                                // строчка из песни: ищется в текстах, которые уже открывались
+                                Chip {
+                                    text: root.st-lyr == "" ? @tr("В текстах") : @tr("В текстах") + " · " + root.st-lyr;
+                                    accent: Theme.soft2;
+                                    active: root.filter == 4;
+                                    clicked => {
+                                        root.set-filter(4);
                                     }
                                 }
                             }
@@ -3052,6 +3079,17 @@ export component AppWindow inherits Window {
                                     font-size: 28px;
                                     font-weight: 800;
                                     horizontal-stretch: 1;
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: @tr("История");
+                                        primary: false;
+                                        clicked => {
+                                            root.open-history();
+                                        }
+                                    }
                                 }
 
                                 VerticalLayout {
@@ -4894,11 +4932,23 @@ export component AppWindow inherits Window {
                                 vertical-alignment: center;
                             }
 
-                            Slider {
+                            Rectangle {
                                 horizontal-stretch: 1;
-                                value: root.position;
-                                changed(v) => {
-                                    root.seek(v);
+                                Slider {
+                                    value: root.position;
+                                    changed(v) => {
+                                        root.seek(v);
+                                    }
+                                }
+
+                                // заметки к моментам — точками над полосой
+                                for n in root.notes: Rectangle {
+                                    x: n.frac * parent.width - 2px;
+                                    y: parent.height / 2 - 9px;
+                                    width: 4px;
+                                    height: 4px;
+                                    border-radius: 2px;
+                                    background: Theme.soft2;
                                 }
                             }
 
@@ -5040,6 +5090,104 @@ export component AppWindow inherits Window {
             }
         }
     }
+    }
+
+    // ── заметки к моментам трека: список и поле «добавить на текущей секунде» ──
+    if root.notes-open: Rectangle {
+        background: #000000a0;
+        TouchArea {
+            clicked => {
+                root.notes-open = false;
+            }
+        }
+
+        Rectangle {
+            width: 440px;
+            height: min(root.height - 160px, 150px + root.notes.length * 44px);
+            border-radius: 22px;
+            background: #14101f;
+            border-width: 1px;
+            border-color: #ffffff1c;
+            TouchArea { }
+            VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                Text {
+                    text: @tr("Заметки · {}", root.now-title);
+                    color: Theme.text;
+                    font-size: 17px;
+                    font-weight: 800;
+                    overflow: elide;
+                }
+
+                if root.notes.length > 0: ListView {
+                    vertical-stretch: 1;
+                    for n[i] in root.notes: Rectangle {
+                        height: 44px;
+                        border-radius: 10px;
+                        background: note-ta.has-hover ? #ffffff0c : #ffffff00;
+                        note-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.note-seek(i);
+                            }
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 4px;
+                            spacing: 10px;
+                            Text {
+                                text: n.time;
+                                color: Theme.soft2;
+                                font-size: 13px;
+                                font-weight: 800;
+                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                text: n.text;
+                                color: Theme.text;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+
+                            VerticalLayout {
+                                alignment: center;
+                                IconBtn {
+                                    size: 28px;
+                                    icon: Icons.trash;
+                                    tip: @tr("Удалить заметку");
+                                    clicked => {
+                                        root.note-remove(i);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if root.notes.length == 0: Text {
+                    vertical-stretch: 1;
+                    text: @tr("Напиши пару слов и нажми Enter — заметка встанет на текущую секунду трека.");
+                    color: Theme.dim;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                    vertical-alignment: center;
+                }
+
+                note-field := Field {
+                    placeholder: @tr("Заметка на {}", root.pos-text);
+                    icon: Icons.edit;
+                    accepted(t) => {
+                        root.note-add(t);
+                        self.text = "";
+                    }
+                }
+            }
+        }
     }
 
     // ── итоги месяца и года: карточка, которую можно сохранить картинкой ──
@@ -6501,6 +6649,15 @@ export component AppWindow inherits Window {
                 }
 
                 // таймер перебирается кликами — меню не закрываем, видно, что выбралось
+                if root.menu-kind == 2: MenuItem {
+                    icon: Icons.edit;
+                    text: root.notes.length > 0 ? @tr("Заметки к треку · {}", root.notes.length) : @tr("Заметка к моменту");
+                    clicked => {
+                        root.menu-open = false;
+                        root.open-notes();
+                    }
+                }
+
                 if root.menu-kind == 2: MenuItem {
                     icon: Icons.moon;
                     text: root.sleep-mode == 0 ? @tr("Таймер сна") : root.sleep-mode == 4 ? @tr("Усну после этого трека") : @tr("Усну через {} мин", root.sleep-left);

@@ -722,3 +722,61 @@ mod tests {
         assert!(super::fetch("Peso Pluma", "BELLAKEO (Video Oficial) - Peso Pluma, Anitta", 235).unwrap().is_some());
     }
 }
+
+// ── поиск по строчке: тексты, которые уже показывались, лежат рядом с кешем в виде «трек + строки» ──
+
+fn index_dir() -> Option<std::path::PathBuf> {
+    Some(dirs::cache_dir()?.join("BlackHole").join("lyrtext"))
+}
+
+/// Запомнить текст трека для поиска по строчке (зовётся, когда текст выбран и показан)
+pub fn index_put(t: &crate::model::Track, lyr: &Lyrics) {
+    let Some(dir) = index_dir() else { return };
+    let lines: Vec<(f64, String)> = match lyr {
+        Lyrics::Synced(l) => l.iter().filter(|x| !x.text.trim().is_empty()).map(|x| (x.start, x.text.trim().to_string())).collect(),
+        Lyrics::Plain(l) => l.iter().filter(|x| !x.trim().is_empty()).map(|x| (-1.0, x.trim().to_string())).collect(),
+    };
+    if lines.is_empty() {
+        return;
+    }
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(dir.join(format!("{:016x}.json", fnv(&t.key()))), serde_json::json!({ "track": t, "lines": lines }).to_string());
+}
+
+/// Найденная строчка: трек, сама строка и её время (−1 — у текста без таймингов)
+pub struct Hit {
+    pub track: crate::model::Track,
+    pub line: String,
+    pub at: f64,
+}
+
+/// Треки, в тексте которых есть q (без учёта регистра и знаков препинания). По одной строчке на трек
+pub fn index_search(q: &str, limit: usize) -> Vec<Hit> {
+    let norm = |s: &str| s.to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");
+    let q = norm(q);
+    let mut out = vec![];
+    if q.chars().count() < 3 {
+        return out;
+    }
+    let Some(rd) = index_dir().and_then(|d| std::fs::read_dir(d).ok()) else { return out };
+    for e in rd.flatten() {
+        let Some(v) = std::fs::read(e.path()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { continue };
+        let lines: Vec<(f64, String)> = serde_json::from_value(v["lines"].clone()).unwrap_or_default();
+        // строчку могут искать через перенос — смотрим и на пару соседних строк вместе
+        let hit = lines.iter().enumerate().find_map(|(i, (at, text))| {
+            let one = norm(text);
+            if one.contains(&q) {
+                return Some((*at, text.clone()));
+            }
+            let next = lines.get(i + 1)?;
+            norm(&format!("{text} {}", next.1)).contains(&q).then(|| (*at, format!("{text} / {}", next.1)))
+        });
+        if let (Some((at, line)), Ok(track)) = (hit, serde_json::from_value(v["track"].clone())) {
+            out.push(Hit { track, line, at });
+            if out.len() >= limit {
+                break;
+            }
+        }
+    }
+    out
+}

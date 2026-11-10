@@ -114,8 +114,10 @@ fun rememberLyrClock(vm: AppState): LyrClock {
             }
             val dt = if (last == 0L) 0.0 else min((now - last) / 1e9, 0.1)
             last = now
-            val player = seen / 1000.0 + if (vm.playing) min((now - seenAt) / 1e9, 1.5) else 0.0
-            val ahead = if (vm.playing) c.pos + dt else c.pos
+            // на изменённой скорости трек идёт быстрее или медленнее часов
+            val speed = app.blackhole.Eq.speed.toDouble()
+            val player = seen / 1000.0 + if (vm.playing) min((now - seenAt) / 1e9, 1.5) * speed else 0.0
+            val ahead = if (vm.playing) c.pos + dt * speed else c.pos
             val err = player - ahead
             c.pos = if (abs(err) > 1.0) player else max(ahead + err * min(dt * 3, 1.0), c.pos)
             if (vm.playing) c.bg += dt.toFloat() * 1.5f

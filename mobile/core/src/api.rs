@@ -160,6 +160,12 @@ fn run(m: &str, a: &Value) -> Result<Value> {
                 None => json!({"on": false}),
             }
         }
+        // ── поиск по строчке, история, заметки (общие с ПК модули) ──
+        "lyr_search" => json!(lyrics::index_search(s(a, "q"), 40).into_iter().map(|h| json!({"track": h.track, "line": h.line, "at": h.at})).collect::<Vec<_>>()),
+        "history" => json!(crate::journal::history(500).into_iter().map(|(at, t)| json!({"at": at, "track": t})).collect::<Vec<_>>()),
+        "notes" => json!(crate::journal::notes(s(a, "key"))),
+        "note_add" => json!(crate::journal::note_add(s(a, "key"), a["pos"].as_f64().unwrap_or(0.0), s(a, "text"))),
+        "note_remove" => json!(crate::journal::note_remove(s(a, "key"), a["i"].as_u64().unwrap_or(u64::MAX) as usize)),
         "log" => {
             crate::util::log(s(a, "msg"));
             Value::Null
@@ -207,15 +213,22 @@ fn run(m: &str, a: &Value) -> Result<Value> {
             let st = stats_lock().with(&others_lock());
             let cached = home::load();
             let fresh = cached.day == stats::today() && !cached.mixes.is_empty() && cached.seeds == home::seed_key(&st);
+            let n = |i: usize| a["names"][i].as_str().unwrap_or("").to_string();
+            // умные подборки — из статистики на лету, идут после миксов (liked — любимые треки, их знает Kotlin)
+            let liked: Vec<Track> = serde_json::from_value(a["liked"].clone()).unwrap_or_default();
+            let smart = home::smart(&st, &liked, (n(3), n(4), n(5)));
+            let with_smart = |mut h: home::Home| {
+                h.mixes.extend(smart);
+                json!(h)
+            };
             if st.top_tracks(1).is_empty() || (fresh && a["force"].as_bool() != Some(true)) {
-                json!(cached)
+                with_smart(cached)
             } else {
-                let n = |i: usize| a["names"][i].as_str().unwrap_or("").to_string();
                 let h = home::build(&st, radio_for, |name| ytmusic::find_artist(name).and_then(|id| ytmusic::artist(&id)).map(|a| a.similar).unwrap_or_default(), (n(0), n(1), n(2)));
                 if !h.mixes.is_empty() {
                     home::save(&h);
                 }
-                json!(h)
+                with_smart(h)
             }
         }
 
@@ -373,6 +386,7 @@ fn lyrics_for(t: &Track, spicy_key: &str) -> Value {
         }
     }
     let Some(f) = lyrics::choose(&all) else { return json!({ "kind": "none" }) };
+    lyrics::index_put(t, &f.lyr);
     let c = &f.credit;
     let credit = if c.via.is_empty() { c.provider.clone() } else { format!("{} · {}", c.provider, c.via) };
     match f.lyr {

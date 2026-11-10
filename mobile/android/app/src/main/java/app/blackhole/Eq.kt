@@ -48,12 +48,31 @@ object Eq {
     var ver = 0
         private set
 
+    /** скорость и «сохранять тон» — как на ПК: без сохранения тона замедление опускает голос (slowed) */
+    var speed by mutableStateOf(1f)
+        private set
+    var keepPitch by mutableStateOf(true)
+        private set
+
+    /** то же для сервиса плеера: он подписан и ставит параметры на лету */
+    val tempo = kotlinx.coroutines.flow.MutableStateFlow(1f to true)
+
+    fun setSpeed(v: Float, keep: Boolean = keepPitch) {
+        speed = (Math.round(v * 20) / 20f).coerceIn(0.5f, 2f)
+        keepPitch = keep
+        prefs.edit().putFloat("speed", speed).putBoolean("keep_pitch", keep).apply()
+        tempo.value = speed to keep
+    }
+
     private lateinit var prefs: android.content.SharedPreferences
     private val bg = Executors.newSingleThreadExecutor()
 
     fun init(ctx: Context) {
         prefs = ctx.getSharedPreferences("bh", Context.MODE_PRIVATE)
         gains = runCatching { json.decodeFromString<List<Float>>(prefs.getString("eq", "") ?: "") }.getOrNull()?.takeIf { it.size == 10 } ?: List(10) { 0f }
+        speed = prefs.getFloat("speed", 1f)
+        keepPitch = prefs.getBoolean("keep_pitch", true)
+        tempo.value = speed to keepPitch
         bg.execute { presets = runCatching { coreNow("eq_presets").to<List<EqPreset>>() }.getOrDefault(emptyList()) }
         apply()
     }

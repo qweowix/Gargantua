@@ -1,5 +1,6 @@
 package app.blackhole.ui
 
+import androidx.compose.foundation.horizontalScroll
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.runtime.collectAsState
@@ -283,8 +284,8 @@ fun SearchScreen(vm: AppState) {
             )
         }
         item {
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                listOf(tr("Все", "All", "Усі", "Všetko"), "YT Music", "SoundCloud", tr("Яндекс", "Yandex", "Яндекс", "Yandex")).forEachIndexed { i, n ->
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf(tr("Все", "All", "Усі", "Všetko"), "YT Music", "SoundCloud", tr("Яндекс", "Yandex", "Яндекс", "Yandex"), tr("В текстах", "In lyrics", "У текстах", "V textoch")).forEachIndexed { i, n ->
                     FilterChip(selected = vm.filter == i, onClick = { vm.filter = i }, label = { Text(n, fontSize = 12.sp) })
                 }
                 if (vm.searching > 0) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -300,7 +301,14 @@ fun SearchScreen(vm: AppState) {
         }
         val list = vm.shownResults
         if (list.isNotEmpty()) item { Section(tr("Треки", "Tracks", "Треки", "Skladby")) }
-        itemsIndexed(list, key = { i, t -> "$i${t.key}" }) { i, t -> TrackRow(vm, t, { vm.play(list, i) }) }
+        itemsIndexed(list, key = { i, t -> "$i${t.key}" }) { i, t ->
+            TrackRow(vm, t, { vm.play(list, i) })
+            // поиск по строчке: под треком — сама найденная строка
+            if (vm.filter == 4) vm.lyrHits.getOrNull(i)?.let { Dim("«${it.line}»", Modifier.padding(start = 56.dp)) }
+        }
+        if (vm.filter == 4 && list.isEmpty() && vm.query.isNotBlank()) item {
+            Dim(tr("Ищу среди текстов, которые ты уже открывал. Пока ничего не нашлось.", "Searching the lyrics you've already opened. Nothing found yet.", "Шукаю серед текстів, які ти вже відкривав. Поки нічого не знайшлося.", "Hľadám v textoch, ktoré si už otvoril. Zatiaľ nič."))
+        }
     }
 }
 
@@ -620,7 +628,8 @@ fun StatsScreen(vm: AppState) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomPad.current)) {
         item { Title(tr("Статистика", "Stats", "Статистика", "Štatistiky"), Modifier.statusBarsPadding()) }
         item {
-            Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill(tr("История", "History", "Історія", "História"), primary = false) { vm.openHistory() }
                 Pill(tr("Итоги месяца", "Month recap", "Підсумки місяця", "Zhrnutie mesiaca"), primary = false) { vm.recap = null; vm.loadRecap(false); recapOpen = true }
                 Pill(tr("Итоги года", "Year recap", "Підсумки року", "Zhrnutie roka"), primary = false) { vm.recap = null; vm.loadRecap(true); recapOpen = true }
             }
@@ -735,7 +744,7 @@ fun SettingsScreen(vm: AppState) {
         }
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(tr("Эквалайзер", "Equalizer", "Еквалайзер", "Ekvalizér"), color = Pal.text, fontWeight = FontWeight.Bold)
+                Text(tr("Эквалайзер и скорость", "Equalizer and speed", "Еквалайзер і швидкість", "Ekvalizér a rýchlosť"), color = Pal.text, fontWeight = FontWeight.Bold)
                 Text(tr("10 полос и пресеты — те же, что на компе.", "10 bands and presets — the same as on the PC.", "10 смуг і пресети — ті самі, що на компі.", "10 pásiem a predvoľby — rovnaké ako na PC."), color = Pal.dim, fontSize = 13.sp)
             }
             Spacer(Modifier.width(8.dp))

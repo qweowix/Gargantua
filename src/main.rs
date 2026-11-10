@@ -9,6 +9,7 @@ mod discord;
 mod download;
 mod fx;
 mod home;
+mod journal;
 mod local;
 mod lyrics;
 mod media;
@@ -261,6 +262,8 @@ struct App {
     pl_query: String,
     pl_sort: i32, // 0 как добавлены, 1 сначала новые, 2 название, 3 артист, 4 длительность
     home: home::Home,
+    smart: Vec<home::Mix>,      // умные подборки из статистики — на главной после миксов
+    lyr_hits: Vec<lyrics::Hit>, // треки, где нашлась строчка из поиска (фильтр «В текстах»)
     home_busy: bool,
     home_quick: Vec<Track>,
     home_recent: Vec<Track>,
@@ -881,7 +884,7 @@ impl App {
         // карточки главной: 10 микс, 11 недавнее, 12 плейлист, 13 похожий артист
         match which {
             10 => {
-                let Some(m) = self.home.mixes.get(i).cloned() else { return };
+                let Some(m) = self.home.mixes.iter().chain(&self.smart).nth(i).cloned() else { return };
                 self.push_nav();
                 let sub = tr!("{} · {} треков", "{} · {} tracks", "{} · {} треків", "{} · {} skladieb", m.sub, m.tracks.len());
                 return self.show_coll(Coll { title: m.title, sub, cover: m.cover, tracks: m.tracks });
@@ -1121,6 +1124,22 @@ impl App {
                 });
             });
         }
+        {
+            // по строчке из песни — среди текстов, которые уже открывались (лежат на диске, сеть не нужна)
+            let q = q.clone();
+            std::thread::spawn(move || {
+                let hits = lyrics::index_search(&q, 40);
+                post(move |a| {
+                    if a.gen == gen {
+                        a.ui.set_st_lyr(if hits.is_empty() { "".into() } else { hits.len().to_string().into() });
+                        a.lyr_hits = hits;
+                        if a.ui.get_filter() == 4 {
+                            a.rebuild_view();
+                        }
+                    }
+                });
+            });
+        }
         for (i, src) in SRCS.into_iter().enumerate() {
             self.set_status(i, "…");
             let q = q.clone();
@@ -1160,6 +1179,21 @@ impl App {
 
     fn rebuild_view(&mut self) {
         let f = self.ui.get_filter() as usize;
+        // «В текстах»: под названием вместо артиста — артист и найденная строчка
+        if f == 4 {
+            self.view = self.lyr_hits.iter().map(|h| h.track.clone()).collect();
+            let items: Vec<TrackItem> = self
+                .lyr_hits
+                .iter()
+                .map(|h| {
+                    let mut it = self.item(&h.track);
+                    it.artist = format!("{} · «{}»", h.track.artist, h.line).into();
+                    it
+                })
+                .collect();
+            self.res_model.set_vec(items);
+            return;
+        }
         self.view = if f == 0 {
             // вперемешку по кругу, чтобы сверху были все сервисы
             let n = self.results.iter().map(Vec::len).max().unwrap_or(0);
@@ -2059,6 +2093,7 @@ impl App {
     fn play_now(&mut self, t: Track) {
         self.end_xfade();
         self.current = Some(t);
+        self.refresh_notes();
         self.update_liked();
         self.retries = 0;
         self.resume_at = None;
@@ -2656,7 +2691,15 @@ impl App {
             }
             .into(),
         );
-        let mixes: Vec<Card> = self.home.mixes.iter().map(|m| self.card_of(&m.title, &m.sub, &m.cover)).collect();
+        let st = self.stats.with(&self.stats_others);
+        let liked = self.store.playlists.iter().find(|p| p.name == model::LIKED).map(|p| p.tracks.clone()).unwrap_or_default();
+        let names = (
+            tr!("Давно не слушал", "Long time no hear", "Давно не слухав", "Dlho nepočuté"),
+            tr!("Заслушано в этом месяце", "On repeat this month", "Заслухано цього місяця", "Najhranejšie tento mesiac"),
+            tr!("Лайкнул и забыл", "Liked and forgotten", "Лайкнув і забув", "Lajknuté a zabudnuté"),
+        );
+        self.smart = home::smart(&st, &liked, names);
+        let mixes: Vec<Card> = self.home.mixes.iter().chain(&self.smart).map(|m| self.card_of(&m.title, &m.sub, &m.cover)).collect();
         self.home_mixes_model.set_vec(mixes);
         // быстрый подбор: из открытий (новое), а если их нет — из главного микса
         let src = self.home.mixes.iter().rev().find(|m| m.tracks.len() > 5).map(|m| m.tracks.clone()).unwrap_or_default();
@@ -2736,6 +2779,67 @@ impl App {
             self.stats.save();
             self.stats_saved = now;
         }
+    }
+
+    /// История прослушиваний: свежие сверху, под названием — когда играло
+    fn open_history(&mut self) {
+        let h = journal::history(500);
+        let today = stats::today();
+        self.push_nav();
+        let sub = tr!("Последние {} прослушиваний", "Last {} plays", "Останні {} прослуховувань", "Posledných {} prehratí", h.len());
+        self.show_coll(Coll { title: tr!("История", "History", "Історія", "História"), sub, cover: h.first().map(|x| x.1.cover.clone()).unwrap_or_default(), tracks: h.iter().map(|x| x.1.clone()).collect() });
+        for (i, (at, t)) in h.iter().enumerate() {
+            let (day, hh, mm) = stats::local(at / 1000);
+            let when = match today - day {
+                0 => tr!("сегодня", "today", "сьогодні", "dnes"),
+                1 => tr!("вчера", "yesterday", "вчора", "včera"),
+                _ => {
+                    let (_, m, d) = stats::ymd(day);
+                    format!("{d:02}.{m:02}")
+                }
+            };
+            if let Some(mut it) = self.coll_model.row_data(i) {
+                it.artist = format!("{} · {when} {hh:02}:{mm:02}", t.artist).into();
+                self.coll_model.set_row_data(i, it);
+            }
+        }
+    }
+
+    // ── заметки к моментам трека (лежат в кеше, см. journal.rs) ──
+
+    fn show_notes(&mut self, notes: Vec<journal::Note>) {
+        let dur = if self.dur > 0.0 { self.dur } else { self.current.as_ref().map_or(0.0, |t| t.dur as f64) };
+        let items: Vec<NoteItem> = notes
+            .iter()
+            .map(|n| NoteItem { time: fmt_dur(n.pos as u64).into(), text: n.text.as_str().into(), frac: if dur > 0.0 { (n.pos / dur).clamp(0.0, 1.0) as f32 } else { 0.0 } })
+            .collect();
+        self.ui.set_notes(Rc::new(VecModel::from(items)).into());
+    }
+
+    fn refresh_notes(&mut self) {
+        let notes = self.current.as_ref().map(|t| journal::notes(&key(t))).unwrap_or_default();
+        self.show_notes(notes);
+    }
+
+    fn note_add(&mut self, text: &str) {
+        let Some(k) = self.current.as_ref().map(key) else { return };
+        if text.trim().is_empty() {
+            return;
+        }
+        let pos = self.pos + if self.ui.get_playing() { self.pos_at.elapsed().as_secs_f64().min(1.5) } else { 0.0 };
+        let notes = journal::note_add(&k, pos, text);
+        self.show_notes(notes);
+    }
+
+    fn note_remove(&mut self, i: usize) {
+        let Some(k) = self.current.as_ref().map(key) else { return };
+        let notes = journal::note_remove(&k, i);
+        self.show_notes(notes);
+    }
+
+    fn note_seek(&mut self, i: usize) {
+        let Some(n) = self.current.as_ref().and_then(|t| journal::notes(&key(t)).into_iter().nth(i)) else { return };
+        self.seek_abs(n.pos);
     }
 
     /// Итоги текущего месяца или года карточкой
@@ -3323,6 +3427,11 @@ impl App {
     }
 
     fn apply_lyrics(&mut self, f: Option<lyrics::Found>) {
+        // показанный текст запоминаем для поиска по строчке
+        if let (Some(f), Some(t)) = (&f, self.current.as_ref().filter(|t| key(t) == self.lyr_for)) {
+            let (t, lyr) = (t.clone(), f.lyr.clone());
+            std::thread::spawn(move || lyrics::index_put(&t, &lyr));
+        }
         self.show_credit(f.as_ref().map(|f| &f.credit));
         match f.map(|f| f.lyr) {
             Some(lyrics::Lyrics::Synced(lines)) => {
@@ -3984,6 +4093,8 @@ fn main() -> Result<(), slint::PlatformError> {
         pl_query: String::new(),
         pl_sort: 0,
         home: home::load(),
+        smart: vec![],
+        lyr_hits: vec![],
         home_busy: false,
         home_quick: vec![],
         home_recent: vec![],
@@ -4195,6 +4306,24 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.on_history_jump(|i| {
         with(|a| a.history_jump(i as usize));
+    });
+    ui.on_open_history(|| {
+        with(|a| a.open_history());
+    });
+    ui.on_open_notes(|| {
+        with(|a| {
+            a.refresh_notes();
+            a.ui.set_notes_open(true);
+        });
+    });
+    ui.on_note_add(|t| {
+        with(|a| a.note_add(&t));
+    });
+    ui.on_note_remove(|i| {
+        with(|a| a.note_remove(i as usize));
+    });
+    ui.on_note_seek(|i| {
+        with(|a| a.note_seek(i as usize));
     });
     ui.on_open_recap(|year| {
         with(|a| a.open_recap(year));

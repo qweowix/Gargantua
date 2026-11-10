@@ -1060,3 +1060,27 @@ msgstr "Year"
 
 msgid "Сохранить картинкой"
 msgstr "Save as image"
+
+msgid "В текстах"
+msgstr "In lyrics"
+
+msgid "История"
+msgstr "History"
+
+msgid "Заметки к треку · {}"
+msgstr "Track notes · {}"
+
+msgid "Заметка к моменту"
+msgstr "Note at this moment"
+
+msgid "Заметки · {}"
+msgstr "Notes · {}"
+
+msgid "Удалить заметку"
+msgstr "Delete note"
+
+msgid "Напиши пару слов и нажми Enter — заметка встанет на текущую секунду трека."
+msgstr "Type a few words and press Enter — the note lands on the current second of the track."
+
+msgid "Заметка на {}"
+msgstr "Note at {}"

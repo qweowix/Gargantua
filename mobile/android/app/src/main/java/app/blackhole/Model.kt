@@ -106,6 +106,17 @@ data class StatsSummary(
     val fav: FavArtist? = null,
 )
 
+/** Трек, в тексте которого нашлась строчка; at — её время (−1 у текста без таймингов) */
+@Serializable
+data class LyrHit(val track: Track = Track(), val line: String = "", val at: Double = -1.0)
+
+@Serializable
+data class Played(val at: Long = 0, val track: Track = Track())
+
+/** Заметка к моменту трека (секунда и текст), лежит в кеше */
+@Serializable
+data class Note(val pos: Double = 0.0, val text: String = "")
+
 @Serializable
 data class RecapTrack(val track: Track = Track(), val ms: Long = 0, val plays: Int = 0)
 

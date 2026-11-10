@@ -36,6 +36,8 @@ pub mod qr;
 pub mod connect;
 #[path = "../../../src/fx.rs"]
 pub mod fx;
+#[path = "../../../src/journal.rs"]
+pub mod journal;
 
 mod api;
 #[cfg(target_os = "android")]

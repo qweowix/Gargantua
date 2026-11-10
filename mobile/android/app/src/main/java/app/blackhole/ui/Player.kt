@@ -1,5 +1,6 @@
 package app.blackhole.ui
 
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Bedtime
 import android.media.AudioManager
 import androidx.compose.ui.layout.onSizeChanged
@@ -426,6 +427,8 @@ private fun TrackActions(vm: AppState, t: Track) {
     var menu by remember { mutableStateOf(false) }
     var sleep by remember { mutableStateOf(false) }
     if (sleep) SleepDialog(vm) { sleep = false }
+    var notes by remember { mutableStateOf(false) }
+    if (notes) NotesDialog(vm, t) { notes = false }
     // ♥ — в любимые; в плейлист — через «•••»
     val liked = vm.isLiked(t)
     val beat by animateFloatAsState(if (liked) 1f else 0f, spring(dampingRatio = 0.4f, stiffness = 500f), label = "heart")
@@ -459,6 +462,11 @@ private fun TrackActions(vm: AppState, t: Track) {
                 text = { Text(tr("Радио по треку", "Track radio", "Радіо за треком", "Rádio podľa skladby")) },
                 leadingIcon = { Icon(Icons.Rounded.Radio, null) },
                 onClick = { menu = false; vm.startRadio(t) },
+            )
+            DropdownMenuItem(
+                text = { Text(tr("Заметки к моментам", "Notes at moments", "Нотатки до моментів", "Poznámky k momentom")) },
+                leadingIcon = { Icon(Icons.Rounded.EditNote, null) },
+                onClick = { menu = false; notes = true },
             )
             DropdownMenuItem(
                 text = { Text(tr("Таймер сна", "Sleep timer", "Таймер сну", "Časovač spánku")) },
