@@ -932,7 +932,7 @@ impl App {
         let st = &mut self.store.settings;
         st.eq.resize(fx::BANDS.len(), 0.0);
         for p in self.player.iter().chain(&self.player2).chain(self.xf.as_ref().map(|x| &x.0)) {
-            p.send(Cmd::Af(fx::af(&st.eq)));
+            p.send(Cmd::Af(fx::chain(&st.eq, st.speed, st.keep_pitch)));
             p.send(Cmd::Speed(st.speed as f64));
             p.send(Cmd::KeepPitch(st.keep_pitch));
         }
@@ -2476,7 +2476,7 @@ impl App {
     fn spawn_player(&self, volume: f64) -> Option<Player> {
         let p = Player::spawn(volume, |ev| post(move |a| a.on_ev(ev))).map_err(|e| eprintln!("{e:#}")).ok()?;
         let st = &self.store.settings;
-        p.send(Cmd::Af(fx::af(&st.eq)));
+        p.send(Cmd::Af(fx::chain(&st.eq, st.speed, st.keep_pitch)));
         p.send(Cmd::Speed(st.speed as f64));
         p.send(Cmd::KeepPitch(st.keep_pitch));
         Some(p)
@@ -3364,20 +3364,26 @@ impl App {
             let err = mpv - ahead;
             let pos = if err.abs() > 1.0 { mpv } else { (ahead + err * (dt as f64 * 3.0).min(1.0)).max(self.lyr_shown) };
             self.lyr_shown = pos;
-            // дальше всё считаем по часам интерфейса — по ним рисуется заливка. Они идут сами по времени кадров;
-            // базу трогаем, только если разошлись с плеером больше чем на 80 мс (перемотка, пауза, скорость)
+            // дальше всё считаем по часам интерфейса — по ним рисуется заливка. Они идут сами по времени кадров.
+            // Разошлись с плеером — не прыгаем, а догоняем: часы идут чуть быстрее или медленнее (до 8%), глаз
+            // этого не видит. Прыжок — только при перемотке (больше полсекунды) или на паузе, где ничего не движется
             let ft = self.ui.invoke_frame_time();
-            let rate = if playing { speed } else { 0.0 };
             let ui_pos = self.lyr_base + (ft as f64 / 1000.0 - self.lyr_t0) * self.lyr_rate;
-            let pos = if (rate - self.lyr_rate).abs() > 1e-6 || (ui_pos - pos).abs() > 0.08 {
+            let off = mpv - ui_pos;
+            let jump = off.abs() > 0.5 || (!playing && off.abs() > 0.03);
+            let rate = match playing {
+                false => 0.0,
+                true if off.abs() < 0.03 => speed,
+                true => speed * (1.0 + (off * 0.5).clamp(-0.08, 0.08)),
+            };
+            let pos = if jump { mpv } else { ui_pos };
+            // новая скорость считается от текущего места часов — стыка не видно
+            if jump || (rate - self.lyr_rate).abs() > 0.004 * speed.max(0.1) || (rate == 0.0) != (self.lyr_rate == 0.0) {
                 (self.lyr_base, self.lyr_t0, self.lyr_rate) = (pos, ft as f64 / 1000.0, rate);
                 self.ui.set_lyr_base(pos as f32);
                 self.ui.set_lyr_t0(ft);
                 self.ui.set_lyr_rate(rate as f32);
-                pos
-            } else {
-                ui_pos
-            };
+            }
             let (mut cur, act) = lyrics::active(&d.starts, &d.ends, pos);
             // две строки поются внахлёст (дуэт) — прокрутка сразу к последней начавшейся, а не к первой
             // и потом второй рывок к следующей
@@ -3391,7 +3397,7 @@ impl App {
             // текст прыгнул (перемотка, текст пришёл посреди песни): пропущенные строки разом стали бы
             // спетыми и рассыпались на буквы все сразу — сотни букв и лаги. При прыжке все строки до
             // нового места просто гаснут, без эффектов
-            if cur != d.cur && (err.abs() > 1.0 || d.cur == -2) {
+            if cur != d.cur && (jump || d.cur == -2) {
                 self.ui.set_lyr_jump(cur);
             }
             if cur != d.cur {

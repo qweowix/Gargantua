@@ -597,3 +597,66 @@ fn edge_fade() {
     // 10 px гасит только самую кромку — строк должно остаться почти столько же, сколько без растворения
     assert!(got[1].0 * 10 >= got[0].0 * 7 && got[1].1 * 10 >= got[0].1 * 7, "при 10 px пропали строки у края: {got:?}");
 }
+
+/// Строка распадается на буквы (уходы 4–7): в первый кадр распада каждая буква стоит там же, где стояла
+/// в строке (cargo test --release exit_letters -- --ignored --nocapture)
+#[test]
+#[ignore]
+fn exit_letters() {
+    let win = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    slint::platform::set_platform(Box::new(Offscreen(win.clone()))).unwrap();
+    win.set_size(slint::PhysicalSize::new(W, H));
+    let ui = AppWindow::new().unwrap();
+    ui.show().unwrap();
+    ui.set_intro_t(100_000.0);
+    ui.set_intro_gone(true);
+    let lines: Vec<LyrLine> = (0..30)
+        .map(|i| {
+            let s = format!("Will it move, line {i} of this");
+            let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
+            let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
+            let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
+            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
+        })
+        .collect();
+    let model = Rc::new(VecModel::from(lines));
+    let mut buf = vec![slint::Rgb8Pixel::default(); (W * H) as usize];
+    let mut frame = |ms: u64, name: &str| {
+        NOW.with(|t| t.set(t.get() + Duration::from_millis(ms)));
+        slint::platform::update_timers_and_animations();
+        win.request_redraw();
+        win.draw_if_needed(|r| {
+            r.render(&mut buf, W as usize);
+        });
+        let raw: Vec<u8> = buf.iter().flat_map(|p| [p.r, p.g, p.b]).collect();
+        let img = image::RgbImage::from_raw(W, H, raw).unwrap();
+        img.save(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("target/shots/{name}.png"))).unwrap();
+        img
+    };
+    for karaoke in [true, false] {
+        for exit in [4, 5, 6, 7] {
+            ui.set_lyr_exit(exit);
+            ui.set_karaoke(karaoke);
+            ui.set_lyr_lines(Rc::new(VecModel::from(model.iter().collect::<Vec<_>>())).into());
+            ui.set_lyr_state(1);
+            ui.set_lyr_jump(9);
+            ui.set_lyr_cur(10);
+            ui.set_lyr_cur_top(840.0);
+            ui.set_act0(10);
+            ui.set_p0(1.0);
+            ui.set_lyrics_open(true);
+            let before = frame(5000, &format!("exit{exit}-{karaoke}-a"));
+            // строка допета, прокрутку не трогаем: видно только распад
+            ui.set_act0(-1);
+            ui.set_lyr_cur(11);
+            let after = frame(16, &format!("exit{exit}-{karaoke}-b"));
+            let ys: Vec<u32> = (0..H).filter(|&y| (480..W).any(|x| before.get_pixel(x, y)[0] > 200)).collect();
+            let (y0, y1) = (ys[0], *ys.last().unwrap());
+            let cols = |img: &image::RgbImage| -> Vec<bool> { (480..W).map(|x| (y0..=y1).any(|y| img.get_pixel(x, y)[0] > 90)).collect() };
+            let (a, b) = (cols(&before), cols(&after));
+            let moved = a.iter().zip(&b).filter(|(x, y)| x != y).count();
+            println!("уход {exit}, караоке {karaoke}: строка y {y0}..{y1}, столбцов с изменившейся буквой {moved} из {}", a.iter().filter(|x| **x).count());
+            assert!(moved <= 12, "уход {exit}: буквы в первом кадре распада уже не на своих местах ({moved} столбцов)");
+        }
+    }
+}

@@ -1249,7 +1249,8 @@ component LyricLine inherits Rectangle {
                 property <float> fu: max(0, min(1, (self.t - self.f-delay) / self.f-dur));
                 property <float> fb: max(0, min(1, (self.t - self.f-delay - self.f-dur) / 260));
                 property <length> fall: root.floor-y - root.y - row-box.y - self.height - self.r1 * 14px;
-                property <float> fs-out: 1 - (1 - self.fu) * (1 - self.fu);
+                // разлёт вбок с мягким стартом: первые кадры буква ещё на своём месте — видно, откуда она ушла
+                property <float> fs-out: (1 - (1 - self.fu) * (1 - self.fu)) * min(1, self.fu * 5);
                 // в дыру буквами: строка рассыпается на месте, буквы чуть разлетаются и по одной, с
                 // разной задержкой и своей дугой, затягиваются в логотип, крутясь и уменьшаясь
                 property <float> h-delay: self.r1 * 420;
@@ -1257,13 +1258,14 @@ component LyricLine inherits Rectangle {
                 property <float> he: self.hk * self.hk;
                 property <length> to-x: root.hole-x - root.x - row-box.x - self.x - self.width / 2;
                 property <length> to-y: root.hole-y - root.y - row-box.y - self.y - self.height / 2;
-                property <float> burst: min(1, max(0, (self.t - self.r1 * 120) / 260));
+                property <float> burst-t: min(1, max(0, (self.t - self.r1 * 120) / 420));
+                property <float> burst: self.burst-t * self.burst-t * (3 - 2 * self.burst-t);
                 // испарение: всплывают, покачиваясь
                 property <float> ev: max(0, min(1, (self.t - self.r1 * 500) / 1700));
                 property <float> ee: 1 - (1 - self.ev) * (1 - self.ev);
                 // взрыв: разлёт от центра строки, потом их тянет вниз
                 property <float> bv: max(0, min(1, (self.t - self.r1 * 80) / 900));
-                property <float> be: 1 - (1 - self.bv) * (1 - self.bv) * (1 - self.bv);
+                property <float> be: (1 - (1 - self.bv) * (1 - self.bv) * (1 - self.bv)) * min(1, self.bv * 6);
 
                 lt := Text {
                     text: ch;
@@ -1273,7 +1275,7 @@ component LyricLine inherits Rectangle {
                     transform-scale: root.exit == 7 ? 1 - 0.6 * parent.he : 1;
                     x: root.exit == 4 ? (parent.rel * 520px + (parent.r2 - 0.5) * 300px) * parent.fs-out
                         : root.exit == 7 ? (parent.r1 - 0.5) * 50px * parent.burst + parent.to-x * parent.he + Math.sin(parent.he * 180deg) * (parent.r1 - 0.5) * 220px
-                        : root.exit == 5 ? Math.sin((parent.ev * 2.2 + parent.r1 * 6.28) * 1rad) * 14px
+                        : root.exit == 5 ? (Math.sin((parent.ev * 2.2 + parent.r1 * 6.28) * 1rad) - Math.sin(parent.r1 * 6.28rad)) * 14px
                         : (parent.rel * 360px + (parent.r2 - 0.5) * 80px) * parent.be;
                     y: root.exit == 4 ? parent.fall * parent.fu * parent.fu - Math.sin(parent.fb * 180deg) * 18px * (1 - parent.r1 * 0.5)
                         : root.exit == 7 ? (parent.r2 - 0.5) * 36px * parent.burst + parent.to-y * parent.he + Math.sin(parent.he * 180deg) * (parent.r2 - 0.5) * 160px

@@ -2,6 +2,7 @@
 
 pub const BANDS: [u32; 10] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 pub const MAX_DB: f32 = 12.0;
+const STRETCH: &str = "finer";
 
 /// (название ru, название en, усиления по полосам в дБ)
 pub const PRESETS: [(&str, &str, [f32; 10]); 13] = [
@@ -53,6 +54,18 @@ pub fn af(gains: &[f32]) -> String {
     format!("lavfi=[{}]", chain.join(","))
 }
 
+/// Все фильтры для mpv: эквалайзер и, если скорость меняют с сохранением тона, растяжение через rubberband.
+/// Своё растяжение mpv (scaletempo2) сдвигает атаки на случайные ±13 мс — ритм на замедлении рвётся;
+/// rubberband держит их на месте (замер на щелчках: ±0.7 мс, как без растяжения)
+pub fn chain(gains: &[f32], speed: f32, keep_pitch: bool) -> String {
+    let eq = af(gains);
+    if !keep_pitch || (speed - 1.0).abs() < 0.001 {
+        return eq;
+    }
+    let stretch = format!("rubberband=engine={STRETCH}");
+    if eq.is_empty() { stretch } else { format!("{eq},{stretch}") }
+}
+
 /// АЧХ цепочки колоколов (дБ) на частоте f — те же формулы RBJ, что у фильтра equalizer в ffmpeg
 fn response(gains: &[f64], f: f64) -> f64 {
     const RATE: f64 = 48000.0;
@@ -94,6 +107,15 @@ mod tests {
         assert_eq!(super::preset_of(&[1.0; 10]), -1);
     }
 
+    #[test]
+    fn stretch_only_when_needed() {
+        assert_eq!(super::chain(&[0.0; 10], 1.0, true), "");
+        assert_eq!(super::chain(&[0.0; 10], 0.85, false), "");
+        assert!(super::chain(&[0.0; 10], 0.85, true).starts_with("rubberband="));
+        let both = super::chain(&super::PRESETS[1].2, 0.85, true);
+        assert!(both.starts_with("lavfi=[") && both.contains("],rubberband="), "{both}");
+    }
+
     /// Настоящая кривая идёт через ползунки (а не выше, как у сложенных колоколов)
     #[test]
     fn curve_hits_sliders() {
@@ -115,7 +137,7 @@ mod tests {
         for (_, _, g) in super::PRESETS.iter().skip(1) {
             let out = std::process::Command::new(&mpv)
                 .args(["--no-config", "--ao=null", "--no-video", "--length=0.3", "av://lavfi:sine=f=440:d=1"])
-                .arg(format!("--af={}", super::af(g)))
+                .arg(format!("--af={}", super::chain(g, 1.5, true)))
                 .arg("--speed=1.5")
                 .output()
                 .unwrap();
