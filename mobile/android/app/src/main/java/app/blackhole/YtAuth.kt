@@ -45,12 +45,35 @@ object YtAuth {
     fun setFromPc(pairs: String) {
         val m = Json.parseToJsonElement(pairs).jsonArray.associate { it.jsonArray[0].jsonPrimitive.content to it.jsonArray[1].jsonPrimitive.content }
         save(m)
+        prefs.edit().putBoolean("from_pc", true).apply()
+    }
+
+    @Volatile
+    private var pulledAt = 0L
+
+    /** Вход взят с компа — подтянуть свежий (комп сам обновляет его в аккаунте раз в 20 минут). Блокирующе,
+     *  не чаще раза в minGap. true — куки обновились */
+    fun refreshFromPc(minGap: Long): Boolean {
+        // установки до этой версии флага не знают: считаем, что вход с компа, — если комп ничего не отправлял, в аккаунте пусто и мы ничего не тронем
+        if (!prefs.getBoolean("from_pc", true) || System.currentTimeMillis() - pulledAt < minGap) return false
+        pulledAt = System.currentTimeMillis()
+        val ck = runCatching { coreNow("yt_cookies").to<String>() }.onFailure { BhLog.line("вход YouTube с компа: $it") }.getOrNull()
+        if (ck.isNullOrEmpty()) return false
+        val before = jar
+        runCatching { setFromPc(ck) }
+        return jar != before
     }
 
     /** "a=b; c=d" — как отдаёт CookieManager после входа */
-    fun setFromHeader(h: String) = save(parse(h))
+    fun setFromHeader(h: String) {
+        save(parse(h))
+        prefs.edit().putBoolean("from_pc", false).apply()
+    }
 
-    fun clear() = save(emptyMap())
+    fun clear() {
+        save(emptyMap())
+        prefs.edit().putBoolean("from_pc", false).apply()
+    }
 
     fun parse(h: String) = h.split(';').mapNotNull { p -> p.trim().split('=', limit = 2).takeIf { it.size == 2 && it[0].isNotEmpty() }?.let { it[0] to it[1] } }.toMap()
 

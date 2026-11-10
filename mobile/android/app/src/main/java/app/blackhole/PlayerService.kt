@@ -480,6 +480,8 @@ class PlayerService : MediaSessionService() {
         while (scope.isActive) {
             delay(1000)
             sleepStep()
+            // вход YouTube с компа: пока играет музыка, раз в 20 минут подтягиваем свежий — до ошибки не доводим
+            if (player.isPlaying) scope.launch(Dispatchers.IO) { YtAuth.refreshFromPc(20 * 60_000L) }
             if (!player.isPlaying) continue
             listened += 1
             unsent += 1

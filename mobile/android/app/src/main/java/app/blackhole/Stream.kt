@@ -159,8 +159,15 @@ object Streams {
         val id = Regex("(?:[?&]v=|youtu\\.be/)([\\w-]{11})").find(url)?.groupValues?.get(1)
         if (id != null && YtAuth.has()) {
             runCatching { return YtAuth.audio(id).also { authError = null } }.onFailure {
-                android.util.Log.w("bh", "yt auth: $it")
+                BhLog.line("YouTube под аккаунтом не дал звук ($id): $it")
                 authError = it.message ?: it.toString()
+            }
+            // чаще всего это устаревшая копия входа: браузер на компе уже сменил куки. Берём свежие и пробуем ещё раз
+            if (YtAuth.refreshFromPc(60_000)) {
+                runCatching { return YtAuth.audio(id).also { authError = null } }.onFailure {
+                    BhLog.line("YouTube и со свежим входом не дал звук ($id): $it")
+                    authError = it.message ?: it.toString()
+                }
             }
         }
         // разовые сбои разбора (сеть, YouTube отдал не то) — одна повторная попытка

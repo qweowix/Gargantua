@@ -444,6 +444,8 @@ fn key(t: &Track) -> String {
 
 // прямые ссылки googlevideo живут ~6 часов, берём с запасом
 const STREAM_TTL: Duration = Duration::from_secs(4 * 3600);
+/// вход YouTube уже отправляли на телефон (настройка yt_share) — фоновый поток обновляет его сам
+static YT_SHARE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(40);
 const VIZ_BARS: usize = 32;
 const PREFETCH_AHEAD: usize = 5;
@@ -3924,6 +3926,7 @@ fn main() -> Result<(), slint::PlatformError> {
     };
     let ui = AppWindow::new()?;
     let mut store = Store::load();
+    let store_yt_share = store.settings.yt_share;
     if cloud::cfg().is_some() {
         // плейлисты теперь в аккаунте: старые с диска откладываем до первого входа и в data.json больше не пишем
         model::CLOUD.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -4672,15 +4675,47 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.on_open_url(|u| open_url(&u));
     // вход YouTube на телефон: куки браузера → в аккаунт, телефон заберёт сам
+    // раз вход уже отправляли — держим его в аккаунте свежим: браузер меняет куки, и старая копия на телефоне
+    // через час-другой перестаёт подходить. Раз в 20 минут, и только если куки правда изменились
+    YT_SHARE.store(store_yt_share, Ordering::Relaxed);
+    std::thread::spawn(|| {
+        let mut sent = String::new();
+        std::thread::sleep(Duration::from_secs(20));
+        // отправляли в прошлых версиях, когда этой настройки ещё не было, — в аккаунте уже лежит старая копия
+        if !YT_SHARE.load(Ordering::Relaxed) && cloud::cfg().is_some_and(|c| cloud::get_yt_cookies(&c).is_ok_and(|ck| !ck.is_empty())) {
+            YT_SHARE.store(true, Ordering::Relaxed);
+        }
+        loop {
+            if !YT_SHARE.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_secs(60));
+                continue;
+            }
+            let Some(cfg) = cloud::cfg() else { continue };
+            match util::yt_cookies() {
+                Ok(ck) if ck != sent => match cloud::put_yt_cookies(&cfg, &ck) {
+                    Ok(()) => sent = ck,
+                    Err(e) => crate::logln!("вход YouTube для телефона: {e:#}"),
+                },
+                Ok(_) => {}
+                Err(e) => crate::logln!("куки YouTube для телефона: {e:#}"),
+            }
+            std::thread::sleep(Duration::from_secs(20 * 60));
+        }
+    });
     ui.on_send_cookies(|| {
         std::thread::spawn(|| {
             let r = util::yt_cookies().and_then(|ck| cloud::put_yt_cookies(&cloud::cfg().context("облако не настроено")?, &ck));
             post(move |a| match r {
-                Ok(()) => a.toast(&tr!(
+                Ok(()) => {
+                    a.store.settings.yt_share = true;
+                    YT_SHARE.store(true, Ordering::Relaxed);
+                    a.save();
+                    a.toast(&tr!(
                     "Вход YouTube отправлен. На телефоне: Аккаунт → Настройки → YouTube → «Взять с компа»",
                     "YouTube sign-in sent. On the phone: Account → Settings → YouTube → “Take from PC”",
                     "Вхід YouTube надіслано. На телефоні: Акаунт → Налаштування → YouTube → «Взяти з компа»", "Prihlásenie do YouTube odoslané. Na telefóne: Účet → Nastavenia → YouTube → „Zobrať z PC“"
-                )),
+                    ))
+                }
                 Err(e) => a.toast(&tr!("Не вышло: {:#}", "Failed: {:#}", "Не вийшло: {:#}", "Nevyšlo to: {:#}", e)),
             });
         });
