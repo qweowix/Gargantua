@@ -31,10 +31,14 @@ pub enum Ev {
     Failed(u64, String),
 }
 
+/// Уровни полос спектра (дБ) с временем трека, к которому они относятся: mpv считает звук заранее
+type Viz = Arc<Mutex<std::collections::VecDeque<(f64, [f32; crate::fx::VIZ_BANDS])>>>;
+
 #[derive(Clone)]
 pub struct Player {
     tx: mpsc::Sender<Cmd>,
     handle: Arc<Mutex<Option<JoinHandle<()>>>>,
+    viz: Viz,
 }
 
 impl Player {
@@ -65,7 +69,8 @@ impl Player {
         .arg(format!("--input-ipc-server={ipc}"))
         .arg(format!("--volume={volume:.0}"))
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
+        // в stdout mpv сам ничего не пишет (--no-terminal) — туда фильтр спектра печатает уровни полос
+        .stdout(Stdio::piped())
         .stderr(Stdio::null());
         if let Some(y) = find_bin("yt-dlp") {
             cmd.arg(format!("--script-opts=ytdl_hook-ytdl_path={}", y.display()));
@@ -79,12 +84,28 @@ impl Player {
                 Ok(())
             });
         }
-        let child = cmd.spawn().context("не смог запустить mpv")?;
+        let mut child = cmd.spawn().context("не смог запустить mpv")?;
         #[cfg(windows)]
         kill_with_parent(&child);
+        let viz = Viz::default();
+        // читаем всегда, даже когда спектр никому не нужен: иначе труба забьётся и mpv встанет
+        if let Some(out) = child.stdout.take() {
+            let viz = viz.clone();
+            thread::spawn(move || read_viz(out, viz));
+        }
         let (tx, rx) = mpsc::channel();
         let h = thread::spawn(move || run(child, ipc, rx, on));
-        Ok(Player { tx, handle: Arc::new(Mutex::new(Some(h))) })
+        Ok(Player { tx, handle: Arc::new(Mutex::new(Some(h))), viz })
+    }
+
+    /// Уровни полос (дБ) того места трека, что звучит сейчас
+    pub fn viz_at(&self, pos: f64) -> Option<[f32; crate::fx::VIZ_BANDS]> {
+        let mut q = self.viz.lock().unwrap();
+        // всё, что уже отзвучало, кроме самого свежего из отзвучавшего
+        while q.len() > 1 && q[1].0 <= pos {
+            q.pop_front();
+        }
+        q.front().filter(|f| f.0 <= pos && pos - f.0 < 0.5).map(|f| f.1)
     }
 
     pub fn send(&self, c: Cmd) {
@@ -95,6 +116,35 @@ impl Player {
         self.send(Cmd::Quit);
         if let Some(h) = self.handle.lock().unwrap().take() {
             let _ = h.join();
+        }
+    }
+}
+
+/// Разбор вывода фильтра спектра (ametadata): строка «frame:… pts_time:12.3», за ней по строке
+/// «lavfi.astats.N.Peak_level=-23.4» на полосу
+fn read_viz(out: impl Read, viz: Viz) {
+    const N: usize = crate::fx::VIZ_BANDS;
+    let (mut pts, mut bands) = (0.0f64, [f32::NEG_INFINITY; N]);
+    for line in BufReader::new(out).lines() {
+        let Ok(line) = line else { break };
+        if let Some(t) = line.strip_prefix("frame:").and_then(|l| l.split("pts_time:").nth(1)) {
+            pts = t.trim().parse().unwrap_or(pts);
+        } else if let Some((k, v)) = line.strip_prefix("lavfi.astats.").and_then(|l| l.split_once(".Peak_level=")) {
+            let Ok(k) = k.parse::<usize>() else { continue };
+            if (1..=N).contains(&k) {
+                bands[k - 1] = v.trim().parse().unwrap_or(f32::NEG_INFINITY);
+            }
+            if k == N {
+                let mut q = viz.lock().unwrap();
+                // перемотали назад или новый трек — то, что насчитано раньше, уже не про это место
+                if q.back().is_some_and(|b| b.0 > pts) {
+                    q.clear();
+                }
+                q.push_back((pts, bands));
+                if q.len() > 400 {
+                    q.pop_front();
+                }
+            }
         }
     }
 }
@@ -209,6 +259,7 @@ fn run(mut child: Child, ipc: String, rx: mpsc::Receiver<Cmd>, on: impl Fn(Ev)) 
 
     let mut tok = 0u64; // токен трека, который сейчас в mpv
     let mut loading = false;
+    let mut af: Option<String> = None; // та же цепочка второй раз — mpv пересобрал бы фильтры со щелчком
     loop {
         match rx.recv_timeout(Duration::from_millis(333)) {
             Ok(Cmd::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -223,7 +274,11 @@ fn run(mut child: Child, ipc: String, rx: mpsc::Receiver<Cmd>, on: impl Fn(Ev)) 
                     Cmd::Stop => vec![json!(["stop"])],
                     Cmd::Seek(s) => vec![json!(["seek", s, "absolute"])],
                     Cmd::Volume(v) => vec![json!(["set_property", "volume", v])],
-                    Cmd::Af(f) => vec![json!(["set_property", "af", f])],
+                    Cmd::Af(f) if af.as_deref() == Some(f.as_str()) => vec![],
+                    Cmd::Af(f) => {
+                        af = Some(f.clone());
+                        vec![json!(["set_property", "af", f])]
+                    }
                     Cmd::Speed(s) => vec![json!(["set_property", "speed", s])],
                     Cmd::KeepPitch(k) => vec![json!(["set_property", "audio-pitch-correction", k])],
                     Cmd::Quit => unreachable!(),
@@ -305,6 +360,35 @@ mod tests {
         b.shutdown();
         assert!(a_plays, "первый mpv не заиграл");
         assert_eq!(b_tok, 0, "второй плеер видит трек первого — они делят один mpv");
+    }
+
+    /// Спектр из настоящего mpv: тихий синус 440 Гц — уровни приходят с временем трека, громче всех полоса у 440
+    #[test]
+    fn viz_from_mpv() {
+        if crate::util::find_bin("mpv").is_none() {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let p = super::Player::spawn(0.0, move |e| {
+            if let super::Ev::Status { pos, .. } = e {
+                let _ = tx.send(pos);
+            }
+        })
+        .unwrap();
+        p.send(super::Cmd::Af(crate::fx::chain(&[0.0; 10], 1.0, true, true)));
+        p.send(super::Cmd::Load("av://lavfi:sine=f=440:d=30".into(), 1));
+        let t0 = std::time::Instant::now();
+        let mut got = None;
+        while t0.elapsed().as_secs() < 10 && got.is_none() {
+            if let Ok(pos) = rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                got = Some(pos).filter(|p| *p > 0.5).and_then(|pos| p.viz_at(pos));
+            }
+        }
+        p.shutdown();
+        let bands = got.expect("mpv не отдал уровни спектра");
+        let loud = (0..bands.len()).max_by(|a, b| bands[*a].total_cmp(&bands[*b])).unwrap();
+        // полосы идут от 50 до 5200 Гц по логарифму: 440 Гц — седьмая-восьмая из шестнадцати
+        assert!((6..=8).contains(&loud) && bands[loud] > -30.0, "полосы {bands:?}");
     }
 
     /// Живой mpv + yt-dlp: трек должен перестать грузиться и пойти по времени (нужны сеть и mpv)

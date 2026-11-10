@@ -260,7 +260,7 @@ fn ui() {
         let pre: Vec<slint::SharedString> = s.char_indices().map(|(i, c)| s[..i + c.len_utf8()].into()).collect();
         Rc::new(VecModel::from(vec![LyrRow { text: s.into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 }])).into()
     };
-    let line = |s: &str, top: f32, dots: bool| LyrLine { rows: if dots { rows("") } else { rows(s) }, top, empty: false, right: false, dots, bg: false, tr: Default::default() };
+    let line = |s: &str, top: f32, dots: bool| LyrLine { text: (&*s).into(), rows: if dots { rows("") } else { rows(s) }, top, empty: false, right: false, dots, bg: false, tr: Default::default() };
     ui.set_lyr_lines(
         Rc::new(VecModel::from(vec![
             line("She'd just say she did", 0.0, false),
@@ -276,6 +276,42 @@ fn ui() {
     ui.set_act0(1);
     ui.set_p0(0.5);
     ui.set_lyr_dots_open(1);
+    // панель «Сейчас играет»: вкладка текста (поётся третья строка) и вкладка очереди
+    ui.set_page("playlist".into());
+    ui.set_viz(Rc::new(VecModel::from((0..32).map(|i| 0.15 + 0.8 * ((i as f32 * 0.9).sin() * 0.5 + 0.5) * (1.0 - i as f32 / 48.0)).collect::<Vec<f32>>())).into());
+    ui.set_deck_tab(0);
+    ui.set_deck_open(true);
+    ui.set_lyr_cur(2);
+    ui.set_act0(2);
+    snap(&win, "16-deck-lyrics");
+    ui.set_q_next(tracks.clone().into());
+    ui.set_deck_tab(1);
+    snap(&win, "16-deck-queue");
+    ui.set_deck_open(false);
+    ui.set_lyr_cur(1);
+    ui.set_act0(1);
+    snap(&win, "16-deck-closed");
+    // широкое окно: панель не лежит поверх, а раздвигает контент
+    win.set_size(slint::PhysicalSize::new(1920, 800));
+    ui.set_deck_tab(0);
+    ui.set_deck_open(true);
+    ui.set_lyr_cur(2);
+    ui.set_act0(2);
+    let mut wide = vec![slint::Rgb8Pixel::default(); 1920 * 800];
+    for _ in 0..4 {
+        NOW.with(|n| n.set(n.get() + Duration::from_secs(5)));
+        slint::platform::update_timers_and_animations();
+    }
+    win.request_redraw();
+    win.draw_if_needed(|r| {
+        r.render(&mut wide, 1920);
+    });
+    image::RgbImage::from_raw(1920, 800, wide.iter().flat_map(|p| [p.r, p.g, p.b]).collect()).unwrap().save(concat!(env!("CARGO_MANIFEST_DIR"), "/target/shots/16-deck-wide.png")).unwrap();
+    ui.set_deck_open(false);
+    ui.set_lyr_cur(1);
+    ui.set_act0(1);
+    win.set_size(slint::PhysicalSize::new(W, H));
+    snap(&win, "16-deck-closed");
     ui.set_lyrics_open(true);
     snap(&win, "08-lyrics");
     // lyrics тикает 20 fps: главный интерфейс под ним рисоваться не должен, кадр — дешёвый
@@ -386,7 +422,7 @@ fn hitch() {
                 let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
                 let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
                 let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
-                LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
+                LyrLine { text: (&*s).into(), rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
             })
             .collect();
         Rc::new(VecModel::from(lines)).into()
@@ -450,7 +486,7 @@ fn duet_scroll() {
             let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
             let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
             let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
-            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
+            LyrLine { text: (&*s).into(), rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
         })
         .collect();
     ui.set_lyr_lines(Rc::new(VecModel::from(lines)).into());
@@ -510,7 +546,7 @@ fn karaoke_step() {
             let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
             let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
             let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
-            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
+            LyrLine { text: (&*s).into(), rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
         })
         .collect();
     ui.set_lyr_lines(Rc::new(VecModel::from(lines)).into());
@@ -575,7 +611,7 @@ fn edge_fade() {
             let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
             let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
             let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
-            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
+            LyrLine { text: (&*s).into(), rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
         })
         .collect();
     ui.set_lyr_lines(Rc::new(VecModel::from(lines)).into());
@@ -616,7 +652,7 @@ fn exit_letters() {
             let chars: Vec<slint::SharedString> = s.chars().map(|c| c.to_string().into()).collect();
             let pre: Vec<slint::SharedString> = s.char_indices().map(|(k, c)| s[..k + c.len_utf8()].into()).collect();
             let row = LyrRow { text: s.as_str().into(), chars: Rc::new(VecModel::from(chars)).into(), pre: Rc::new(VecModel::from(pre)).into(), a: 0.0, b: 1.0 };
-            LyrLine { rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
+            LyrLine { text: (&*s).into(), rows: Rc::new(VecModel::from(vec![row])).into(), top: i as f32 * 84.0, empty: false, right: false, dots: false, bg: false, tr: Default::default() }
         })
         .collect();
     let model = Rc::new(VecModel::from(lines));

@@ -57,13 +57,39 @@ pub fn af(gains: &[f32]) -> String {
 /// Все фильтры для mpv: эквалайзер и, если скорость меняют с сохранением тона, растяжение через rubberband.
 /// Своё растяжение mpv (scaletempo2) сдвигает атаки на случайные ±13 мс — ритм на замедлении рвётся;
 /// rubberband держит их на месте (замер на щелчках: ±0.7 мс, как без растяжения)
-pub fn chain(gains: &[f32], speed: f32, keep_pitch: bool) -> String {
+pub fn chain(gains: &[f32], speed: f32, keep_pitch: bool, viz: bool) -> String {
+    let mut parts = vec![];
     let eq = af(gains);
-    if !keep_pitch || (speed - 1.0).abs() < 0.001 {
-        return eq;
+    if !eq.is_empty() {
+        parts.push(eq);
     }
-    let stretch = format!("rubberband=engine={STRETCH}");
-    if eq.is_empty() { stretch } else { format!("{eq},{stretch}") }
+    if viz {
+        parts.push(viz_graph());
+    }
+    if keep_pitch && (speed - 1.0).abs() >= 0.001 {
+        parts.push(format!("rubberband=engine={STRETCH}"));
+    }
+    parts.join(",")
+}
+
+/// Сколько полос у спектра (столбиков на экране вдвое больше — между соседними полосами сглаживаем)
+pub const VIZ_BANDS: usize = 16;
+
+/// Спектр для панели «Сейчас играет» — силами самого mpv, без внешних программ. Звук идёт дальше нетронутым
+/// (замер: бит в бит), а его копия — моно 12 кГц — режется на полосы, и пик каждой ~31 раз в секунду
+/// печатается в stdout mpv вместе со временем трека (player.rs читает и отдаёт по позиции).
+/// Стоит ~2% одного ядра. Включать и выключать на ходу нельзя: смена фильтров даёт щелчок
+fn viz_graph() -> String {
+    let (lo, hi) = (50.0f64, 5200.0f64);
+    let ins: String = (0..VIZ_BANDS).map(|i| format!("[i{i}]")).collect();
+    let bands: String = (0..VIZ_BANDS)
+        .map(|i| format!("[i{i}]bandpass=f={:.0}:t=o:w=0.6[b{i}];", lo * (hi / lo).powf(i as f64 / (VIZ_BANDS - 1) as f64)))
+        .collect();
+    let outs: String = (0..VIZ_BANDS).map(|i| format!("[b{i}]")).collect();
+    format!(
+        "lavfi=[asplit[m][s];[s]aresample=12000,pan=mono|c0=0.5*c0+0.5*c1,asetnsamples=n=384,asplit={VIZ_BANDS}{ins};{bands}{outs}amerge=inputs={VIZ_BANDS},\
+         astats=metadata=1:reset=1:measure_perchannel=Peak_level:measure_overall=none,ametadata=mode=print:file=pipe\\\\:1:direct=1,anullsink;[m]anull]"
+    )
 }
 
 /// АЧХ цепочки колоколов (дБ) на частоте f — те же формулы RBJ, что у фильтра equalizer в ffmpeg
@@ -109,11 +135,14 @@ mod tests {
 
     #[test]
     fn stretch_only_when_needed() {
-        assert_eq!(super::chain(&[0.0; 10], 1.0, true), "");
-        assert_eq!(super::chain(&[0.0; 10], 0.85, false), "");
-        assert!(super::chain(&[0.0; 10], 0.85, true).starts_with("rubberband="));
-        let both = super::chain(&super::PRESETS[1].2, 0.85, true);
+        assert_eq!(super::chain(&[0.0; 10], 1.0, true, false), "");
+        assert_eq!(super::chain(&[0.0; 10], 0.85, false, false), "");
+        assert!(super::chain(&[0.0; 10], 0.85, true, false).starts_with("rubberband="));
+        let both = super::chain(&super::PRESETS[1].2, 0.85, true, false);
         assert!(both.starts_with("lavfi=[") && both.contains("],rubberband="), "{both}");
+        // спектр — после эквалайзера (показывает то, что слышно) и до растяжения (время в нём — время трека)
+        let all = super::chain(&super::PRESETS[1].2, 0.85, true, true);
+        assert!(all.contains("],lavfi=[asplit[m][s]") && all.contains("pipe\\\\:1") && all.ends_with("[m]anull],rubberband=engine=finer"), "{all}");
     }
 
     /// Настоящая кривая идёт через ползунки (а не выше, как у сложенных колоколов)
@@ -137,7 +166,7 @@ mod tests {
         for (_, _, g) in super::PRESETS.iter().skip(1) {
             let out = std::process::Command::new(&mpv)
                 .args(["--no-config", "--ao=null", "--no-video", "--length=0.3", "av://lavfi:sine=f=440:d=1"])
-                .arg(format!("--af={}", super::chain(g, 1.5, true)))
+                .arg(format!("--af={}", super::chain(g, 1.5, true, true)))
                 .arg("--speed=1.5")
                 .output()
                 .unwrap();

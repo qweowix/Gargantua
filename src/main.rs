@@ -173,6 +173,7 @@ struct App {
     lyr_timer: Timer,
     lyr_idle: Timer, // через 2 с без движения мыши прячет управление на экране текста
     lyr_last: Instant,
+    speed_at: Instant, // когда меняли скорость: пару секунд после этого mpv врёт про позицию
     lyr_shown: f64, // позиция, которую уже показал текст: назад на доли секунды не откатываем
     // часы караоке в интерфейсе: позиция = lyr_base + (время кадров − lyr_t0) · lyr_rate (см. lyr-pos в app.slint)
     lyr_base: f64,
@@ -279,6 +280,12 @@ struct App {
     conn_adopted: String,           // какую передачу сессии сюда уже подхватили
     mirror: Option<connect::State>, // звук на другом устройстве — тут его сессия
     discord_avatars: HashMap<String, String>,
+    // спектр в панели «Сейчас играет»
+    viz_used: bool, // фильтр спектра уже в цепочке mpv
+    viz_timer: Timer,
+    viz_model: Rc<VecModel<f32>>,
+    viz_bars: [f32; VIZ_BARS],
+    viz_peak: f32,
     conn_held: Option<remote::Held>,
     conn_vol_hold: Option<Instant>,
     conn_vol_sent: Option<Instant>,
@@ -342,17 +349,66 @@ fn fill_at(d: &LyrData, i: usize, pos: f64) -> f32 {
     }
 }
 
-/// Окно заливки строки i для интерфейса: слово, которое поют на pos, и два следующих (или вся строка одним
-/// куском, если таймингов слов нет). В паузах между словами заливка стоит
+/// Край заливки по словам, сглаженный: среднее за последние 140 мс трека. Без этого на стыке медленного
+/// и быстрого слова заливка резко меняла скорость, а пробел между словами перепрыгивала разом
+fn edge_smooth(ws: &[(f64, f64, f32, f32)], pos: f64) -> f32 {
+    let raw = |t: f64| match ws.iter().rposition(|w| w.0 <= t) {
+        None => 0.0,
+        Some(k) => ws[k].2 + (ws[k].3 - ws[k].2) * ((t - ws[k].0) / (ws[k].1 - ws[k].0).max(0.001)).clamp(0.0, 1.0) as f32,
+    };
+    (0..=14).map(|k| raw(pos - k as f64 * 0.01)).sum::<f32>() / 15.0
+}
+
+/// Три куска сглаженной заливки вперёд от pos. Куски лежат на общей сетке по 60 мс времени трека, поэтому
+/// окна соседних тиков совпадают там, где пересекаются, — стыка между ними нет
+fn smooth_win(ws: &[(f64, f64, f32, f32)], pos: f64) -> [(f32, f32, f32, f32); 3] {
+    const CELL: f64 = 0.06;
+    let k = (pos / CELL).floor();
+    [0.0, 1.0, 2.0].map(|j| {
+        let (s, e) = ((k + j) * CELL, (k + j + 1.0) * CELL);
+        (s as f32, e as f32, edge_smooth(ws, s), edge_smooth(ws, e))
+    })
+}
+
+/// Окно заливки строки i для интерфейса: по словам — сглаженная заливка на ближайшие 180 мс, без таймингов
+/// слов — вся строка одним куском
 fn win_at(d: &LyrData, i: usize, pos: f64) -> LyrWin {
-    let segs: Vec<(f64, f64, f32, f32)> = match d.words.get(i).filter(|w| !w.is_empty()) {
-        Some(ws) => ws.iter().skip(ws.iter().rposition(|w| w.0 <= pos).unwrap_or(0)).take(3).copied().collect(),
-        None => vec![(d.starts[i], d.fills[i].max(d.starts[i] + 0.01), 0.0, 1.0)],
+    let segs: Vec<(f32, f32, f32, f32)> = match d.words.get(i).filter(|w| !w.is_empty()) {
+        Some(ws) => smooth_win(ws, pos).to_vec(),
+        None => vec![(d.starts[i] as f32, d.fills[i].max(d.starts[i] + 0.01) as f32, 0.0, 1.0)],
     };
     let end = segs.last().map_or(1.0, |s| s.3);
-    let g = |k: usize| segs.get(k).map_or((1e9, 1e9, end, end), |&(s, e, a, b)| (s as f32, e as f32, a, b));
+    let g = |k: usize| segs.get(k).copied().unwrap_or((1e9, 1e9, end, end));
     let ((s1, e1, a1, b1), (s2, e2, a2, b2), (s3, e3, a3, b3)) = (g(0), g(1), g(2));
     LyrWin { s1, e1, a1, b1, s2, e2, a2, b2, s3, e3, a3, b3 }
+}
+
+#[cfg(test)]
+mod lyr_tests {
+    /// Медленное слово, пробел, три быстрых: как заливку видит интерфейс (тик раз в 50 мс, между тиками —
+    /// по окну). Она не идёт назад, доходит до конца, и за кадр не прыгает — ни на стыке слов, ни при смене окна
+    #[test]
+    fn fill_is_smooth() {
+        let ws = [(1.0, 2.0, 0.0, 0.3), (2.0, 2.08, 0.36, 0.5), (2.08, 2.16, 0.56, 0.7), (2.16, 2.24, 0.76, 1.0)];
+        let at = |w: &[(f32, f32, f32, f32); 3], pos: f32| {
+            let (s, e, a, b) = if pos < w[1].0 { w[0] } else if pos < w[2].0 { w[1] } else { w[2] };
+            a + (b - a) * ((pos - s) / (e - s)).clamp(0.0, 1.0)
+        };
+        let (mut win, mut prev, mut worst) = (super::smooth_win(&ws, 0.9), 0.0f32, 0.0f32);
+        for f in 0..=200 {
+            let pos = 0.9 + f as f64 / 120.0; // кадры 120 Гц
+            if f % 6 == 0 {
+                win = super::smooth_win(&ws, pos);
+            }
+            let v = at(&win, pos as f32);
+            assert!(v >= prev - 1e-4, "заливка пошла назад на {pos}: {prev} → {v}");
+            worst = worst.max(v - prev);
+            prev = v;
+        }
+        assert!((prev - 1.0).abs() < 1e-3, "не дошла до конца: {prev}");
+        // без сглаживания пробел (6% строки) перепрыгивался за один кадр
+        assert!(worst < 0.03, "прыжок за кадр {worst}");
+    }
 }
 
 /// Фото артиста трека для Discord; у файлов с диска — никакого (в значке логотип)
@@ -384,6 +440,7 @@ fn key(t: &Track) -> String {
 // прямые ссылки googlevideo живут ~6 часов, берём с запасом
 const STREAM_TTL: Duration = Duration::from_secs(4 * 3600);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(40);
+const VIZ_BARS: usize = 32;
 const PREFETCH_AHEAD: usize = 5;
 const PREFETCH_BEHIND: usize = 3; // чтобы "назад" тоже было мгновенным
 
@@ -709,7 +766,6 @@ impl App {
         if self.ui.get_lyrics_open() {
             self.set_lyrics_open(false);
         }
-        self.ui.set_queue_open(false);
         self.push_nav();
         self.art_gen += 1;
         let gen = self.art_gen;
@@ -929,10 +985,11 @@ impl App {
     // ── эквалайзер и скорость ──
 
     fn apply_fx(&mut self) {
+        let viz = self.viz_used;
         let st = &mut self.store.settings;
         st.eq.resize(fx::BANDS.len(), 0.0);
         for p in self.player.iter().chain(&self.player2).chain(self.xf.as_ref().map(|x| &x.0)) {
-            p.send(Cmd::Af(fx::chain(&st.eq, st.speed, st.keep_pitch)));
+            p.send(Cmd::Af(fx::chain(&st.eq, st.speed, st.keep_pitch, viz)));
             p.send(Cmd::Speed(st.speed as f64));
             p.send(Cmd::KeepPitch(st.keep_pitch));
         }
@@ -2476,7 +2533,7 @@ impl App {
     fn spawn_player(&self, volume: f64) -> Option<Player> {
         let p = Player::spawn(volume, |ev| post(move |a| a.on_ev(ev))).map_err(|e| eprintln!("{e:#}")).ok()?;
         let st = &self.store.settings;
-        p.send(Cmd::Af(fx::chain(&st.eq, st.speed, st.keep_pitch)));
+        p.send(Cmd::Af(fx::chain(&st.eq, st.speed, st.keep_pitch, self.viz_used)));
         p.send(Cmd::Speed(st.speed as f64));
         p.send(Cmd::KeepPitch(st.keep_pitch));
         Some(p)
@@ -3324,6 +3381,7 @@ impl App {
             tops.push(top);
             words.push(ws);
             items.push(LyrLine {
+                text: (&*text).into(),
                 rows: Rc::new(VecModel::from(rows.clone())).into(),
                 top,
                 empty: false,
@@ -3366,14 +3424,17 @@ impl App {
             self.lyr_shown = pos;
             // дальше всё считаем по часам интерфейса — по ним рисуется заливка. Они идут сами по времени кадров.
             // Разошлись с плеером — не прыгаем, а догоняем: часы идут чуть быстрее или медленнее (до 8%), глаз
-            // этого не видит. Прыжок — только при перемотке (больше полсекунды) или на паузе, где ничего не движется
+            // этого не видит. Прыжок — только при перемотке (больше секунды) или на паузе, где ничего не движется
             let ft = self.ui.invoke_frame_time();
             let ui_pos = self.lyr_base + (ft as f64 / 1000.0 - self.lyr_t0) * self.lyr_rate;
             let off = mpv - ui_pos;
-            let jump = off.abs() > 0.5 || (!playing && off.abs() > 0.03);
+            // сразу после смены скорости mpv перестраивает звук и его позиция скачет на десятую-другую секунды —
+            // эти две секунды часы идут сами на новой скорости, за плеером не гоняются
+            let settling = self.speed_at.elapsed() < Duration::from_secs(2);
+            let jump = off.abs() > 1.0 || (!playing && off.abs() > 0.03);
             let rate = match playing {
                 false => 0.0,
-                true if off.abs() < 0.03 => speed,
+                true if off.abs() < 0.03 || settling => speed,
                 true => speed * (1.0 + (off * 0.5).clamp(-0.08, 0.08)),
             };
             let pos = if jump { mpv } else { ui_pos };
@@ -3467,6 +3528,63 @@ impl App {
         }
     }
 
+    /// Панель «Сейчас играет» открыли, закрыли или сменили вкладку
+    fn deck_changed(&mut self) {
+        // фильтр спектра встаёт в цепочку mpv при первом открытии панели и остаётся до выхода: его включение —
+        // щелчок в звуке, один раз за запуск это терпимо, на каждое открытие — нет
+        if self.ui.get_deck_open() && !self.viz_used {
+            self.viz_used = true;
+            self.apply_fx();
+        }
+        self.update_lyr_timer();
+        if self.ui.get_deck_open() && self.ui.get_deck_tab() == 0 {
+            self.lyr_tick();
+        }
+    }
+
+    /// Спектр рисуем 30 раз в секунду, пока панель видно и музыка играет
+    fn update_viz_timer(&mut self) {
+        let on = self.ui.get_deck_open() && self.ui.get_playing() && !self.ui.get_lyrics_open() && self.mirror.is_none();
+        if on && !self.viz_timer.running() {
+            self.viz_timer.start(TimerMode::Repeated, Duration::from_millis(33), || {
+                with(|a| a.viz_tick());
+            });
+        } else if !on && self.viz_timer.running() {
+            self.viz_timer.stop();
+            self.viz_bars = [0.0; VIZ_BARS];
+            for i in 0..VIZ_BARS {
+                self.viz_model.set_row_data(i, 0.0);
+            }
+        }
+    }
+
+    /// Уровни полос того места, что звучит сейчас, → высоты столбиков. Как в cava: чувствительность сама
+    /// подстраивается под громкость трека, столбик взлетает сразу, а опадает плавно
+    fn viz_tick(&mut self) {
+        let speed = self.store.settings.speed as f64;
+        let pos = self.pos + (self.pos_at.elapsed().as_secs_f64() * speed).min(1.5);
+        let db = self.player.as_ref().and_then(|p| p.viz_at(pos));
+        const N: usize = fx::VIZ_BANDS;
+        let mut amp = [0.0f32; N];
+        if let Some(db) = db {
+            for (i, a) in amp.iter_mut().enumerate() {
+                // музыка к верхам тише (~4 дБ на октаву) — выравниваем, иначе правая половина лежит
+                *a = 10f32.powf((db[i] + 14.0 * i as f32 / (N - 1) as f32) / 20.0);
+            }
+        }
+        let top = amp.iter().cloned().fold(0.0, f32::max);
+        self.viz_peak = (self.viz_peak * 0.996).max(top).max(0.003);
+        for j in 0..VIZ_BARS {
+            let x = j as f32 * (N - 1) as f32 / (VIZ_BARS - 1) as f32;
+            let (k, t) = (x as usize, x.fract());
+            let a = amp[k] + (amp[(k + 1).min(N - 1)] - amp[k]) * t;
+            let v = (a / self.viz_peak).powf(0.75).min(1.0);
+            let b = &mut self.viz_bars[j];
+            *b = if v > *b { *b + (v - *b) * 0.7 } else { (*b * 0.86).max(v) };
+            self.viz_model.set_row_data(j, *b);
+        }
+    }
+
     /// Экран текста закрыли или пауза: часы караоке в интерфейсе встают там, где были
     fn lyr_freeze(&mut self) {
         if self.lyr_rate != 0.0 {
@@ -3481,7 +3599,9 @@ impl App {
 
     /// Тикаем только пока экран lyrics открыт и что-то играет: 20 fps, в лайт-режиме ~12
     fn update_lyr_timer(&mut self) {
-        let on = self.ui.get_lyrics_open() && self.ui.get_playing();
+        self.update_viz_timer();
+        // текст нужен и на весь экран, и во вкладке панели «Сейчас играет»
+        let on = (self.ui.get_lyrics_open() || (self.ui.get_deck_open() && self.ui.get_deck_tab() == 0)) && self.ui.get_playing();
         if on && !self.lyr_timer.running() {
             let ms = if self.store.settings.lite { 80 } else { 50 };
             // UI интерполирует до следующего значения чуть дольше периода, чтобы опоздавший тик не давал остановку
@@ -3624,6 +3744,8 @@ fn main() -> Result<(), slint::PlatformError> {
     let pls_model = Rc::new(VecModel::default());
     let lyr_model = Rc::new(VecModel::default());
     let hist_model = Rc::new(VecModel::default());
+    let viz_model: Rc<VecModel<f32>> = Rc::new(VecModel::from(vec![0.0f32; VIZ_BARS]));
+    ui.set_viz(viz_model.clone().into());
     let eq_model: Rc<VecModel<f32>> = Rc::new(VecModel::default());
     ui.set_eq_gains(eq_model.clone().into());
     let art_top_model = Rc::new(VecModel::default());
@@ -3691,6 +3813,7 @@ fn main() -> Result<(), slint::PlatformError> {
         lyr_timer: Timer::default(),
         lyr_idle: Timer::default(),
         lyr_last: Instant::now(),
+        speed_at: Instant::now(),
         lyr_shown: 0.0,
         lyr_base: 0.0,
         lyr_t0: 0.0,
@@ -3793,6 +3916,11 @@ fn main() -> Result<(), slint::PlatformError> {
         conn_adopted: String::new(),
         mirror: None,
         discord_avatars: HashMap::new(),
+        viz_used: false,
+        viz_timer: Timer::default(),
+        viz_model: viz_model.clone(),
+        viz_bars: [0.0; VIZ_BARS],
+        viz_peak: 0.003,
         conn_held: None,
         conn_vol_hold: None,
         conn_vol_sent: None,
@@ -3994,6 +4122,9 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.on_do_import(|u| {
         with(|a| a.import(u.to_string()));
+    });
+    ui.on_deck_changed(|| {
+        with(|a| a.deck_changed());
     });
     ui.on_set_lyrics_open(|open| {
         with(|a| a.set_lyrics_open(open));
@@ -4485,6 +4616,7 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_set_speed(|v| {
         with(|a| {
             a.store.settings.speed = ((v * 20.0).round() / 20.0).clamp(0.5, 2.0);
+            a.speed_at = Instant::now();
             a.apply_fx();
         });
     });

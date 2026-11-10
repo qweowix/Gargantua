@@ -1000,3 +1000,9 @@ msgstr "Viac"
 
 msgid "ЛЮБИМЫЙ ИСПОЛНИТЕЛЬ"
 msgstr "OBĽÚBENÝ INTERPRET"
+
+msgid "Текст"
+msgstr "Text"
+
+msgid "Текст на весь экран"
+msgstr "Text na celú obrazovku"

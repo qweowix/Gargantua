@@ -28,6 +28,7 @@ export struct LyrRow {
 }
 
 export struct LyrLine {
+    text: string, // строка целиком — для панели «Сейчас играет», там она переносится по своей ширине
     rows: [LyrRow],
     top: float, // смещение строки в px от начала текста
     empty: bool,
@@ -1768,7 +1769,18 @@ export component AppWindow inherits Window {
     in property <duration> lyr-step: 66ms; // шаг тика lyrics + запас: за него доезжают заливка и фон
     in property <[TrackItem]> q-hist;
     in property <[TrackItem]> q-next;
-    in-out property <bool> queue-open;
+    // панель «Сейчас играет» справа: вкладки 0 текст, 1 очередь
+    in-out property <bool> deck-open;
+    in-out property <int> deck-tab;
+    in property <[float]> viz; // столбики спектра 0..1
+    property <bool> deck-push: root.width >= 1460px;
+    callback deck-changed();
+    changed deck-open => {
+        root.deck-changed();
+    }
+    changed deck-tab => {
+        root.deck-changed();
+    }
     callback queue-jump(int);
     callback history-jump(int);
     callback queue-move(int, int);
@@ -1888,7 +1900,8 @@ export component AppWindow inherits Window {
             if root.menu-open { root.menu-open = false; return accept; }
             if root.lyrics-open { root.set-lyrics-open(false); keys.focus(); return accept; }
             if root.modal != 0 { root.modal = 0; return accept; }
-            if root.fx-open || root.queue-open || root.conn-open { root.fx-open = false; root.queue-open = false; root.conn-open = false; return accept; }
+            if root.fx-open || root.conn-open { root.fx-open = false; root.conn-open = false; return accept; }
+            if root.deck-open { root.deck-open = false; return accept; }
             keys.focus(); // из поля ввода — обратно к горячим клавишам
             return accept;
         }
@@ -4490,6 +4503,12 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
+
+                // место под панель «Сейчас играет»: в широком окне она раздвигает контент, в узком — лежит поверх
+                Rectangle {
+                    width: root.deck-open && root.deck-push ? 340px : 0px;
+                    animate width { duration: 280ms; easing: cubic-bezier(0.2, 0.9, 0.2, 1); }
+                }
             }
 
             // ── плеер ──
@@ -4736,7 +4755,6 @@ export component AppWindow inherits Window {
                                 tip: root.conn-remote != "" ? @tr("Играет на «{}»", root.conn-remote) : @tr("Устройства");
                                 clicked => {
                                     root.conn-open = !root.conn-open;
-                                    root.queue-open = false;
                                     root.fx-open = false;
                                 }
                             }
@@ -4749,9 +4767,14 @@ export component AppWindow inherits Window {
                                 size: 32px;
                                 icon: Icons.queue;
                                 tip: @tr("Очередь");
-                                active: root.queue-open;
+                                active: root.deck-open && root.deck-tab == 1;
                                 clicked => {
-                                    root.queue-open = !root.queue-open;
+                                    if root.deck-open && root.deck-tab == 1 {
+                                        root.deck-open = false;
+                                    } else {
+                                        root.deck-tab = 1;
+                                        root.deck-open = true;
+                                    }
                                     root.conn-open = false;
                                 }
                             }
@@ -4763,10 +4786,15 @@ export component AppWindow inherits Window {
                                 size: 32px;
                                 icon: Icons.mic;
                                 tip: @tr("Текст песни");
-                                active: root.lyrics-open;
+                                active: root.deck-open && root.deck-tab == 0;
                                 clicked => {
-                                    root.set-lyrics-open(true);
-                                    lyr-keys.focus();
+                                    if root.deck-open && root.deck-tab == 0 {
+                                        root.deck-open = false;
+                                    } else {
+                                        root.deck-tab = 0;
+                                        root.deck-open = true;
+                                    }
+                                    root.conn-open = false;
                                 }
                             }
                         }
@@ -4807,6 +4835,318 @@ export component AppWindow inherits Window {
             }
         }
     }
+    }
+
+    // ── панель «Сейчас играет»: обложка, спектр и текст или очередь. Раздвигает контент, а не лежит поверх ──
+    deck := Rectangle {
+        property <length> w: 340px;
+        x: root.deck-open ? root.width - self.w : root.width + 40px;
+        y: 0px;
+        width: self.w;
+        height: root.height - 96px;
+        visible: (root.deck-open || self.x < root.width) && !root.lyrics-open;
+        background: #0a0812;
+        drop-shadow-blur: root.deck-push ? 0px : 40px;
+        drop-shadow-color: #00000099;
+        animate x { duration: 280ms; easing: cubic-bezier(0.2, 0.9, 0.2, 1); }
+        TouchArea { }
+        Rectangle {
+            x: 0px;
+            width: 1px;
+            background: Theme.line;
+        }
+
+        VerticalLayout {
+            x: 0px;
+            width: deck.w;
+            padding: 16px;
+            spacing: 14px;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: @tr("СЕЙЧАС ИГРАЕТ");
+                    color: Theme.faint;
+                    font-size: 11px;
+                    font-weight: 800;
+                    letter-spacing: 1.5px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+
+                if root.deck-tab == 0: VerticalLayout {
+                    alignment: center;
+                    IconBtn {
+                        size: 28px;
+                        icon: Icons.fullscreen;
+                        tip: @tr("Текст на весь экран");
+                        clicked => {
+                            root.set-lyrics-open(true);
+                            lyr-keys.focus();
+                        }
+                    }
+                }
+
+                // переключатель вкладок с бегунком
+                Rectangle {
+                    width: 156px;
+                    height: 30px;
+                    border-radius: 15px;
+                    background: #ffffff0a;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    Rectangle {
+                        x: root.deck-tab == 0 ? 2px : parent.width / 2;
+                        y: 2px;
+                        width: parent.width / 2 - 2px;
+                        height: 26px;
+                        border-radius: 13px;
+                        background: Theme.c1.transparentize(0.62);
+                        animate x { duration: 220ms; easing: cubic-bezier(0.2, 0.9, 0.2, 1); }
+                    }
+
+                    for t[i] in [@tr("Текст"), @tr("Очередь")]: Rectangle {
+                        x: i * parent.width / 2;
+                        width: parent.width / 2;
+                        Text {
+                            text: t;
+                            color: root.deck-tab == i ? Theme.text : Theme.dim;
+                            font-size: 12px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.deck-tab = i;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // обложка; название и артист — поверх, на затемнении снизу
+            Rectangle {
+                height: self.width;
+                border-radius: 20px;
+                clip: true;
+                background: @linear-gradient(135deg, Theme.deep1 0%, #120d1d 100%);
+                Icon {
+                    d: Icons.note;
+                    width: 88px;
+                    height: 88px;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    fill: #ffffff26;
+                    visible: !root.now-has-cover;
+                }
+
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.now-cover;
+                    image-fit: cover;
+                    opacity: root.now-has-cover ? 1 : 0;
+                    animate opacity { duration: 300ms; }
+                }
+
+                Rectangle {
+                    y: parent.height - self.height;
+                    height: 110px;
+                    background: @linear-gradient(180deg, #00000000 0%, #000000d0 100%);
+                }
+
+                VerticalLayout {
+                    alignment: end;
+                    padding: 16px;
+                    spacing: 2px;
+                    Text {
+                        text: root.has-track ? root.now-title : @tr("Тишина");
+                        color: white;
+                        font-size: 17px;
+                        font-weight: 800;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        text: root.now-artist;
+                        color: #ffffffb8;
+                        font-size: 12px;
+                        overflow: elide;
+                    }
+                }
+
+                Rectangle {
+                    border-radius: 20px;
+                    border-width: 1px;
+                    border-color: #ffffff1c;
+                }
+            }
+
+            // спектр: столбики растут от низа, высоты приходят из Rust уже сглаженными
+            viz-box := Rectangle {
+                height: 54px;
+                for v[i] in root.viz: Rectangle {
+                    property <length> step: viz-box.width / max(1, root.viz.length);
+                    x: i * self.step + 1.5px;
+                    width: self.step - 3px;
+                    height: max(3px, v * viz-box.height);
+                    y: viz-box.height - self.height;
+                    border-radius: 2px;
+                    background: @linear-gradient(180deg, Theme.c2 0%, Theme.c1 100%);
+                }
+            }
+
+            if root.deck-tab == 0: Rectangle {
+                vertical-stretch: 1;
+                clip: true;
+                if root.lyr-state == 0 || root.lyr-state == 3: Text {
+                    text: root.lyr-state == 0 ? @tr("Ищу текст…") : @tr("Текста нет");
+                    color: Theme.faint;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                if root.lyr-state == 2: Flickable {
+                    content-height: deck-plain.preferred-height;
+                    deck-plain := VerticalLayout {
+                        spacing: 8px;
+                        for l in root.lyr-plain: Text {
+                            text: l;
+                            color: Theme.dim;
+                            font-size: 14px;
+                            font-weight: 600;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                // строки с таймингами: поющаяся — в рамке и на трети высоты, список сам к ней подъезжает
+                if root.lyr-state == 1: deck-lyr := Rectangle {
+                    property <length> cur-y;
+                    property <length> cur-h;
+                    VerticalLayout {
+                        y: min(0px, deck-lyr.height * 0.36 - deck-lyr.cur-y - deck-lyr.cur-h / 2);
+                        height: self.preferred-height;
+                        alignment: start;
+                        spacing: 4px;
+                        animate y { duration: 520ms; easing: cubic-bezier(0.2, 0.9, 0.2, 1); }
+                        for line[i] in root.lyr-lines: Rectangle {
+                            // где поющаяся строка — узнаём от неё самой: высоты строк разные (перенос слов)
+                            property <bool> me: i == max(0, root.lyr-cur);
+                            property <bool> lit: i == root.act0 || i == root.act1 || i == root.act2 || i == root.lyr-cur;
+                            height: deck-line.preferred-height + 16px;
+                            border-radius: 12px;
+                            background: self.lit ? Theme.c1.transparentize(0.86) : deck-line-ta.has-hover ? #ffffff0a : #ffffff00;
+                            border-width: 1px;
+                            border-color: self.lit ? Theme.c1.transparentize(0.5) : #ffffff00;
+                            animate background, border-color { duration: 260ms; }
+                            init => {
+                                if self.me {
+                                    deck-lyr.cur-y = self.y;
+                                    deck-lyr.cur-h = self.height;
+                                }
+                            }
+                            changed me => {
+                                if self.me {
+                                    deck-lyr.cur-y = self.y;
+                                    deck-lyr.cur-h = self.height;
+                                }
+                            }
+                            changed y => {
+                                if self.me {
+                                    deck-lyr.cur-y = self.y;
+                                    deck-lyr.cur-h = self.height;
+                                }
+                            }
+                            deck-line := Text {
+                                x: 12px;
+                                y: 8px;
+                                width: parent.width - 24px;
+                                text: line.dots ? "•  •  •" : line.text;
+                                color: parent.lit ? Theme.soft2 : i < root.lyr-cur ? Theme.faint : Theme.dim;
+                                font-size: line.bg ? 12px : 14px;
+                                font-weight: 700;
+                                wrap: word-wrap;
+                                horizontal-alignment: line.right ? right : left;
+                                animate color { duration: 260ms; }
+                            }
+
+                            deck-line-ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.lyr-seek(i);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if root.deck-tab == 1: VerticalLayout {
+                vertical-stretch: 1;
+                spacing: 8px;
+                Text {
+                    text: @tr("ИСТОРИЯ");
+                    color: Theme.faint;
+                    font-size: 11px;
+                    font-weight: 700;
+                    letter-spacing: 1.5px;
+                    visible: root.q-hist.length > 0;
+                }
+
+                if root.q-hist.length > 0: ListView {
+                    height: min(108px, root.q-hist.length * 52px);
+                    for t[i] in root.q-hist: QueueRow {
+                        item: t;
+                        dim: true;
+                        play => {
+                            root.history-jump(i);
+                        }
+                        want-cover(u) => {
+                            root.want-cover(u);
+                        }
+                    }
+                }
+
+                Text {
+                    text: root.shuffle ? @tr("ДАЛЕЕ · ВПЕРЕМЕШКУ") : @tr("ДАЛЕЕ");
+                    color: Theme.faint;
+                    font-size: 11px;
+                    font-weight: 700;
+                    letter-spacing: 1.5px;
+                }
+
+                ListView {
+                    vertical-stretch: 1;
+                    for t[i] in root.q-next: QueueRow {
+                        item: t;
+                        editable: true;
+                        play => {
+                            root.queue-jump(i);
+                        }
+                        move(d) => {
+                            root.queue-move(i, d);
+                        }
+                        remove => {
+                            root.queue-remove(i);
+                        }
+                        want-cover(u) => {
+                            root.want-cover(u);
+                        }
+                    }
+                }
+
+                if root.q-next.length == 0: Text {
+                    text: @tr("Дальше пусто");
+                    color: Theme.faint;
+                    horizontal-alignment: center;
+                }
+            }
+        }
     }
 
     // ── устройства Connect: всплывают над плеером, клик — звук переезжает туда ──
@@ -5092,152 +5432,6 @@ export component AppWindow inherits Window {
                 toggled => {
                     root.set-keep-pitch(!root.keep-pitch);
                 }
-            }
-        }
-    }
-
-    // ── панель очереди: выезжает справа над контентом ──
-    Rectangle {
-        property <length> w: min(420px, root.width * 0.42);
-        x: root.queue-open ? root.width - self.w : root.width + 30px;
-        y: 0px;
-        width: self.w;
-        height: root.height - 96px;
-        visible: root.queue-open || self.x < root.width;
-        background: #0c0a15f5;
-        drop-shadow-blur: 40px;
-        drop-shadow-color: #00000099;
-        animate x { duration: 320ms; easing: cubic-bezier(0.2, 0.9, 0.2, 1); }
-        TouchArea { }
-
-        Rectangle {
-            x: 0px;
-            width: 1px;
-            background: Theme.line;
-        }
-
-        VerticalLayout {
-            padding: 16px;
-            spacing: 8px;
-            HorizontalLayout {
-                Text {
-                    text: @tr("Очередь");
-                    color: Theme.text;
-                    font-size: 20px;
-                    font-weight: 800;
-                    horizontal-stretch: 1;
-                    vertical-alignment: center;
-                }
-
-                IconBtn {
-                    size: 32px;
-                    icon: Icons.close;
-                    tip: @tr("Закрыть");
-                    clicked => {
-                        root.queue-open = false;
-                    }
-                }
-            }
-
-            Text {
-                text: @tr("ИСТОРИЯ");
-                color: Theme.faint;
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 1.5px;
-                visible: root.q-hist.length > 0;
-            }
-
-            if root.q-hist.length > 0: ListView {
-                height: min(170px, root.q-hist.length * 52px);
-                for t[i] in root.q-hist: QueueRow {
-                    item: t;
-                    dim: true;
-                    play => {
-                        root.history-jump(i);
-                    }
-                    want-cover(u) => {
-                        root.want-cover(u);
-                    }
-                }
-            }
-
-            Text {
-                text: @tr("СЕЙЧАС ИГРАЕТ");
-                color: Theme.soft2;
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 1.5px;
-            }
-
-            Rectangle {
-                height: 56px;
-                border-radius: 12px;
-                background: Theme.c1.transparentize(0.87);
-                border-width: 1px;
-                border-color: Theme.c1.transparentize(0.67);
-                HorizontalLayout {
-                    padding: 8px;
-                    spacing: 10px;
-                    Cover {
-                        width: 40px;
-                        img: root.now-cover;
-                        has: root.now-has-cover;
-                        src: root.now-source;
-                    }
-
-                    VerticalLayout {
-                        alignment: center;
-                        Text {
-                            text: root.has-track ? root.now-title : @tr("Тишина");
-                            color: Theme.soft2;
-                            font-size: 13px;
-                            font-weight: 700;
-                            overflow: elide;
-                        }
-
-                        Text {
-                            text: root.now-artist;
-                            color: Theme.dim;
-                            font-size: 11px;
-                            overflow: elide;
-                        }
-                    }
-                }
-            }
-
-            Text {
-                text: root.shuffle ? @tr("ДАЛЕЕ · ВПЕРЕМЕШКУ") : @tr("ДАЛЕЕ");
-                color: Theme.faint;
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 1.5px;
-            }
-
-            ListView {
-                vertical-stretch: 1;
-                for t[i] in root.q-next: QueueRow {
-                    item: t;
-                    editable: true;
-                    play => {
-                        root.queue-jump(i);
-                    }
-                    move(d) => {
-                        root.queue-move(i, d);
-                    }
-                    remove => {
-                        root.queue-remove(i);
-                    }
-                    want-cover(u) => {
-                        root.want-cover(u);
-                    }
-                }
-            }
-
-            if root.q-next.length == 0: Text {
-                text: @tr("Дальше пусто");
-                color: Theme.faint;
-                horizontal-alignment: center;
             }
         }
     }
