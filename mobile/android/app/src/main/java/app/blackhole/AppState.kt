@@ -131,7 +131,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     fun addNote(t: Track, text: String) = viewModelScope.launch {
         if (text.isBlank()) return@launch
-        val pos = (controller?.currentPosition ?: position) / 1000.0
+        // звук на другом устройстве — время берём у него (position), а не у своего плеера, который стоит на старом месте
+        val pos = (if (remote != null) position else controller?.currentPosition ?: position) / 1000.0
         notes = runCatching { core("note_add") { put("key", JsonPrimitive(t.key)); put("pos", JsonPrimitive(pos)); put("text", JsonPrimitive(text)) }.to<List<Note>>() }.getOrDefault(notes)
     }
 
@@ -622,6 +623,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         if (t?.key != current?.key) {
             current = t
             loadLyrics(t)
+            if (t != null) loadNotes(t) else notes = emptyList()
         }
         playing = c.isPlaying
         buffering = c.playbackState == Player.STATE_BUFFERING
@@ -938,6 +940,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         if (t?.key != current?.key) {
             current = t
             loadLyrics(t)
+            if (t != null) loadNotes(t) else notes = emptyList()
         }
         playing = st.playing
         buffering = false

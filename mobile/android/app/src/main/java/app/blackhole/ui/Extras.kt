@@ -73,6 +73,17 @@ import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.roundToInt
 
+/** Значок умного перемешивания: стрелки перемешки поменьше и три звёздочки (тот же рисунок, что на ПК) */
+val SmartShuffle: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    androidx.compose.ui.graphics.vector.ImageVector.Builder("SmartShuffle", 24.dp, 24.dp, 24f, 24f)
+        .addPath(
+            androidx.compose.ui.graphics.vector.addPathNodes("M8.47 12.14 4.33 8.00 3.20 9.13 l4.14 4.14 zM11.60 8.00 l1.63 1.63 L3.20 19.67 4.33 20.80 14.37 10.77 16.00 12.40 V8.00 zm0.26 7.53 -1.13 1.13 2.50 2.50 L11.60 20.80 H16.00 v-4.40 l-1.63 1.63 zM19.50 1.20L20.51 3.79L23.10 4.80L20.51 5.81L19.50 8.40L18.49 5.81L15.90 4.80L18.49 3.79zM13.20 0.50L13.73 1.87L15.10 2.40L13.73 2.93L13.20 4.30L12.67 2.93L11.30 2.40L12.67 1.87zM22.00 9.50L22.48 10.72L23.70 11.20L22.48 11.68L22.00 12.90L21.52 11.68L20.30 11.20L21.52 10.72z"),
+            fill = androidx.compose.ui.graphics.SolidColor(Color.Black),
+            pathFillType = androidx.compose.ui.graphics.PathFillType.EvenOdd,
+        )
+        .build()
+}
+
 /** Эквалайзер как на ПК: те же пресеты и 10 полос, шаг 1 дБ */
 @UnstableApi
 @Composable

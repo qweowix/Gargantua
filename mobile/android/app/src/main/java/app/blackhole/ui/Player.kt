@@ -1,6 +1,6 @@
 package app.blackhole.ui
 
-import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Bedtime
 import android.media.AudioManager
@@ -72,6 +72,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import app.blackhole.Screen
 import app.blackhole.Track
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -389,7 +390,7 @@ fun NowPlaying(vm: AppState) {
                                 Box(
                                     Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp).size(20.dp).clip(CircleShape).background(Color(0xFF3A3A3C)),
                                     contentAlignment = Alignment.Center,
-                                ) { Icon(Icons.Rounded.Shuffle, null, tint = Color.White, modifier = Modifier.size(13.dp)) }
+                                ) { Icon(if (vm.smartShuffle && vm.remote == null) SmartShuffle else Icons.Rounded.Shuffle, null, tint = Color.White, modifier = Modifier.size(13.dp)) }
                             }
                         }
                     }
@@ -465,6 +466,11 @@ private fun TrackActions(vm: AppState, t: Track) {
                 onClick = { menu = false; vm.startRadio(t) },
             )
             DropdownMenuItem(
+                text = { Text(tr("Эквалайзер и скорость", "Equalizer and speed", "Еквалайзер і швидкість", "Ekvalizér a rýchlosť")) },
+                leadingIcon = { Icon(Icons.Rounded.Tune, null) },
+                onClick = { menu = false; vm.nowOpen = false; vm.go(Screen.Eq) },
+            )
+            DropdownMenuItem(
                 text = { Text(tr("Заметки к моментам", "Notes at moments", "Нотатки до моментів", "Poznámky k momentom")) },
                 leadingIcon = { Icon(Icons.Rounded.EditNote, null) },
                 onClick = { menu = false; notes = true },
@@ -486,11 +492,14 @@ private fun TrackActions(vm: AppState, t: Track) {
 
 /** Полоса как у Apple: толстая скруглённая, без точки; пока тянешь — толще и ярче */
 @Composable
-private fun Bar(v: Float, grab: Float, modifier: Modifier) {
+private fun Bar(v: Float, grab: Float, modifier: Modifier, marks: List<Float> = emptyList()) {
+    val dot = LocalAccent.current.c1
     Canvas(modifier.fillMaxWidth().height(28.dp)) {
         val h = (7 + 5 * grab).dp.toPx()
         val top = (size.height - h) / 2
         val r = CornerRadius(h / 2)
+        // заметки к моментам — точками над полосой
+        for (m in marks) drawCircle(dot, 2.5.dp.toPx(), Offset(size.width * m.coerceIn(0f, 1f), top - 5.dp.toPx()))
         drawRoundRect(Color(0x33FFFFFF), Offset(0f, top), Size(size.width, h), r)
         drawRoundRect(Color.White.copy(alpha = 0.55f + 0.4f * grab), Offset(0f, top), Size((size.width * v).coerceAtLeast(h), h), r)
     }
@@ -515,6 +524,7 @@ private fun Seek(vm: AppState) {
                     onDragCancel = { drag = null },
                 ) { ch, _ -> drag = (ch.position.x / size.width).coerceIn(0f, 1f) }
             },
+        marks = vm.notes.map { (it.pos * 1000 / dur).toFloat() },
     )
     val at = (v * dur / 1000).toLong()
     Row(Modifier.fillMaxWidth()) {
@@ -594,7 +604,7 @@ private fun QueueView(vm: AppState) {
     // как у Apple: «Далее» и переключатели перемешки и повтора над списком
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(tr("Далее", "Playing Next", "Далі", "Ďalej"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-        QueueToggle(if (vm.smartShuffle && vm.shuffle && vm.remote == null) Icons.Rounded.AutoAwesome else Icons.Rounded.Shuffle, vm.shuffle) { vm.toggleShuffle() }
+        QueueToggle(if (vm.smartShuffle && vm.shuffle && vm.remote == null) SmartShuffle else Icons.Rounded.Shuffle, vm.shuffle) { vm.toggleShuffle() }
         Spacer(Modifier.width(10.dp))
         QueueToggle(if (vm.repeat == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, vm.repeat != Player.REPEAT_MODE_OFF) { vm.cycleRepeat() }
     }
