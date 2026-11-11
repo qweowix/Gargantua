@@ -66,11 +66,11 @@ pub fn choose(all: &[Found]) -> Option<Found> {
             if let (Some(anchor), Lyrics::Synced(lines)) = (anchor, &mut f.lyr) {
                 if f.credit.provider != "LRCLIB" {
                     let Some(off) = offset(lines, anchor) else {
-                        crate::logln!("lyrics: у {} другая версия трека, пропускаю", f.credit.provider);
+                        eprintln!("lyrics: у {} другая версия трека, пропускаю", f.credit.provider);
                         return None;
                     };
                     if off.abs() > 0.1 {
-                        crate::logln!("lyrics: сдвигаю {} на {off:.2} с", f.credit.provider);
+                        eprintln!("lyrics: сдвигаю {} на {off:.2} с", f.credit.provider);
                         shift(lines, off);
                     }
                 }

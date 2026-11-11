@@ -283,8 +283,11 @@ pub fn log_path() -> PathBuf {
 /// Строка в журнал (и в stderr, как раньше). Файл не растёт без конца: перевалил за 512 КБ — остаётся свежая половина
 pub fn log(msg: &str) {
     use std::io::Write;
-    let msg = &redact(msg);
+    let msg = &squash(&redact(msg));
     eprintln!("{msg}");
+    if cfg!(test) {
+        return; // тесты в журнал пользователя не пишут
+    }
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let p = log_path();
@@ -321,6 +324,26 @@ fn redact(msg: &str) -> String {
     cur
 }
 
+/// Одна запись — одна короткая строка: переносы схлопнуты, у адресов срезаны параметры (у ссылок googlevideo
+/// их на килобайт), всё длиннее 300 знаков обрезано
+fn squash(msg: &str) -> String {
+    let words: Vec<String> = msg
+        .split_whitespace()
+        .map(|w| match (w.find("://"), w.find('?')) {
+            (Some(_), Some(q)) => {
+                let end = w[q..].find(':').map_or(w.len(), |i| q + i); // «…?a=b: текст ошибки» — двоеточие оставляем
+                format!("{}?…{}", &w[..q], &w[end..])
+            }
+            _ => w.to_string(),
+        })
+        .collect();
+    let line = words.join(" ");
+    match line.char_indices().nth(300) {
+        Some((i, _)) => format!("{}…", &line[..i]),
+        None => line,
+    }
+}
+
 /// Секунды Unix → «2026-11-10 09:41:07» (UTC), без сторонних библиотек дат
 fn stamp(secs: u64) -> String {
     let (days, rem) = ((secs / 86400) as i64, secs % 86400);
@@ -336,12 +359,32 @@ fn stamp(secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}", rem / 3600, rem / 60 % 60, rem % 60)
 }
 
-/// Хвост журнала для кнопки «Скопировать»: последние строки, не больше ~40 КБ
+/// Хвост журнала для кнопки «Скопировать»: 60 последних разных записей; повторы свёрнуты в одну строку
+/// со счётчиком «×N» и временем последнего раза
 pub fn log_tail() -> String {
     let all = std::fs::read(log_path()).unwrap_or_default();
-    let tail = &all[all.len().saturating_sub(40 * 1024)..];
-    let cut = if tail.len() < all.len() { tail.iter().position(|&b| b == b'\n').map_or(0, |i| i + 1) } else { 0 };
-    String::from_utf8_lossy(&tail[cut..]).into_owned()
+    tail_of(&String::from_utf8_lossy(&all[all.len().saturating_sub(64 * 1024)..]))
+}
+
+fn tail_of(text: &str) -> String {
+    let mut seen: Vec<(String, &str, u32)> = vec![]; // (текст без времени, время, сколько раз)
+    for l in text.lines() {
+        // строки старого формата могли быть многострочными и длинными — приводим к тому же виду
+        let (at, msg) = if l.len() > 20 && l.is_char_boundary(19) && l.as_bytes()[4] == b'-' { l.split_at(19) } else { ("", l) };
+        let msg = squash(msg);
+        if msg.is_empty() {
+            continue;
+        }
+        match seen.iter().position(|(m, ..)| *m == msg) {
+            Some(i) => {
+                let (m, _, n) = seen.remove(i);
+                seen.push((m, at, n + 1));
+            }
+            None => seen.push((msg, at, 1)),
+        }
+    }
+    let from = seen.len().saturating_sub(60);
+    seen[from..].iter().map(|(m, at, n)| if *n > 1 { format!("{at} {m} ×{n}\n") } else { format!("{at} {m}\n") }).collect()
 }
 
 /// Как eprintln!, но строка ещё и ложится в журнал
@@ -358,6 +401,14 @@ mod log_tests {
         assert_eq!(r, "connect: https://x.app/connect/uid.json?auth=…&print=silent: Dns Failed");
         assert_eq!(super::redact("https://a/b?key=AIzaSECRET"), "https://a/b?key=…");
         assert_eq!(super::redact("refresh_token=abc id_token=def"), "refresh_token=… id_token=…");
+    }
+
+    #[test]
+    fn log_is_compact() {
+        assert_eq!(super::squash("кэш: https://rr3.googlevideo.com/videoplayback?expire=1&sig=abc: Network\n  Error"), "кэш: https://rr3.googlevideo.com/videoplayback?…: Network Error");
+        assert_eq!(super::squash(&"я".repeat(500)).chars().count(), 301);
+        let t = super::tail_of("2026-11-10 10:00:00 prefetch: x\n2026-11-10 10:00:05 другое\n2026-11-10 10:00:09 prefetch: x\n");
+        assert_eq!(t, "2026-11-10 10:00:05 другое\n2026-11-10 10:00:09 prefetch: x ×2\n");
         assert_eq!(super::redact("обычная строка: без секретов"), "обычная строка: без секретов");
     }
 

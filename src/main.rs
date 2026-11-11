@@ -4658,6 +4658,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 a.toast(&tr!("Вышла версия {} — обновиться можно в настройках", "Version {} is out — update in Settings", "Вийшла версія {} — оновитися можна в налаштуваннях", "Vyšla verzia {} — aktualizuj v nastaveniach", ver));
             }),
             Ok(None) => {}
+            // 404 — релизов ещё нет (или репозиторий закрыт): это не ошибка
+            Err(e) if format!("{e:#}").contains("404") => {}
             Err(e) => crate::logln!("проверка обновлений: {e:#}"),
         }
     });

@@ -835,6 +835,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
     private var pubPos = 0.0
     private var pubPlaying = false
     private var pubAt = 0L
+    private var handedAt = 0L // когда отдали сессию другому устройству: пару секунд о себе не пишем
 
     // нажали паузу/перемотку на зеркале: пока хозяин не записал новое состояние, события с прежним
     // (эхо нашей же команды) не откатывают кнопку и ползунок назад
@@ -885,8 +886,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
     }
 
     private fun onConn(r: ConnSnap) {
-        r.cmds.forEach { connExec(it.op, it.a) }
         connHost = r.state?.host
+        r.cmds.forEach { connExec(it.op, it.a) } // после connHost: «transfer» ставит туда нового хозяина
         val st = r.state
         if (st != null && st.host == connMe && st.xfer.isNotEmpty() && st.xfer != adopted && r.now - st.at < 60_000) {
             adopted = st.xfer
@@ -1045,6 +1046,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
             return
         }
         if (connMe.isEmpty()) return
+        // только что отдали сессию: наша пауза не должна лечь в базу поверх передачи и вернуть хозяина сюда
+        if (System.currentTimeMillis() - handedAt < 5_000) return
         val st = localState() ?: return
         if (!st.playing && connHost != connMe) return
         val sig = "${st.track?.key}|${st.playing}|${st.shuffle}${st.smart}|${st.repeat}|${st.vol}"
@@ -1087,6 +1090,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         val st = localState() ?: return toast(tr("Сначала включи что-нибудь", "Play something first", "Спершу увімкни щось", "Najprv niečo pusti"))
         val out = st.copy(host = id, playing = true, xfer = "$connMe-${connNow()}")
         connHost = id // сессия уже не наша: на паузе больше не пишем «хозяин я»
+        handedAt = System.currentTimeMillis()
         viewModelScope.launch { runCatching { core("connect_publish") { put("state", json.encodeToJsonElement(out)); put("queue", JsonPrimitive(true)) } } }
         controller?.pause()
     }

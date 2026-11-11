@@ -43,7 +43,10 @@ def ydl(args, fast, noads=False):
 class Quiet:
     def debug(self, m): pass
     info = warning = debug
-    def error(self, m): pass
+    def error(self, m):
+        global last
+        last = m
+last = ''
 print('ready', flush=True)
 while True:
     if not select.select([sys.stdin], [], [], idle)[0]:
@@ -56,9 +59,13 @@ while True:
     def take(i):
         # без Премиума YouTube вешает рекламу: ссылка откроется, лишь когда её можно пропустить (до этого 403)
         global at
+        if i is None:
+            # yt-dlp с настройками как у командной строки ошибку не бросает, а пишет в журнал и отдаёт пустоту
+            raise Exception(last or 'yt-dlp ничего не вернул')
         at = max(at, i.get('available_at') or 0)
         return i['url']
     for u in req['urls']:
+        last = ''
         try:
             # music.youtube.com тянет ещё и клиент web_music — лишний запрос; звук тот же
             got[u] = take(ydl(req['args'], True, req.get('noads', True)).extract_info(u.replace('//music.youtube.com/', '//www.youtube.com/'), download=False))
