@@ -1129,3 +1129,6 @@ msgstr "Licencia"
 
 msgid "Интерфейс"
 msgstr "Rozhranie"
+
+msgid "История и настройки хранятся у тебя. Плейлисты и статистика — в твоём аккаунте, одинаковые на компьютере и телефоне. Никаких подписок, рекламы и телеметрии."
+msgstr "História a nastavenia zostávajú u teba. Playlisty a štatistiky sú v tvojom účte, rovnaké na počítači aj v telefóne. Žiadne predplatné, reklamy ani telemetria."

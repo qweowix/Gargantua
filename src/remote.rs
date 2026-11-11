@@ -146,6 +146,7 @@ impl App {
             playing: self.ui.get_playing() && !self.restored,
             shuffle: self.shuffle,
             smart: self.shuffle && self.store.settings.smart_shuffle,
+            marks: self.upnext.iter().map(crate::key).filter(|k| self.smart_keys.contains(k)).collect(),
             repeat: self.repeat,
             vol: Some(self.store.settings.volume as f64),
             xfer: String::new(),
@@ -212,6 +213,7 @@ impl App {
         self.shuffle = st.shuffle;
         self.ui.set_shuffle(st.shuffle);
         self.ui.set_smart_shuffle(st.smart); // значок — как у устройства со звуком
+        self.smart_keys = st.marks.iter().cloned().collect(); // и звёздочки в очереди те же
         self.repeat = st.repeat.min(2);
         self.ui.set_repeat(self.repeat as i32);
         // ползунок показывает громкость там, где звук; пока его тянут, эхо из базы не дёргает его назад
@@ -244,7 +246,10 @@ impl App {
     /// Сессию перекинули сюда
     fn conn_adopt(&mut self, st: State) {
         self.mirror = None;
-        self.ui.set_smart_shuffle(self.store.settings.smart_shuffle);
+        // сессия переезжает целиком: умный режим и уже подмешанные треки — как были на прошлом устройстве
+        self.store.settings.smart_shuffle = st.smart;
+        self.smart_keys = st.marks.iter().cloned().collect();
+        self.ui.set_smart_shuffle(st.smart);
         self.ui.set_volume(self.store.settings.volume);
         self.ui.set_conn_remote("".into());
         (self.played, self.upnext, self.source) = (st.played.clone(), st.upnext.clone(), st.source.clone());

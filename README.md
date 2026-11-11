@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/qweowix/Gargantua/releases/latest"><b>Скачать</b></a> ·
-  <a href="https://t.me/BlackHolePlayer">Telegram</a> ·
+  <a href="https://t.me/qweowixsrealm">Telegram</a> ·
   <a href="#english">English</a>
 </p>
 

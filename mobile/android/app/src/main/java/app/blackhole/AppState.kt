@@ -975,6 +975,11 @@ class AppState(app: Application) : AndroidViewModel(app) {
         val t = st.track ?: return
         unshuffled = st.source.map { it.key }
         shuffle = st.shuffle
+        // сессия переезжает целиком: умный режим и уже подмешанные треки — как были на прошлом устройстве
+        smartShuffle = st.smart
+        prefs.edit { putBoolean("smart_shuffle", st.smart) }
+        App.smartIds.clear()
+        App.smartIds.addAll(st.marks)
         c.repeatMode = modeOf(st.repeat)
         c.setMediaItems((st.played + t + st.upnext).map { it.item() }, st.played.size, (posNow(st) * 1000).toLong())
         c.prepare()
@@ -1028,7 +1033,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
             played = all.take(i).takeLast(50), upnext = all.drop(i + 1).take(500),
             source = if (shuffle) all.sortedBy { at[it.key] ?: Int.MAX_VALUE } else all,
             pos = c.currentPosition / 1000.0, playing = c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING),
-            shuffle = shuffle, smart = shuffle && smartShuffle, repeat = repeatOf(c.repeatMode),
+            shuffle = shuffle, smart = shuffle && smartShuffle, marks = App.smartIds.toList(), repeat = repeatOf(c.repeatMode),
             vol = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) / maxVol().toDouble(),
         )
     }

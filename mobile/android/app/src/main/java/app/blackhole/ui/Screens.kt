@@ -818,7 +818,7 @@ fun SettingsScreen(vm: AppState) {
             "Безкоштовний плеєр без реклами: YouTube Music, SoundCloud і Яндекс в одному пошуку, імпорт плейлистів зі Spotify та Apple Music за посиланням або QR. Тексти по словах, еквалайзер і швидкість, кросфейд, розумне перемішування, завантаження плейлистів для офлайну, статистика з підсумками місяця й року, нотатки до моментів треку. Плейлисти спільні з плеєром на комп'ютері, а через Connect ним можна керувати з телефона й перекидати звук між пристроями.",
             "Bezplatný prehrávač bez reklám: YouTube Music, SoundCloud a Yandex v jednom vyhľadávaní, import playlistov zo Spotify a Apple Music cez odkaz alebo QR. Texty po slovách, ekvalizér a rýchlosť, crossfade, inteligentné miešanie, sťahovanie playlistov na offline, štatistiky so zhrnutím mesiaca a roka, poznámky k momentom skladby. Playlisty sú spoločné s prehrávačom na počítači a cez Connect ho ovládaš z telefónu a presúvaš zvuk medzi zariadeniami.",
         ))
-        Dim("GitHub: github.com/qweowix/Gargantua · Telegram: t.me/BlackHolePlayer")
+        Dim("GitHub: github.com/qweowix/Gargantua · Telegram: t.me/qweowixsrealm")
         val newVer by app.blackhole.Updater.version.collectAsState()
         val updating by app.blackhole.Updater.busy.collectAsState()
         val ctx = androidx.compose.ui.platform.LocalContext.current

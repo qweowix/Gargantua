@@ -44,6 +44,9 @@ pub struct State {
     pub shuffle: bool,
     /// умное перемешивание у хозяина (значок на остальных устройствах)
     pub smart: bool,
+    /// ключи треков очереди, подмешанных умным перемешиванием (не из плейлиста) — у всех помечены одинаково
+    #[serde(deserialize_with = "nullable")]
+    pub marks: Vec<String>,
     /// 0 выкл, 1 вся очередь, 2 один трек
     pub repeat: u8,
     /// громкость там, где идёт звук (0..1). Нет — хозяин старой версии
@@ -308,9 +311,10 @@ pub fn active_host(tree: &Value) -> Option<String> {
 fn publish(s: &State, queue: bool) -> Result<()> {
     let mut v = json!({
         "host": s.host, "track": s.track, "pos": s.pos, "at": {".sv": "timestamp"},
-        "playing": s.playing, "shuffle": s.shuffle, "repeat": s.repeat,
+        "playing": s.playing, "shuffle": s.shuffle, "smart": s.smart, "repeat": s.repeat,
     });
     if queue {
+        v["marks"] = json!(s.marks);
         v["played"] = json!(s.played);
         v["upnext"] = json!(s.upnext);
         v["source"] = json!(s.source);
