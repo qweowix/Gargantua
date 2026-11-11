@@ -1093,3 +1093,39 @@ msgstr "Zamiešané. Ešte raz — inteligentné miešanie"
 
 msgid "Включить следующим"
 msgstr "Prehrať ako ďalšiu"
+
+msgid "НАЗВАНИЕ"
+msgstr "NÁZOV"
+
+msgid "ДЛИНА"
+msgstr "DĹŽKA"
+
+msgid "История, статистика и настройки хранятся у тебя. Плейлисты — в твоём аккаунте, одинаковые на компьютере и телефоне. Никаких подписок, рекламы и телеметрии."
+msgstr "História, štatistiky a nastavenia zostávajú u teba. Playlisty sú v tvojom účte, rovnaké na počítači aj v telefóne. Žiadne predplatné, reklamy ani telemetria."
+
+msgid "Компьютер и телефон заодно"
+msgstr "Počítač a telefón spolu"
+
+msgid "Есть приложение для Android с теми же плейлистами и статистикой. Connect: звук играет на одном устройстве, управлять можно с любого, а сессия перекидывается одним нажатием."
+msgstr "Existuje aplikácia pre Android s rovnakými playlistmi a štatistikami. Connect: zvuk hrá na jednom zariadení, ovládaš ho z ktoréhokoľvek a reláciu presunieš jedným ťuknutím."
+
+msgid "Панель «Сейчас играет»"
+msgstr "Panel „Práve hrá“"
+
+msgid "Справа от списка — обложка, спектр и текст или очередь. Заметки к моментам трека и поиск песни по строчке из неё."
+msgstr "Vedľa zoznamu: obal, spektrum a text alebo poradie. Poznámky k momentom skladby a hľadanie piesne podľa riadku z nej."
+
+msgid "Кроссфейд, эквалайзер, скорость и slowed, таймер сна, горячие клавиши, очередь мышью, перемешка и повтор. Умное перемешивание подмешивает похожее раз в 2–3 трека, «дальше похожее» продолжает, когда плейлист кончился."
+msgstr "Crossfade, ekvalizér, rýchlosť a slowed, časovač spánku, klávesové skratky, poradie myšou, miešanie a opakovanie. Inteligentné miešanie pridá niečo podobné každé 2–3 skladby a „ďalej podobné“ pokračuje, keď playlist skončí."
+
+msgid "Сколько слушал за день, неделю и месяц, год клеточками, любимый исполнитель и топ треков. История прослушиваний, итоги месяца и года карточкой и умные подборки на главной."
+msgstr "Koľko si počúval za deň, týždeň a mesiac, rok v štvorčekoch, obľúbený interpret a top skladby. História počúvania, zhrnutie mesiaca a roka ako karta a inteligentné výbery na domovskej stránke."
+
+msgid "Виден в панели и медиа-клавишах (MPRIS), показывает, что играет, в статусе Discord. Новые версии находит и ставит сам."
+msgstr "Je viditeľný v paneli a mediálnych klávesoch (MPRIS) a v stave Discordu. Nové verzie nájde a nainštaluje sám."
+
+msgid "Лицензия"
+msgstr "Licencia"
+
+msgid "Интерфейс"
+msgstr "Rozhranie"

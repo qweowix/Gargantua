@@ -390,7 +390,7 @@ fun NowPlaying(vm: AppState) {
                                 Box(
                                     Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp).size(20.dp).clip(CircleShape).background(Color(0xFF3A3A3C)),
                                     contentAlignment = Alignment.Center,
-                                ) { Icon(if (vm.smartShuffle && vm.remote == null) SmartShuffle else Icons.Rounded.Shuffle, null, tint = Color.White, modifier = Modifier.size(13.dp)) }
+                                ) { Icon(if (vm.smartShown) SmartShuffle else Icons.Rounded.Shuffle, null, tint = Color.White, modifier = Modifier.size(13.dp)) }
                             }
                         }
                     }
@@ -604,7 +604,7 @@ private fun QueueView(vm: AppState) {
     // как у Apple: «Далее» и переключатели перемешки и повтора над списком
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(tr("Далее", "Playing Next", "Далі", "Ďalej"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-        QueueToggle(if (vm.smartShuffle && vm.shuffle && vm.remote == null) SmartShuffle else Icons.Rounded.Shuffle, vm.shuffle) { vm.toggleShuffle() }
+        QueueToggle(if (vm.smartShown) SmartShuffle else Icons.Rounded.Shuffle, vm.shuffle) { vm.toggleShuffle() }
         Spacer(Modifier.width(10.dp))
         QueueToggle(if (vm.repeat == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, vm.repeat != Player.REPEAT_MODE_OFF) { vm.cycleRepeat() }
     }

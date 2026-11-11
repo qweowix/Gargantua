@@ -126,6 +126,8 @@ impl App {
                     _ => self.queue_changed(),
                 }
             }
+            // кнопку перемешки нажали на другом устройстве: круг выкл → перемешка → умная проходит хозяин
+            "shuffle" => self.toggle_shuffle(),
             "transfer" => self.conn_pick(a.as_str().unwrap_or_default().to_string()),
             _ => {}
         }
@@ -143,6 +145,7 @@ impl App {
             at: 0,
             playing: self.ui.get_playing() && !self.restored,
             shuffle: self.shuffle,
+            smart: self.shuffle && self.store.settings.smart_shuffle,
             repeat: self.repeat,
             vol: Some(self.store.settings.volume as f64),
             xfer: String::new(),
@@ -173,7 +176,7 @@ impl App {
             return;
         }
         let playing = st.playing && !self.ui.get_loading();
-        let sig = format!("{}|{playing}|{}|{}|{:.0}", key(t), st.shuffle, st.repeat, st.vol.unwrap_or(0.0) * 100.0);
+        let sig = format!("{}|{playing}|{}{}|{}|{:.0}", key(t), st.shuffle, st.smart, st.repeat, st.vol.unwrap_or(0.0) * 100.0);
         let q = qsig(&self.played, &self.upnext, &self.source);
         let p = &self.conn_pub;
         let expected = p.pos + if p.playing { p.at.map_or(0.0, |a| a.elapsed().as_secs_f64()) } else { 0.0 };
@@ -208,6 +211,7 @@ impl App {
         }
         self.shuffle = st.shuffle;
         self.ui.set_shuffle(st.shuffle);
+        self.ui.set_smart_shuffle(st.smart); // значок — как у устройства со звуком
         self.repeat = st.repeat.min(2);
         self.ui.set_repeat(self.repeat as i32);
         // ползунок показывает громкость там, где звук; пока его тянут, эхо из базы не дёргает его назад
@@ -230,6 +234,7 @@ impl App {
     /// Устройство со звуком пропало: остаёмся с его треком на паузе, play продолжит уже тут
     fn mirror_end(&mut self) {
         self.mirror = None;
+        self.ui.set_smart_shuffle(self.store.settings.smart_shuffle);
         self.ui.set_volume(self.store.settings.volume);
         self.ui.set_conn_remote("".into());
         self.ui.set_playing(false);
@@ -239,6 +244,7 @@ impl App {
     /// Сессию перекинули сюда
     fn conn_adopt(&mut self, st: State) {
         self.mirror = None;
+        self.ui.set_smart_shuffle(self.store.settings.smart_shuffle);
         self.ui.set_volume(self.store.settings.volume);
         self.ui.set_conn_remote("".into());
         (self.played, self.upnext, self.source) = (st.played.clone(), st.upnext.clone(), st.source.clone());

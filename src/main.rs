@@ -3126,7 +3126,11 @@ impl App {
 
     /// Кнопка ходит по кругу: выкл → перемешка → умная перемешка → выкл
     fn toggle_shuffle(&mut self) {
-        if self.shuffle && !self.store.settings.smart_shuffle && self.mirror.is_none() {
+        // звук на другом устройстве — перемешивает оно, мы только просим
+        if self.conn_cmd("shuffle", serde_json::Value::Null) {
+            return;
+        }
+        if self.shuffle && !self.store.settings.smart_shuffle {
             // очередь уже перемешана — просто начинаем подмешивать похожее
             self.set_smart(true);
             self.toast(&tr!("Умное перемешивание: раз в 2–3 трека — похожий не из плейлиста", "Smart shuffle: every 2–3 tracks, a similar one from outside the playlist", "Розумне перемішування: раз на 2–3 треки — схожий не з плейлиста", "Inteligentné miešanie: každé 2–3 skladby podobná mimo playlistu"));

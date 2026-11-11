@@ -2,9 +2,9 @@
 # Модули не копии — подключаются из ../../src через #[path], так что правка в плеере сразу едет и сюда.
 [package]
 name = "blackhole-core"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-license = "GPL-3.0-only"
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

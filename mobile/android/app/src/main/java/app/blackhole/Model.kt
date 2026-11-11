@@ -222,6 +222,7 @@ data class ConnState(
     val at: Long = 0,
     val playing: Boolean = false,
     val shuffle: Boolean = false,
+    val smart: Boolean = false,
     val repeat: Int = 0,
     val vol: Double? = null,
     val xfer: String = "",

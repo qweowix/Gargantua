@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Все сервисы — одна дыра.</b><br>
-  Бесплатный музыкальный плеер для Linux и Windows: YouTube Music, SoundCloud, Spotify, Apple Music, Яндекс Музыка и твои файлы — в одном окне. Без рекламы: вход по почте, плейлисты в аккаунте, всё остальное хранится у тебя.
+  Бесплатный музыкальный плеер для Linux, Windows и Android: YouTube Music, SoundCloud, Spotify, Apple Music, Яндекс Музыка и твои файлы — в одном окне. Без рекламы: вход по почте, плейлисты в аккаунте и одинаковые на компьютере и телефоне, всё остальное хранится у тебя.
 </p>
 
 <p align="center">
@@ -19,22 +19,26 @@
 
 ## Что умеет
 
-- **Один поиск по всем сервисам.** YouTube Music, SoundCloud, Яндекс Музыка; артисты и альбомы каруселями сверху, результаты по мере набора.
+- **Один поиск по всем сервисам.** YouTube Music, SoundCloud, Яндекс Музыка; артисты и альбомы каруселями сверху, результаты по мере набора. Вкладка «В текстах» ищет песню по строчке из неё.
 - **Импорт плейлистов по ссылке** из Spotify, Apple Music, YouTube Music, SoundCloud и Яндекса. Треки из Spotify и Apple сразу подбираются на YouTube Music; сомнительные совпадения плеер показывает и спрашивает.
+- **Компьютер и телефон заодно.** Приложение для Android с теми же плейлистами и статистикой. **Connect**: звук играет на одном устройстве, управлять можно с любого, сессия перекидывается одним нажатием.
 - **Тексты песен по словам**, как в Apple Music: караоке-заливка, бэк-вокал и дуэты, несколько стилей и эффектов ухода строки (тускнеют, сдув, в дыру, падение, взрыв…). Источники — lrclib, Liriqo, Spicy Lyrics.
+- **Панель «Сейчас играет»**: обложка, спектр и текст или очередь справа от списка. Очередь и плейлисты перетаскиваются мышью.
+- **Заметки к моментам трека**: метка с подписью на нужной секунде, точками на полосе прогресса.
 - **Локальные файлы** рядом со стримингом: папки с музыкой, теги и обложки из файлов.
-- **Главная с миксами** — «Твой микс», миксы по любимым артистам и «Открытия», обновляются каждый день по тому, что ты слушаешь.
-- **Статистика**: сегодня, неделя, месяц, год прослушиваний квадратиками как на GitHub, любимый артист и топ треков.
-- **Офлайн-кэш**: дослушанные треки тихо сохраняются на диск и потом играют без интернета. Лимит размера — в настройках.
+- **Главная с миксами** — «Твой микс», миксы по любимым артистам и «Открытия», плюс умные подборки из статистики: «Давно не слушал», «Заслушано в этом месяце», «Лайкнул и забыл».
+- **Статистика**: сегодня, неделя, месяц, год прослушиваний квадратиками как на GitHub, любимый артист и топ треков, история прослушиваний, итоги месяца и года карточкой, которую можно сохранить картинкой.
+- **Офлайн**: дослушанные треки тихо сохраняются на диск и потом играют без интернета; на телефоне плейлист можно скачать целиком.
 - **Скачивание в mp3** с тегами и обложкой.
-- **Звук**: кроссфейд, 10-полосный эквалайзер с пресетами, скорость 0.5–2× (с тональностью или как slowed / sped up), таймер сна.
+- **Звук**: кроссфейд, 10-полосный эквалайзер с пресетами, скорость 0.5–2× (с тональностью или как slowed / sped up), таймер сна. На телефоне — тот же эквалайзер.
+- **Умное перемешивание**: раз в 2–3 трека подмешивает похожий не из плейлиста. **Радио по треку** и «дальше похожее», когда плейлист закончился.
 - **Горячие клавиши**, все переназначаются в настройках.
-- **Радио по треку** и «дальше похожее», когда плейлист закончился.
 - **Discord**: статус «Слушает» с обложкой и кнопкой на трек.
-- **15 тем** плюс тема в цвет обложки текущего трека.
+- **15 тем** плюс цвета из обложки текущего трека (включены по умолчанию).
 - **Обмен плейлистами через QR-код.**
-- **Аккаунт**: вход по почте, плейлисты хранятся на сервере и одинаковые на всех компьютерах. Правки улетают сразу, свежие подтягиваются при запуске, раз в минуту и по кнопке. Настройка своего Firebase — [docs/firebase.md](docs/firebase.md).
-- Медиа-клавиши и системные контролы (MPRIS на Linux), русский / английский / украинский интерфейс.
+- **Аккаунт**: вход по почте, плейлисты хранятся на сервере и одинаковые на всех устройствах. Правки улетают сразу, свежие подтягиваются при запуске, раз в минуту и по кнопке. Настройка своего Firebase — [docs/firebase.md](docs/firebase.md).
+- **Обновляется сам**: находит новую версию на GitHub и ставит её по кнопке.
+- Медиа-клавиши и системные контролы (MPRIS на Linux), виджет на рабочий стол на Android, русский / английский / украинский / словацкий интерфейс.
 - **Лёгкий**: нативный интерфейс на Rust и Slint, без браузерного движка внутри.
 
 | | |
@@ -68,6 +72,10 @@ mpv и yt-dlp уже лежат в папке `bin`, ставить ничего
 
 yt-dlp лучше держать свежим (`yt-dlp -U` или через пакетный менеджер): YouTube постоянно что-то меняет. В дистрибутивах со старым yt-dlp ставь его через pipx.
 
+### Android
+
+Скачай `Gargantua-android-arm64.apk` из [релизов](https://github.com/qweowix/Gargantua/releases/latest) и установи (Android 8+, arm64). Войди в тот же аккаунт, что на компьютере, — плейлисты подтянутся сами. Если YouTube не отдаёт звук, на компьютере нажми Настройки → Куки YouTube → «На телефон», а на телефоне — «Взять с компа».
+
 ### macOS
 
 Готовой сборки пока нет, собирается из исходников: `tools/build-macos.sh` (нужны `brew install mpv yt-dlp`).
@@ -100,7 +108,8 @@ yt-dlp лучше держать свежим (`yt-dlp -U` или через п�
 | плейлисты | в аккаунте (Firestore) | в аккаунте |
 | настройки, вход | `~/.config/BlackHole/` | `%APPDATA%\BlackHole\` |
 | статистика | там же, `stats.json` | там же |
-| кэш (тексты, обложки, офлайн-треки) | `~/.cache/BlackHole/` | `%LOCALAPPDATA%\BlackHole\` |
+| история прослушиваний | там же, `history.json` | там же |
+| кэш (тексты, обложки, офлайн-треки, заметки, журнал ошибок) | `~/.cache/BlackHole/` | `%LOCALAPPDATA%\BlackHole\` |
 | скачанные mp3 | `~/Music/BlackHole` (меняется в настройках) | `Музыка\BlackHole` |
 
 ## Сборка из исходников
@@ -118,37 +127,45 @@ cargo build --release
 
 Тесты: `cargo test --release`. Снимки интерфейса без окна (программным рендером) — `cargo test --release -- --ignored shots`, картинки появятся в `target/shots/`.
 
-Релизы собирает GitHub Actions (`.github/workflows/release.yml`): пушнул тег `v*` — Linux- и Windows-архивы появились в Releases.
+Android-приложение лежит в `mobile/`: Rust-ядро из тех же исходников (`mobile/build-core.sh`, нужен Android NDK) и оболочка на Kotlin / Compose (`mobile/android`, `./gradlew assembleRelease`).
+
+Релизы собирает GitHub Actions (`.github/workflows/release.yml`): пушнул тег `v*` — архивы для Linux и Windows и APK появились в Releases. Для APK в секретах репозитория должен лежать ключ подписи (`ANDROID_KEYSTORE`, `ANDROID_STORE_PASSWORD`, `ANDROID_KEY_PASSWORD`).
 
 ### Как устроено
 
 - Интерфейс — [Slint](https://slint.dev) со Skia-рендером, весь в `ui/app.slint`.
 - Звук — [mpv](https://mpv.io) по JSON IPC, ссылки на потоки — [yt-dlp](https://github.com/yt-dlp/yt-dlp), который живёт в фоне и не запускается заново на каждый трек.
 - Поиск и импорт — внутренние веб-API сервисов, ключи и аккаунты не нужны.
+- Телефон — то же Rust-ядро через JNI, звук — Media3 (ExoPlayer), ссылки на потоки — [NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor).
 - Аккаунты — Firebase Auth и Firestore по REST (`src/cloud.rs`), проект задаётся переменными при сборке, см. [docs/firebase.md](docs/firebase.md).
 - Переводы — `lang/*/LC_MESSAGES/blackhole.po`.
 
 ## Благодарности
 
-[lrclib](https://lrclib.net), Liriqo и [Spicy Lyrics](https://spicylyrics.org) — тексты песен. [mpv](https://mpv.io) и [yt-dlp](https://github.com/yt-dlp/yt-dlp) — без них ничего бы не играло.
+[lrclib](https://lrclib.net), Liriqo и [Spicy Lyrics](https://spicylyrics.org) — тексты песен. [mpv](https://mpv.io), [yt-dlp](https://github.com/yt-dlp/yt-dlp) и [NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor) — без них ничего бы не играло. Интерфейс сделан на [Slint](https://slint.dev).
 
 ## Лицензия
 
-[GPL-3.0](LICENSE): код можно брать, менять и распространять, но любая выложенная версия тоже должна быть открытой под GPL.
+Код Gargantua — под [MIT](LICENSE): бери, меняй и распространяй как угодно, сохранив строку об авторстве.
+
+Сторонние части остаются под своими лицензиями. В архиве для Windows рядом лежат mpv (GPL/LGPL) и yt-dlp (Unlicense) — это отдельные программы. APK включает NewPipeExtractor под GPL-3.0, поэтому собранный APK целиком распространяется на условиях GPL-3.0. Интерфейс использует Slint по его бесплатной лицензии.
 
 ---
 
 <a name="english"></a>
 ## English
 
-**Gargantua** is a free music player for Linux and Windows. It searches YouTube Music, SoundCloud and Yandex Music at once, imports playlists from Spotify, Apple Music and others by link, plays your local files, and shows word-by-word synced lyrics with karaoke effects. It has no ads. You sign in with email, and your playlists live in your account, the same on every computer. Everything else is stored locally.
+**Gargantua** is a free music player for Linux, Windows and Android. It searches YouTube Music, SoundCloud and Yandex Music at once, imports playlists from Spotify, Apple Music and others by link, plays your local files, and shows word-by-word synced lyrics with karaoke effects. It has no ads. You sign in with email, and your playlists live in your account, the same on every computer. Everything else is stored locally.
 
 Also included: daily mixes, listening stats with a GitHub-style heatmap, an offline cache, mp3 downloads, crossfade, an EQ, a sleep timer, rebindable hotkeys, Discord Rich Presence, 15 themes plus a cover-coloured theme, QR playlist sharing, and an English/Russian/Ukrainian UI.
+
+Since 1.0: an Android app sharing playlists and stats with the desktop player, Connect (play on one device, control from any, hand the session over), a “Now Playing” panel with a spectrum, smart shuffle, notes at moments of a track, search by a lyric line, listening history, month and year recaps, and self-update.
 
 **Install:** grab the archive for your OS from [Releases](https://github.com/qweowix/Gargantua/releases/latest).
 - **Windows:** unzip it and run `Gargantua.exe`; mpv and yt-dlp are bundled.
 - **Linux:** install `mpv`, `yt-dlp` and `python3`, unpack the archive and run `./install.sh`.
+- **Android:** install `Gargantua-android-arm64.apk` (Android 8+, arm64) and sign in to the same account.
 
 **Build from source:** `cargo build --release`.
 
-**License:** [GPL-3.0](LICENSE).
+**License:** [MIT](LICENSE) for Gargantua's own code. Bundled third-party parts keep their licenses; the APK includes NewPipeExtractor (GPL-3.0), so the built APK as a whole is distributed under GPL-3.0 terms.

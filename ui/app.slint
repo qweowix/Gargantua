@@ -314,9 +314,10 @@ component Pill inherits Rectangle {
     height: 42px;
     horizontal-stretch: 0; // по ширине текста, лишнее место в ряду не забирает
     border-radius: 21px;
-    background: root.danger ? (ta.has-hover ? #ff3b5c : #e5294a) : root.primary ? Theme.accent : (ta.has-hover ? #ffffff1a : #ffffff0d);
+    background: root.danger ? (ta.has-hover ? #ff3b5c : #e5294a) : root.primary ? Theme.accent : (ta.has-hover ? #ffffff1a : #ffffff00);
     border-width: root.primary || root.danger ? 0px : 1px;
-    border-color: #ffffff1f;
+    border-color: ta.has-hover ? #ffffff3d : #ffffff26;
+    animate background, border-color { duration: 160ms; }
     drop-shadow-blur: root.primary || root.danger ? (ta.has-hover ? 30px : 18px) : 0px;
     drop-shadow-color: root.danger ? #ff3b5c88 : Theme.c1.transparentize(0.4);
     opacity: root.enabled ? 1 : 0.5;
@@ -596,7 +597,10 @@ component VSlider inherits Rectangle {
 
 component Badge inherits Rectangle {
     in property <string> src;
-    property <color> c: root.src == "sp" ? #1ed760 : root.src == "yt" ? #ff3355 : root.src == "ya" ? #ffcc00 : #ff6a1a;
+    // в списках бейдж серый и не спорит с треками; цвет сервиса проявляется, когда строка под курсором
+    in property <bool> lit: true;
+    property <color> c: !root.lit ? #8e87a6 : root.src == "sp" ? #1ed760 : root.src == "yt" ? #ff3355 : root.src == "ya" ? #ffcc00 : #ff6a1a;
+    animate c { duration: 160ms; }
     width: 30px;
     height: 18px;
     border-radius: 6px;
@@ -658,10 +662,12 @@ component TrackRow inherits Rectangle {
     property <bool> drag-on;
     property <bool> drag-was;
     opacity: root.dragged ? 0.35 : 1;
+    // номер в списке (плейлист, альбом); 0 — без номера (поиск, главная)
+    in property <int> number;
     height: 58px;
     border-radius: 10px;
-    background: root.item.playing ? Theme.c1.transparentize(0.88) : (ta.has-hover ? #ffffff0c : #ffffff00);
-    animate background { duration: 140ms; }
+    background: root.item.playing ? Theme.c1.transparentize(0.88) : (ta.has-hover ? #ffffff14 : #ffffff00);
+    animate background { duration: 180ms; }
     init => {
         if !root.item.has-cover && root.item.cover-url != "" {
             root.want-cover(root.item.cover-url);
@@ -713,6 +719,33 @@ component TrackRow inherits Rectangle {
         padding: 8px;
         padding-left: 12px;
         spacing: 12px;
+        // номер неяркий; под курсором вместо него — ▶: видно, что клик по строке включает трек
+        if root.number > 0: Rectangle {
+            width: 26px;
+            Text {
+                width: 100%;
+                text: root.number;
+                color: root.item.playing ? Theme.soft2 : Theme.text;
+                opacity: ta.has-hover ? 0 : root.item.playing ? 1 : 0.4;
+                font-size: 12px;
+                font-weight: 600;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                animate opacity { duration: 120ms; }
+            }
+
+            Icon {
+                d: Icons.play;
+                x: parent.width - self.width;
+                y: (parent.height - self.height) / 2;
+                width: 14px;
+                height: 14px;
+                fill: white;
+                opacity: ta.has-hover ? 1 : 0;
+                animate opacity { duration: 120ms; }
+            }
+        }
+
         Cover {
             width: 42px;
             img: root.item.cover;
@@ -754,6 +787,7 @@ component TrackRow inherits Rectangle {
             alignment: center;
             Badge {
                 src: root.item.source;
+                lit: ta.has-hover || root.item.playing;
             }
         }
 
@@ -2050,6 +2084,17 @@ export component AppWindow inherits Window {
             background: @radial-gradient(circle, Theme.c2.transparentize(0.82) 0%, Theme.c2.transparentize(1) 70%);
         }
 
+        // размытая обложка играющего трека на весь фон, едва заметно: окно берёт цвет от музыки, а не стоит
+        // одним тёмным пятном. Картинка уже размыта и крошечная (её же показывает экран текста) — тут только растяжение
+        Image {
+            width: 100%;
+            height: 100%;
+            source: root.bg-img;
+            image-fit: fill;
+            opacity: root.has-big ? 0.16 : 0;
+            animate opacity { duration: 700ms; easing: ease-in-out; }
+        }
+
         VerticalLayout {
             HorizontalLayout {
                 vertical-stretch: 1;
@@ -2057,7 +2102,7 @@ export component AppWindow inherits Window {
                 // ── сайдбар ──
                 Rectangle {
                     width: 240px;
-                    background: #0b0913c0;
+                    background: #0b091359; // почти прозрачный: фон из обложки идёт под всем окном, чёрные боковины его рвали
                     Rectangle {
                         x: parent.width - 1px;
                         width: 1px;
@@ -2783,6 +2828,48 @@ export component AppWindow inherits Window {
                                 }
                             }
 
+                            // шапка колонок: неяркая строка над списком
+                            if root.pl-tracks.length > 0: Rectangle {
+                                height: 22px;
+                                opacity: 0.5;
+                                Text {
+                                    x: 12px;
+                                    width: 26px;
+                                    text: "#";
+                                    color: Theme.dim;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    horizontal-alignment: right;
+                                }
+
+                                Text {
+                                    // над названием трека: отступ строки 12 + номер 26 + обложка 42 и три промежутка по 12
+                                    x: 104px;
+                                    text: @tr("НАЗВАНИЕ");
+                                    color: Theme.dim;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    letter-spacing: 1.2px;
+                                }
+
+                                Text {
+                                    x: parent.width - 134px - 44px - 60px;
+                                    width: 104px;
+                                    text: @tr("ДЛИНА");
+                                    color: Theme.dim;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    letter-spacing: 1.2px;
+                                    horizontal-alignment: right;
+                                }
+
+                                Rectangle {
+                                    y: parent.height - 1px;
+                                    height: 1px;
+                                    background: #ffffff22;
+                                }
+                            }
+
                             pl-box := Rectangle {
                                 vertical-stretch: 1;
                                 // порядок треков меняется мышью — только в виде «как добавлены» и без поиска
@@ -2792,6 +2879,7 @@ export component AppWindow inherits Window {
                                 property <length> from-y: self.drag-from * 58px + pl-list.viewport-y;
                                 pl-list := ListView {
                                     for t[i] in root.pl-tracks: TrackRow {
+                                        number: i + 1;
                                         item: t;
                                         can-drag: root.pl-sort == 0 && root.pl-query == "";
                                         dragged: i == pl-box.drag-from;
@@ -3520,15 +3608,17 @@ export component AppWindow inherits Window {
                             }
 
                             for f in [
-                                { t: @tr("Без слежки"), d: @tr("История, статистика и настройки хранятся у тебя на компьютере. Плейлисты — в твоём аккаунте, одинаковые на всех компах. Никаких подписок и телеметрии.") },
+                                { t: @tr("Без слежки"), d: @tr("История, статистика и настройки хранятся у тебя. Плейлисты — в твоём аккаунте, одинаковые на компьютере и телефоне. Никаких подписок, рекламы и телеметрии.") },
+                                { t: @tr("Компьютер и телефон заодно"), d: @tr("Есть приложение для Android с теми же плейлистами и статистикой. Connect: звук играет на одном устройстве, управлять можно с любого, а сессия перекидывается одним нажатием.") },
                                 { t: @tr("Все сервисы в одном месте"), d: @tr("Поиск сразу по YouTube Music, SoundCloud и Яндекс Музыке. Импорт плейлистов и альбомов из Spotify, Apple Music, YouTube Music, SoundCloud и Яндекса — одной ссылкой или QR-кодом.") },
                                 { t: @tr("Твои файлы рядом со стримингом"), d: @tr("mp3, flac, ogg и m4a из твоих папок играют наравне со стримингом и живут в тех же плейлистах.") },
                                 { t: @tr("Главная под тебя"), d: @tr("Каждый день свежие миксы по тому, что ты слушаешь: твой микс, миксы по любимым артистам и открытия — то, чего ты ещё не слышал.") },
                                 { t: @tr("Тексты как в Apple Music"), d: @tr("Караоке по словам, свечение, волна по буквам и семь анимаций ухода строк. Тексты собираются из нескольких источников и подгоняются под твой трек.") },
+                                { t: @tr("Панель «Сейчас играет»"), d: @tr("Справа от списка — обложка, спектр и текст или очередь. Заметки к моментам трека и поиск песни по строчке из неё.") },
                                 { t: @tr("Быстрый и офлайн"), d: @tr("Следующие треки подгружаются заранее, а прослушанные сохраняются на диск — повторно играют мгновенно и без интернета.") },
-                                { t: @tr("Всё, что нужно плееру"), d: @tr("Кроссфейд, эквалайзер, скорость, таймер сна, горячие клавиши, очередь, история, перемешка и повтор. «Дальше похожее», когда плейлист кончился.") },
-                                { t: @tr("Статистика"), d: @tr("Сколько слушал за день, неделю и месяц, год клеточками, любимый исполнитель и топ треков.") },
-                                { t: @tr("Дружит с системой"), d: @tr("Виден в панели и медиа-клавишах (MPRIS), показывает, что играет, в статусе Discord.") },
+                                { t: @tr("Всё, что нужно плееру"), d: @tr("Кроссфейд, эквалайзер, скорость и slowed, таймер сна, горячие клавиши, очередь мышью, перемешка и повтор. Умное перемешивание подмешивает похожее раз в 2–3 трека, «дальше похожее» продолжает, когда плейлист кончился.") },
+                                { t: @tr("Статистика"), d: @tr("Сколько слушал за день, неделю и месяц, год клеточками, любимый исполнитель и топ треков. История прослушиваний, итоги месяца и года карточкой и умные подборки на главной.") },
+                                { t: @tr("Дружит с системой"), d: @tr("Виден в панели и медиа-клавишах (MPRIS), показывает, что играет, в статусе Discord. Новые версии находит и ставит сам.") },
                                 { t: @tr("Пятнадцать тем"), d: @tr("Или цвета прямо из обложки играющего трека.") },
                                 { t: @tr("Лёгкий"), d: @tr("Нативное приложение без браузерного движка: в простое почти не нагружает процессор, а для слабых машин есть лайт-режим.") },
                             ]: HorizontalLayout {
@@ -3575,6 +3665,8 @@ export component AppWindow inherits Window {
                                 { k: @tr("При поддержке"), v: "Claude Code", url: "" },
                                 { k: @tr("Телеграм-канал"), v: "https://t.me/BlackHolePlayer", url: "https://t.me/BlackHolePlayer" },
                                 { k: "GitHub", v: "https://www.github.com/qweowix/Gargantua", url: "https://www.github.com/qweowix/Gargantua" },
+                                { k: @tr("Лицензия"), v: "MIT", url: "" },
+                                { k: @tr("Интерфейс"), v: "Made with Slint · slint.dev", url: "https://slint.dev" },
                             ]: HorizontalLayout {
                                 spacing: 12px;
                                 Text {
@@ -3774,6 +3866,7 @@ export component AppWindow inherits Window {
                                     }
 
                                     for t[i] in root.art-top: TrackRow {
+                                        number: i + 1;
                                         item: t;
                                         play => {
                                             root.play-in(4, i);
@@ -3953,6 +4046,7 @@ export component AppWindow inherits Window {
                             ListView {
                                 vertical-stretch: 1;
                                 for t[i] in root.coll-tracks: TrackRow {
+                                    number: i + 1;
                                     item: t;
                                     play => {
                                         root.play-in(5, i);
@@ -4347,27 +4441,27 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            HorizontalLayout {
+                            if root.update-ver != "": HorizontalLayout {
                                 spacing: 8px;
                                 VerticalLayout {
                                     horizontal-stretch: 1;
                                     alignment: center;
                                     Text {
-                                        text: root.update-ver != "" ? @tr("Вышла версия {}", root.update-ver) : @tr("Версия {}", root.app-version);
+                                        text: @tr("Вышла версия {}", root.update-ver);
                                         color: Theme.text;
                                         font-size: 15px;
                                         font-weight: 700;
                                     }
 
                                     Text {
-                                        text: root.update-ver != "" ? @tr("Плеер скачает её, заменит себя и перезапустится. Музыка на минуту прервётся.") : @tr("Новые версии проверяются при каждом запуске.");
+                                        text: @tr("Плеер скачает её, заменит себя и перезапустится. Музыка на минуту прервётся.");
                                         color: Theme.dim;
                                         font-size: 13px;
                                         wrap: word-wrap;
                                     }
                                 }
 
-                                if root.update-ver != "": VerticalLayout {
+                                VerticalLayout {
                                     alignment: center;
                                     Pill {
                                         text: root.update-busy ? @tr("Качаю…") : @tr("Обновить");
@@ -4772,7 +4866,14 @@ export component AppWindow inherits Window {
             // ── плеер ──
             Rectangle {
                 height: 96px;
-                background: #0a0811e8;
+                // полупрозрачная: сквозь неё видно цвет фона из обложки (размытия позади в Slint нет)
+                background: #12101cc4;
+                Rectangle {
+                    y: 0px;
+                    height: 1px;
+                    background: #ffffff1a;
+                }
+
                 Rectangle {
                     y: 0px;
                     height: 1px;
@@ -5441,7 +5542,8 @@ export component AppWindow inherits Window {
         width: self.w;
         height: root.height - 96px;
         visible: (root.deck-open || self.x < root.width) && !root.lyrics-open;
-        background: #0a0812;
+        // рядом с контентом панель прозрачная, как сайдбар; поверх контента (узкое окно) — плотная, иначе текст нечитаем
+        background: root.deck-push ? #0b091359 : #0c0a16f5;
         drop-shadow-blur: root.deck-push ? 0px : 40px;
         drop-shadow-color: #00000099;
         animate x { duration: 280ms; easing: cubic-bezier(0.2, 0.9, 0.2, 1); }
@@ -5663,8 +5765,10 @@ export component AppWindow inherits Window {
                                 y: 8px;
                                 width: parent.width - 24px;
                                 text: line.dots ? "•  •  •" : line.text;
-                                color: parent.lit ? Theme.soft2 : i < root.lyr-cur ? Theme.faint : Theme.dim;
+                                // поющаяся строка — чисто белая и жирнее, остальные приглушены: глаз сразу находит, где сейчас
+                                color: parent.lit ? #ffffff : i < root.lyr-cur ? #ffffff4d : #ffffff66;
                                 font-size: line.bg ? 12px : 14px;
+                                // жирность у всех одна: с разной ширина слов менялась, и перенос у поющейся строки прыгал
                                 font-weight: 700;
                                 wrap: word-wrap;
                                 horizontal-alignment: line.right ? right : left;

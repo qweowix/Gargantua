@@ -810,8 +810,15 @@ fun SettingsScreen(vm: AppState) {
         Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.MusicNote, null, tint = LocalAccent.current.c1)
             Spacer(Modifier.width(8.dp))
-            Text("Gargantua ${app.blackhole.BuildConfig.VERSION_NAME} · qweowix · GPL-3.0", color = Pal.dim, fontSize = 13.sp)
+            Text("Gargantua ${app.blackhole.BuildConfig.VERSION_NAME} · qweowix · MIT", color = Pal.dim, fontSize = 13.sp)
         }
+        Dim(tr(
+            "Бесплатный плеер без рекламы: YouTube Music, SoundCloud и Яндекс в одном поиске, импорт плейлистов из Spotify и Apple Music по ссылке или QR. Тексты по словам, эквалайзер и скорость, кроссфейд, умное перемешивание, скачивание плейлистов для офлайна, статистика с итогами месяца и года, заметки к моментам трека. Плейлисты общие с плеером на компьютере, а через Connect можно управлять им с телефона и перекидывать звук между устройствами.",
+            "A free player with no ads: YouTube Music, SoundCloud and Yandex in one search, playlist import from Spotify and Apple Music by link or QR. Word-by-word lyrics, equalizer and speed, crossfade, smart shuffle, playlist downloads for offline, stats with month and year recaps, notes at moments of a track. Playlists are shared with the desktop player, and Connect lets you control it from the phone and move the sound between devices.",
+            "Безкоштовний плеєр без реклами: YouTube Music, SoundCloud і Яндекс в одному пошуку, імпорт плейлистів зі Spotify та Apple Music за посиланням або QR. Тексти по словах, еквалайзер і швидкість, кросфейд, розумне перемішування, завантаження плейлистів для офлайну, статистика з підсумками місяця й року, нотатки до моментів треку. Плейлисти спільні з плеєром на комп'ютері, а через Connect ним можна керувати з телефона й перекидати звук між пристроями.",
+            "Bezplatný prehrávač bez reklám: YouTube Music, SoundCloud a Yandex v jednom vyhľadávaní, import playlistov zo Spotify a Apple Music cez odkaz alebo QR. Texty po slovách, ekvalizér a rýchlosť, crossfade, inteligentné miešanie, sťahovanie playlistov na offline, štatistiky so zhrnutím mesiaca a roka, poznámky k momentom skladby. Playlisty sú spoločné s prehrávačom na počítači a cez Connect ho ovládaš z telefónu a presúvaš zvuk medzi zariadeniami.",
+        ))
+        Dim("GitHub: github.com/qweowix/Gargantua · Telegram: t.me/BlackHolePlayer")
         val newVer by app.blackhole.Updater.version.collectAsState()
         val updating by app.blackhole.Updater.busy.collectAsState()
         val ctx = androidx.compose.ui.platform.LocalContext.current

@@ -750,14 +750,21 @@ class AppState(app: Application) : AndroidViewModel(app) {
             setSmart(true)
             return toast(tr("Умное перемешивание: раз в 2–3 трека — похожий не из плейлиста", "Smart shuffle: every 2–3 tracks, a similar one from outside the playlist", "Розумне перемішування: раз на 2–3 треки — схожий не з плейлиста", "Inteligentné miešanie: každé 2–3 skladby podobná mimo playlistu"))
         }
-        if (remote == null) setSmart(false)
         remote?.let { r ->
-            val on = !r.shuffle
-            val at = r.source.withIndex().associate { it.value.key to it.index }
-            val upnext = if (on) r.upnext.shuffled() else r.upnext.sortedBy { at[it.key] ?: Int.MAX_VALUE }
+            // звук на другом устройстве: круг проходит оно, а кнопка сразу показывает, что будет, и три секунды
+            // не слушает базу — иначе, пока команда едет, значок прыгал туда-обратно
+            val (on, smart) = when {
+                !r.shuffle -> true to false
+                !r.smart -> true to true
+                else -> false to false
+            }
             shuffle = on
-            return connQueue(r.played, upnext, r.source, on)
+            remote = r.copy(shuffle = on, smart = smart)
+            heldSmart = smart
+            shuffleHeldUntil = System.currentTimeMillis() + 3000
+            return connSend("shuffle", JsonNull)
         }
+        setSmart(false)
         val c = controller ?: return
         val cur = c.currentMediaItemIndex
         val rest = (cur + 1 until c.mediaItemCount).map { c.getMediaItemAt(it) }
@@ -923,6 +930,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
                 }
             }
             "volume" -> audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (((a as? JsonPrimitive)?.doubleOrNull ?: return) * maxVol()).roundToInt(), 0)
+            "shuffle" -> toggleShuffle()
             "transfer" -> connPick((a as? JsonPrimitive)?.contentOrNull ?: return)
         }
     }
@@ -946,8 +954,11 @@ class AppState(app: Application) : AndroidViewModel(app) {
         buffering = false
         duration = (t?.dur ?: 0) * 1000
         position = (posNow(st) * 1000).toLong()
-        shuffle = st.shuffle
-        if (System.currentTimeMillis() >= repeatHeldUntil) repeat = modeOf(st.repeat) else remote = st.copy(repeat = repeatOf(repeat))
+        val nowMs = System.currentTimeMillis()
+        var shown = st
+        if (nowMs < repeatHeldUntil) shown = shown.copy(repeat = repeatOf(repeat)) else repeat = modeOf(st.repeat)
+        if (nowMs < shuffleHeldUntil) shown = shown.copy(shuffle = shuffle, smart = heldSmart) else shuffle = st.shuffle
+        remote = shown
         val items = (st.played + listOfNotNull(t) + st.upnext).map { it.item() }
         if (items.map { it.mediaId } != queue.map { it.mediaId }) {
             queue.clear()
@@ -980,6 +991,11 @@ class AppState(app: Application) : AndroidViewModel(app) {
         private set
     private var volHeldUntil = 0L
     private var repeatHeldUntil = 0L
+    private var shuffleHeldUntil = 0L
+    private var heldSmart = false
+
+    /** показывать ли значок умного перемешивания: у устройства со звуком, а если звук тут — своя настройка */
+    val smartShown get() = remote?.smart ?: (smartShuffle && shuffle)
     private var volSentAt = 0L
 
     /** Ползунок на зеркале: уходит хозяину. Пока тянут (end = false) — не чаще 5 раз в секунду, каждая команда — запись в базу */
@@ -1012,7 +1028,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
             played = all.take(i).takeLast(50), upnext = all.drop(i + 1).take(500),
             source = if (shuffle) all.sortedBy { at[it.key] ?: Int.MAX_VALUE } else all,
             pos = c.currentPosition / 1000.0, playing = c.isPlaying || (c.playWhenReady && c.playbackState == Player.STATE_BUFFERING),
-            shuffle = shuffle, repeat = repeatOf(c.repeatMode),
+            shuffle = shuffle, smart = shuffle && smartShuffle, repeat = repeatOf(c.repeatMode),
             vol = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) / maxVol().toDouble(),
         )
     }
@@ -1026,7 +1042,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         if (connMe.isEmpty()) return
         val st = localState() ?: return
         if (!st.playing && connHost != connMe) return
-        val sig = "${st.track?.key}|${st.playing}|${st.shuffle}|${st.repeat}|${st.vol}"
+        val sig = "${st.track?.key}|${st.playing}|${st.shuffle}${st.smart}|${st.repeat}|${st.vol}"
         val q = (st.played + st.upnext).map { it.key }.hashCode()
         val now = System.currentTimeMillis()
         val expected = pubPos + if (pubPlaying) (now - pubAt) / 1000.0 else 0.0
