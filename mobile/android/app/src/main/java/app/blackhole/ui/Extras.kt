@@ -84,6 +84,16 @@ val SmartShuffle: androidx.compose.ui.graphics.vector.ImageVector by lazy {
         .build()
 }
 
+/** Звёздочка трека, подмешанного умным перемешиванием — та же, что на ПК */
+val Sparkle: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    androidx.compose.ui.graphics.vector.ImageVector.Builder("Sparkle", 24.dp, 24.dp, 24f, 24f)
+        .addPath(
+            androidx.compose.ui.graphics.vector.addPathNodes("M12 1.5 14.6 9.4 22.5 12 14.6 14.6 12 22.5 9.4 14.6 1.5 12 9.4 9.4z"),
+            fill = androidx.compose.ui.graphics.SolidColor(Color.Black),
+        )
+        .build()
+}
+
 /** Эквалайзер как на ПК: те же пресеты и 10 полос, шаг 1 дБ */
 @UnstableApi
 @Composable

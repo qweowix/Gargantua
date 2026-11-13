@@ -12,6 +12,7 @@ export struct TrackItem {
     snip: bool,
     dl: int, // 0 не скачан, 1 качается, 2 скачан
     liked: bool, // в «Любимых треках»
+    smart: bool, // подмешан умным перемешиванием — в очереди со звёздочкой
 }
 
 export struct Credit {
@@ -153,6 +154,8 @@ global Icons {
     out property <string> folder: "M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8z";
     out property <string> search: "M10.5 3a7.5 7.5 0 1 0 4.55 13.46l4.24 4.25 1.42-1.42-4.25-4.24A7.5 7.5 0 0 0 10.5 3zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z";
     out property <string> trash: "M9 3h6l1 2h4v2H4V5h4zM6 9h12l-1 12H7z";
+    // звёздочка трека, подмешанного умным перемешиванием (символ ✦ рисовали шрифтом — в шрифтах Windows его нет)
+    out property <string> sparkle: "M12 1.5 14.6 9.4 22.5 12 14.6 14.6 12 22.5 9.4 14.6 1.5 12 9.4 9.4z";
     // перемешка поменьше и три звёздочки — умное перемешивание
     out property <string> shuffle-smart: "M8.47 12.14 4.33 8.00 3.20 9.13 l4.14 4.14 zM11.60 8.00 l1.63 1.63 L3.20 19.67 4.33 20.80 14.37 10.77 16.00 12.40 V8.00 zm0.26 7.53 -1.13 1.13 2.50 2.50 L11.60 20.80 H16.00 v-4.40 l-1.63 1.63 zM19.50 1.20L20.51 3.79L23.10 4.80L20.51 5.81L19.50 8.40L18.49 5.81L15.90 4.80L18.49 3.79zM13.20 0.50L13.73 1.87L15.10 2.40L13.73 2.93L13.20 4.30L12.67 2.93L11.30 2.40L12.67 1.87zM22.00 9.50L22.48 10.72L23.70 11.20L22.48 11.68L22.00 12.90L21.52 11.68L20.30 11.20L21.52 10.72z";
     out property <string> shuffle: "M10.59 9.17 5.41 4 4 5.41l5.17 5.17zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04z";
@@ -912,12 +915,26 @@ component QueueRow inherits Rectangle {
             alignment: center;
             horizontal-stretch: 1;
             spacing: 1px;
-            Text {
-                text: root.item.title;
-                color: root.dim ? Theme.dim : Theme.text;
-                font-size: 13px;
-                font-weight: 600;
-                overflow: elide;
+            HorizontalLayout {
+                spacing: 5px;
+                if root.item.smart: VerticalLayout {
+                    alignment: center;
+                    Icon {
+                        d: Icons.sparkle;
+                        width: 15px;
+                        height: 15px;
+                        fill: Theme.c2;
+                    }
+                }
+
+                Text {
+                    text: root.item.title;
+                    color: root.dim ? Theme.dim : Theme.text;
+                    font-size: 13px;
+                    font-weight: 600;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
             }
 
             Text {
@@ -2101,6 +2118,7 @@ export component AppWindow inherits Window {
 
                 // ── сайдбар ──
                 Rectangle {
+                    cache-rendering-hint: true; // слой: пока внутри ничего не менялось, рисуется готовой картинкой (см. viz-box)
                     width: 240px;
                     background: #0b091359; // почти прозрачный: фон из обложки идёт под всем окном, чёрные боковины его рвали
                     Rectangle {
@@ -2319,6 +2337,7 @@ export component AppWindow inherits Window {
 
                 // ── контент ──
                 Rectangle {
+                    cache-rendering-hint: true; // слой: пока внутри ничего не менялось, рисуется готовой картинкой (см. viz-box)
                     horizontal-stretch: 1;
 
                     // поиск
@@ -4865,6 +4884,7 @@ export component AppWindow inherits Window {
 
             // ── плеер ──
             Rectangle {
+                cache-rendering-hint: true; // слой: пока внутри ничего не менялось, рисуется готовой картинкой (см. viz-box)
                 height: 96px;
                 // полупрозрачная: сквозь неё видно цвет фона из обложки (размытия позади в Slint нет)
                 background: #12101cc4;
@@ -5627,6 +5647,7 @@ export component AppWindow inherits Window {
 
             // обложка; название и артист — поверх, на затемнении снизу
             Rectangle {
+                cache-rendering-hint: true; // слой: пока внутри ничего не менялось, рисуется готовой картинкой (см. viz-box)
                 height: self.width;
                 border-radius: 20px;
                 clip: true;
@@ -5683,7 +5704,9 @@ export component AppWindow inherits Window {
                 }
             }
 
-            // спектр: столбики растут от низа, высоты приходят из Rust уже сглаженными
+            // спектр: столбики растут от низа, высоты приходят из Rust уже сглаженными. Он меняется 30 раз в секунду,
+            // и раньше каждый его кадр перерисовывал всё окно — со всем текстом страницы (20%+ ядра). Теперь большие
+            // куски окна — слои (cache-rendering-hint): за кадр спектра заново рисуются только столбики
             viz-box := Rectangle {
                 height: 54px;
                 for v[i] in root.viz: Rectangle {
@@ -5698,6 +5721,7 @@ export component AppWindow inherits Window {
             }
 
             if root.deck-tab == 0: Rectangle {
+                cache-rendering-hint: true; // слой: пока внутри ничего не менялось, рисуется готовой картинкой (см. viz-box)
                 vertical-stretch: 1;
                 clip: true;
                 if root.lyr-state == 0 || root.lyr-state == 3: Text {
@@ -5786,91 +5810,95 @@ export component AppWindow inherits Window {
                 }
             }
 
-            if root.deck-tab == 1: VerticalLayout {
+            if root.deck-tab == 1: Rectangle {
+                cache-rendering-hint: true; // слой, как у вкладки текста
                 vertical-stretch: 1;
-                spacing: 8px;
-                Text {
-                    text: @tr("ИСТОРИЯ");
-                    color: Theme.faint;
-                    font-size: 11px;
-                    font-weight: 700;
-                    letter-spacing: 1.5px;
-                    visible: root.q-hist.length > 0;
-                }
-
-                if root.q-hist.length > 0: ListView {
-                    height: min(108px, root.q-hist.length * 52px);
-                    for t[i] in root.q-hist: QueueRow {
-                        item: t;
-                        dim: true;
-                        play => {
-                            root.history-jump(i);
-                        }
-                        want-cover(u) => {
-                            root.want-cover(u);
-                        }
-                    }
-                }
-
-                Text {
-                    text: root.shuffle ? @tr("ДАЛЕЕ · ВПЕРЕМЕШКУ") : @tr("ДАЛЕЕ");
-                    color: Theme.faint;
-                    font-size: 11px;
-                    font-weight: 700;
-                    letter-spacing: 1.5px;
-                }
-
-                q-box := Rectangle {
+                VerticalLayout {
                     vertical-stretch: 1;
-                    property <int> drag-from: -1;
-                    property <length> drag-y;
-                    property <int> drag-to: max(0, min(root.q-next.length, Math.round((self.drag-y - q-list.viewport-y) / 52px)));
-                    Rectangle {
-                        x: 4px;
-                        y: q-box.drag-to * 52px + q-list.viewport-y - 1px;
-                        width: parent.width - 8px;
-                        height: 2px;
-                        border-radius: 1px;
-                        background: Theme.soft2;
-                        visible: q-box.drag-from >= 0;
+                    spacing: 8px;
+                    Text {
+                        text: @tr("ИСТОРИЯ");
+                        color: Theme.faint;
+                        font-size: 11px;
+                        font-weight: 700;
+                        letter-spacing: 1.5px;
+                        visible: root.q-hist.length > 0;
                     }
 
-                    q-list := ListView {
-                    for t[i] in root.q-next: QueueRow {
-                        item: t;
-                        editable: true;
-                        can-drag: true;
-                        dragged: i == q-box.drag-from;
-                        drag-at(y) => {
-                            q-box.drag-from = i;
-                            q-box.drag-y = y - q-box.absolute-position.y;
-                        }
-                        drag-end => {
-                            if q-box.drag-to != i && q-box.drag-to != i + 1 {
-                                root.queue-move(i, (q-box.drag-to > i ? q-box.drag-to - 1 : q-box.drag-to) - i);
+                    if root.q-hist.length > 0: ListView {
+                        height: min(108px, root.q-hist.length * 52px);
+                        for t[i] in root.q-hist: QueueRow {
+                            item: t;
+                            dim: true;
+                            play => {
+                                root.history-jump(i);
                             }
-                            q-box.drag-from = -1;
-                        }
-                        play => {
-                            root.queue-jump(i);
-                        }
-                        move(d) => {
-                            root.queue-move(i, d);
-                        }
-                        remove => {
-                            root.queue-remove(i);
-                        }
-                        want-cover(u) => {
-                            root.want-cover(u);
+                            want-cover(u) => {
+                                root.want-cover(u);
+                            }
                         }
                     }
-                }
-                }
 
-                if root.q-next.length == 0: Text {
-                    text: @tr("Дальше пусто");
-                    color: Theme.faint;
-                    horizontal-alignment: center;
+                    Text {
+                        text: root.shuffle ? @tr("ДАЛЕЕ · ВПЕРЕМЕШКУ") : @tr("ДАЛЕЕ");
+                        color: Theme.faint;
+                        font-size: 11px;
+                        font-weight: 700;
+                        letter-spacing: 1.5px;
+                    }
+
+                    q-box := Rectangle {
+                        vertical-stretch: 1;
+                        property <int> drag-from: -1;
+                        property <length> drag-y;
+                        property <int> drag-to: max(0, min(root.q-next.length, Math.round((self.drag-y - q-list.viewport-y) / 52px)));
+                        Rectangle {
+                            x: 4px;
+                            y: q-box.drag-to * 52px + q-list.viewport-y - 1px;
+                            width: parent.width - 8px;
+                            height: 2px;
+                            border-radius: 1px;
+                            background: Theme.soft2;
+                            visible: q-box.drag-from >= 0;
+                        }
+
+                        q-list := ListView {
+                        for t[i] in root.q-next: QueueRow {
+                            item: t;
+                            editable: true;
+                            can-drag: true;
+                            dragged: i == q-box.drag-from;
+                            drag-at(y) => {
+                                q-box.drag-from = i;
+                                q-box.drag-y = y - q-box.absolute-position.y;
+                            }
+                            drag-end => {
+                                if q-box.drag-to != i && q-box.drag-to != i + 1 {
+                                    root.queue-move(i, (q-box.drag-to > i ? q-box.drag-to - 1 : q-box.drag-to) - i);
+                                }
+                                q-box.drag-from = -1;
+                            }
+                            play => {
+                                root.queue-jump(i);
+                            }
+                            move(d) => {
+                                root.queue-move(i, d);
+                            }
+                            remove => {
+                                root.queue-remove(i);
+                            }
+                            want-cover(u) => {
+                                root.want-cover(u);
+                            }
+                        }
+                    }
+                    }
+
+                    if root.q-next.length == 0: Text {
+                        text: @tr("Дальше пусто");
+                        color: Theme.faint;
+                        horizontal-alignment: center;
+                    }
                 }
             }
         }

@@ -258,6 +258,7 @@ struct App {
     smart_pool: Vec<Track>,
     smart_keys: HashSet<String>,
     smart_asked: Option<Instant>,
+    smart_src: u64, // для какого плейлиста набран smart_pool: сменили плейлист — запас выкидываем
     cover_pal: Option<[[u8; 3]; 8]>,
     muted: Option<f32>, // громкость до M
     rebinding: i32,     // какую горячую клавишу сейчас переназначают (-1 — никакую)
@@ -650,6 +651,16 @@ fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
 }
 
+/// Отпечаток плейлиста, из которого играем: по нему умное перемешивание видит, что плейлист сменили
+fn smart_src(source: &[Track]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for t in source {
+        key(t).hash(&mut h);
+    }
+    h.finish()
+}
+
 fn shuffled(mut v: Vec<Track>) -> Vec<Track> {
     for i in (1..v.len()).rev() {
         v.swap(i, rand_below(i + 1));
@@ -672,6 +683,7 @@ impl App {
             snip: t.snip,
             dl: self.dl_of(t),
             liked: self.is_liked(t),
+            smart: false,
         }
     }
 
@@ -2129,12 +2141,8 @@ impl App {
             .upnext
             .iter()
             .map(|t| {
-                let mut it = self.item(t);
                 // подмешанное умным перемешиванием — со звёздочкой, чтобы было видно, что это не из плейлиста
-                if self.smart_keys.contains(&key(t)) {
-                    it.artist = format!("✦ {}", t.artist).into();
-                }
-                it
+                TrackItem { smart: self.smart_keys.contains(&key(t)), ..self.item(t) }
             })
             .collect();
         self.hist_model.set_vec(hist);
@@ -3163,24 +3171,38 @@ impl App {
         }
     }
 
-    /// Умное перемешивание, по той же логике, что «дальше похожее»: радио YT Music по случайному треку
-    /// плейлиста даёт запас, из него в очередь встаёт по одному треку так, чтобы между подмешанными было
-    /// 2–3 своих. Зовётся на старте каждого трека
+    /// Умное перемешивание, по той же логике, что «дальше похожее»: радио YT Music по тому, что играет сейчас
+    /// (или по одному из двух последних сыгранных треков этой очереди), даёт маленький запас, из него в очередь
+    /// встаёт по одному треку так, чтобы между подмешанными было 2–3 своих. Запас — только для текущего
+    /// плейлиста: раньше он переживал смену плейлиста, и после саундтрека игры в обычный плейлист ещё долго
+    /// подмешивались треки из игры. Зовётся на старте каждого трека
     fn smart_feed(&mut self) {
         if !self.shuffle || !self.store.settings.smart_shuffle || self.mirror.is_some() || self.source.len() < 3 {
             return;
         }
         let Some(cur) = self.current.clone() else { return };
-        if self.smart_pool.len() < 3 && self.smart_asked.is_none_or(|t| t.elapsed() > Duration::from_secs(45)) {
+        let src = smart_src(&self.source);
+        if src != self.smart_src {
+            self.smart_src = src;
+            self.smart_pool.clear();
+            self.smart_asked = None;
+        }
+        if self.smart_pool.len() < 2 && self.smart_asked.is_none_or(|t| t.elapsed() > Duration::from_secs(45)) {
             self.smart_asked = Some(Instant::now());
-            let seed = self.source[rand_below(self.source.len())].clone();
+            // затравка — из того, что слушают сейчас: играющий трек и два последних сыгранных, только свои
+            let own = |t: &&Track| !self.smart_keys.contains(&key(t));
+            let seeds: Vec<Track> = std::iter::once(&cur).chain(self.played.iter().rev().filter(own).take(2)).filter(own).cloned().collect();
+            let Some(seed) = (!seeds.is_empty()).then(|| seeds[rand_below(seeds.len())].clone()) else { return };
             std::thread::spawn(move || {
                 let r = radio_for(&seed);
                 post(move |a| {
                     let Ok(tracks) = r.map_err(|e| crate::logln!("умное перемешивание: {e:#}")) else { return };
+                    if smart_src(&a.source) != src {
+                        return; // пока ждали ответ, плейлист сменили — это подборка уже не к нему
+                    }
                     let seen: HashSet<String> = a.played.iter().chain(&a.upnext).chain(&a.current).chain(&a.source).chain(&a.smart_pool).map(same_song).collect();
                     let fresh: Vec<Track> = tracks.into_iter().filter(|t| !seen.contains(&same_song(t))).collect();
-                    a.smart_pool.extend(shuffled(fresh).into_iter().take(6));
+                    a.smart_pool.extend(shuffled(fresh).into_iter().take(3));
                     a.smart_feed();
                 });
             });
@@ -3874,8 +3896,12 @@ impl App {
             let a = amp[k] + (amp[(k + 1).min(N - 1)] - amp[k]) * t;
             let v = (a / self.viz_peak).powf(0.75).min(1.0);
             let b = &mut self.viz_bars[j];
+            let old = *b;
             *b = if v > *b { *b + (v - *b) * 0.7 } else { (*b * 0.86).max(v) };
-            self.viz_model.set_row_data(j, *b);
+            // столбик сдвинулся меньше чем на полпикселя (высота 54 px) — не трогаем: каждая запись в модель — перерисовка
+            if (*b - old).abs() * 54.0 >= 0.5 {
+                self.viz_model.set_row_data(j, *b);
+            }
         }
     }
 
@@ -4205,6 +4231,7 @@ fn main() -> Result<(), slint::PlatformError> {
         smart_pool: vec![],
         smart_keys: HashSet::new(),
         smart_asked: None,
+        smart_src: 0,
         home: home::load(),
         smart: vec![],
         lyr_hits: vec![],

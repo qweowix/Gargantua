@@ -135,6 +135,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import app.blackhole.App
 import app.blackhole.AppState
 import app.blackhole.LyrLine
 import app.blackhole.fmtDur
@@ -630,7 +631,14 @@ private fun QueueView(vm: AppState) {
                 Cover(md.artworkUri?.toString() ?: "", 44.dp, 8.dp, Modifier.graphicsLayer { alpha = if (past) 0.45f else 1f })
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f).graphicsLayer { alpha = if (past) 0.45f else 1f }) {
-                    Text(md.title?.toString() ?: "", color = if (cur) a.c1 else Pal.text, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // подмешан умным перемешиванием — звёздочка перед названием, как на ПК
+                        if (item.mediaId in App.smartIds) {
+                            Icon(Sparkle, null, tint = a.c2, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(5.dp))
+                        }
+                        Text(md.title?.toString() ?: "", color = if (cur) a.c1 else Pal.text, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                     Text(md.artist?.toString() ?: "", color = Pal.dim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (cur) {

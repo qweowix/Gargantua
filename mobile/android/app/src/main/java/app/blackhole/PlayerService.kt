@@ -516,26 +516,38 @@ class PlayerService : MediaSessionService() {
 
     private val smartPool = ArrayDeque<Track>()
     private var smartAsked = 0L
+    private var smartSrc = 0 // для какой очереди набран запас: сменили плейлист — запас выкидываем
 
-    /** Умное перемешивание, по той же логике, что «дальше похожее»: радио по случайному треку очереди даёт запас,
-     *  из него в очередь встаёт по одному треку так, чтобы между подмешанными было 2–3 своих */
+    /** Умное перемешивание, как на ПК: радио по играющему треку или одному из двух последних сыгранных, маленький
+     *  запас, по одному треку раз в 2–3 своих. Запас — только для текущей очереди: раньше он переживал смену
+     *  плейлиста, и в новый плейлист ещё долго подмешивались треки из прошлого */
     private fun maybeSmart() {
         if (!prefs.getBoolean("shuffle", false) || !prefs.getBoolean("smart_shuffle", false)) return
         val n = player.mediaItemCount
         val cur = player.currentMediaItemIndex
         if (n < 3 || cur == C.INDEX_UNSET) return
         val ids = (0 until n).map { player.getMediaItemAt(it).mediaId }
+        val src = ids.filter { it !in App.smartIds }.toSet().hashCode()
+        if (src != smartSrc) {
+            smartSrc = src
+            smartPool.clear()
+            smartAsked = 0L
+        }
         val now = System.currentTimeMillis()
-        if (smartPool.size < 3 && now - smartAsked > 45_000) {
+        if (smartPool.size < 2 && now - smartAsked > 45_000) {
             smartAsked = now
-            val seed = ids.filter { it !in App.smartIds }.randomOrNull()?.let { id -> player.getMediaItemAt(ids.indexOf(id)).track() }
+            // затравка — играющий трек и два последних сыгранных, только свои
+            val seeds = (listOf(cur) + (cur - 1 downTo 0).filter { ids[it] !in App.smartIds }.take(2))
+                .filter { ids[it] !in App.smartIds }
+            val seed = seeds.randomOrNull()?.let { player.getMediaItemAt(it).track() }
             if (seed != null) scope.launch {
                 val tracks = runCatching { withContext(Dispatchers.IO) { core("radio") { put("track", seed) }.to<List<Track>>() } }
                     .onFailure { BhLog.line("умное перемешивание: $it") }.getOrNull() ?: return@launch
+                if (src != smartSrc) return@launch // пока ждали, плейлист сменили — подборка уже не к нему
                 val have = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).track() }
                 val songs = (have + smartPool).map { it.title.lowercase() + "|" + it.artist.lowercase() }.toSet()
                 val keys = have.map { it.key }.toSet()
-                smartPool.addAll(tracks.filter { it.key !in keys && (it.title.lowercase() + "|" + it.artist.lowercase()) !in songs }.shuffled().take(6))
+                smartPool.addAll(tracks.filter { it.key !in keys && (it.title.lowercase() + "|" + it.artist.lowercase()) !in songs }.shuffled().take(3))
                 maybeSmart()
             }
         }
