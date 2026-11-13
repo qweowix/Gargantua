@@ -611,12 +611,6 @@ fn same_song(t: &Track) -> String {
     format!("{}|{}", t.title.to_lowercase(), first_artist(&t.artist).to_lowercase())
 }
 
-/// Обложка «Любимых треков»: белое сердечко на фиолетово-розовом градиенте
-fn liked_art() -> Image {
-    const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b1d8f"/><stop offset=".5" stop-color="#7c3aed"/><stop offset="1" stop-color="#db2777"/></linearGradient></defs><rect width="240" height="240" fill="url(#g)"/><path transform="translate(70 72) scale(4.2)" fill="#fff" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>"##;
-    Image::load_from_svg_data(SVG.as_bytes()).unwrap_or_default()
-}
-
 /// Имя плейлиста для показа: любимые — «♥ Любимые» на языке интерфейса
 fn pl_name(name: &str) -> String {
     if name == model::LIKED {
@@ -751,7 +745,7 @@ impl App {
 
     fn card(&self, c: &ytmusic::Card) -> Card {
         let img = self.covers.get(&c.cover).cloned();
-        Card { title: c.title.as_str().into(), sub: c.sub.as_str().into(), has_cover: img.is_some(), cover: img.unwrap_or_default(), cover_url: c.cover.as_str().into() }
+        Card { title: c.title.as_str().into(), sub: c.sub.as_str().into(), has_cover: img.is_some(), cover: img.unwrap_or_default(), cover_url: c.cover.as_str().into(), liked: false }
     }
 
     /// Запомнить, где мы сейчас, чтобы "назад" туда вернул
@@ -1310,8 +1304,11 @@ impl App {
         let Some(pl) = self.store.playlists.get(i) else { return };
         self.ui.set_pl_title(pl_name(&pl.name).into());
         self.ui.set_pl_desc(pl.desc.as_str().into());
-        let cover = if pl.name == model::LIKED { Some(liked_art()) } else { (!pl.cover.is_empty()).then(|| Image::load_from_path(std::path::Path::new(&pl.cover)).ok()).flatten() };
-        self.ui.set_pl_has_cover(cover.is_some());
+        // у «Любимых» обложка рисуется в интерфейсе цветами темы (LikedArt)
+        let liked = pl.name == model::LIKED;
+        let cover = if liked { None } else { (!pl.cover.is_empty()).then(|| Image::load_from_path(std::path::Path::new(&pl.cover)).ok()).flatten() };
+        self.ui.set_pl_liked(liked);
+        self.ui.set_pl_has_cover(cover.is_some() || liked);
         self.ui.set_pl_cover(cover.unwrap_or_default());
         if self.open_pl != Some(i) {
             // другой плейлист — поиск и сортировка с чистого листа
@@ -2720,7 +2717,7 @@ impl App {
 
     fn card_of(&self, title: &str, sub: &str, cover: &str) -> Card {
         let img = self.covers.get(cover).cloned();
-        Card { title: title.into(), sub: sub.into(), has_cover: img.is_some(), cover: img.unwrap_or_default(), cover_url: cover.into() }
+        Card { title: title.into(), sub: sub.into(), has_cover: img.is_some(), cover: img.unwrap_or_default(), cover_url: cover.into(), liked: false }
     }
 
     /// Главная из того, что уже есть: миксы (home.json), недавнее (статистика), плейлисты
@@ -2760,9 +2757,10 @@ impl App {
             .enumerate()
             .map(|(i, p)| {
                 let sub = tr!("{} треков", "{} tracks", "{} треків", "{} skladieb", p.tracks.len());
-                let own = if p.name == model::LIKED { Some(liked_art()) } else { (!p.cover.is_empty()).then(|| Image::load_from_path(std::path::Path::new(&p.cover)).ok()).flatten() };
+                let own = (!p.cover.is_empty()).then(|| Image::load_from_path(std::path::Path::new(&p.cover)).ok()).flatten();
                 let card = match own {
-                    Some(img) => Card { title: pl_name(&p.name).into(), sub: sub.into(), has_cover: true, cover: img, cover_url: "".into() },
+                    _ if p.name == model::LIKED => Card { title: pl_name(&p.name).into(), sub: sub.into(), has_cover: true, liked: true, ..Default::default() },
+                    Some(img) => Card { title: pl_name(&p.name).into(), sub: sub.into(), has_cover: true, cover: img, cover_url: "".into(), liked: false },
                     None => self.card_of(&p.name, &sub, p.tracks.first().map_or("", |t| t.cover.as_str())),
                 };
                 (i, card)

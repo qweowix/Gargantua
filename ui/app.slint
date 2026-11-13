@@ -45,6 +45,7 @@ export struct Card {
     cover: image,
     cover-url: string,
     has-cover: bool,
+    liked: bool, // «Любимые треки»: обложка рисуется в цветах темы (LikedArt), а не картинкой
 }
 
 // устройство аккаунта в Connect
@@ -210,6 +211,19 @@ component Icon inherits Path {
     commands: root.d;
     fill: Theme.text;
     fill-rule: evenodd;
+}
+
+// обложка «Любимых треков»: белое сердце на градиенте темы — меняется вместе с темой и с цветами из обложки
+component LikedArt inherits Rectangle {
+    background: @linear-gradient(135deg, Theme.glow 0%, Theme.c1 52%, Theme.c2 100%);
+    Icon {
+        d: Icons.heart;
+        width: parent.width * 0.42;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        fill: #ffffff;
+    }
 }
 
 component IconBtn inherits Rectangle {
@@ -1027,6 +1041,8 @@ component CardItem inherits Rectangle {
             source: root.card.cover;
             image-fit: cover;
         }
+
+        if root.card.liked: LikedArt { }
     }
 
     Text {
@@ -1686,6 +1702,7 @@ export component AppWindow inherits Window {
     callback save-playlist(string, string);
     in property <image> pl-cover; // своя обложка плейлиста
     in property <bool> pl-has-cover;
+    in property <bool> pl-liked; // открыты «Любимые треки»: обложка — LikedArt
     callback pick-pl-cover();
     // окно подтверждения (modal 5): скачать, убрать из плейлиста, радио
     in property <string> confirm-title;
@@ -2667,6 +2684,8 @@ export component AppWindow inherits Window {
                                         source: root.pl-cover;
                                         image-fit: cover;
                                     }
+
+                                    if root.pl-liked: LikedArt { }
 
                                     // при наведении — подсказка, что обложку можно сменить
                                     Rectangle {
