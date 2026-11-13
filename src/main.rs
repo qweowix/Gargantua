@@ -3917,13 +3917,16 @@ impl App {
         }
     }
 
-    /// Тикаем только пока экран lyrics открыт и что-то играет: 20 fps, в лайт-режиме ~12
+    /// Тикаем только пока экран lyrics открыт и что-то играет: 20 fps, в лайт-режиме 15
     fn update_lyr_timer(&mut self) {
         self.update_viz_timer();
+        // часы караоке в интерфейсе двигают заливку на каждом кадре монитора — и окно перерисовывается с его
+        // частотой. В лайт-режиме заливку двигает этот таймер: 15 раз в секунду, ступеньками, зато и кадров столько же
+        self.ui.set_lyr_clock(!self.store.settings.lite);
         // текст нужен и на весь экран, и во вкладке панели «Сейчас играет»
         let on = (self.ui.get_lyrics_open() || (self.ui.get_deck_open() && self.ui.get_deck_tab() == 0)) && self.ui.get_playing();
         if on && !self.lyr_timer.running() {
-            let ms = if self.store.settings.lite { 80 } else { 50 };
+            let ms = if self.store.settings.lite { 66 } else { 50 };
             // UI интерполирует до следующего значения чуть дольше периода, чтобы опоздавший тик не давал остановку
             self.ui.set_lyr_step((ms + 16) as i64);
             self.lyr_last = Instant::now();
@@ -4265,8 +4268,10 @@ fn main() -> Result<(), slint::PlatformError> {
         conn_vol_sent: None,
     };
     APP.with(|a| *a.borrow_mut() = Some(app));
-    ui.set_lyr_clock(true);
-    with(|a| a.apply_settings());
+    with(|a| {
+        a.ui.set_lyr_clock(!a.store.settings.lite);
+        a.apply_settings();
+    });
     // MPRIS: панель, playerctl и медиа-клавиши видят и управляют плеером
     #[cfg(windows)]
     let hwnd = {
@@ -4587,6 +4592,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 a.apply_fx();
             }
             a.deck_changed(); // выключили лайт при открытой панели — спектр возвращается
+            a.lyr_timer.stop(); // перезапуск с частотой нового режима
             a.update_lyr_timer();
         });
     });
