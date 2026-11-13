@@ -3846,7 +3846,7 @@ impl App {
     fn deck_changed(&mut self) {
         // фильтр спектра встаёт в цепочку mpv при первом открытии панели и остаётся до выхода: его включение —
         // щелчок в звуке, один раз за запуск это терпимо, на каждое открытие — нет
-        if self.ui.get_deck_open() && !self.viz_used {
+        if self.ui.get_deck_open() && !self.viz_used && !self.store.settings.lite {
             self.viz_used = true;
             self.apply_fx();
         }
@@ -3856,11 +3856,12 @@ impl App {
         }
     }
 
-    /// Спектр рисуем 30 раз в секунду, пока панель видно и музыка играет
+    /// Спектр рисуем 20 раз в секунду, пока панель видно и музыка играет
     fn update_viz_timer(&mut self) {
-        let on = self.ui.get_deck_open() && self.ui.get_playing() && !self.ui.get_lyrics_open() && self.mirror.is_none();
+        let on = self.ui.get_deck_open() && self.ui.get_playing() && !self.ui.get_lyrics_open() && self.mirror.is_none() && self.viz_used;
         if on && !self.viz_timer.running() {
-            self.viz_timer.start(TimerMode::Repeated, Duration::from_millis(33), || {
+            // 20 кадров в секунду: глазу столбики с плавным спадом не отличить от 30, а кадр — это перерисовка окна
+            self.viz_timer.start(TimerMode::Repeated, Duration::from_millis(50), || {
                 with(|a| a.viz_tick());
             });
         } else if !on && self.viz_timer.running() {
@@ -3895,7 +3896,8 @@ impl App {
             let v = (a / self.viz_peak).powf(0.75).min(1.0);
             let b = &mut self.viz_bars[j];
             let old = *b;
-            *b = if v > *b { *b + (v - *b) * 0.7 } else { (*b * 0.86).max(v) };
+            // подъём и спад — те же, что были при 30 кадрах (0.7 и 0.86 за кадр), пересчитаны на 20
+            *b = if v > *b { *b + (v - *b) * 0.836 } else { (*b * 0.798).max(v) };
             // столбик сдвинулся меньше чем на полпикселя (высота 54 px) — не трогаем: каждая запись в модель — перерисовка
             if (*b - old).abs() * 54.0 >= 0.5 {
                 self.viz_model.set_row_data(j, *b);
@@ -4579,6 +4581,12 @@ fn main() -> Result<(), slint::PlatformError> {
             a.store.settings.lite = on;
             a.ui.set_lite(on);
             a.save();
+            // лайт-режим: спектр не считает и mpv — фильтр уходит из цепочки (один щелчок в звуке при переключении)
+            if on && a.viz_used {
+                a.viz_used = false;
+                a.apply_fx();
+            }
+            a.deck_changed(); // выключили лайт при открытой панели — спектр возвращается
             a.update_lyr_timer();
         });
     });

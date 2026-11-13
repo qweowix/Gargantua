@@ -254,8 +254,8 @@ msgstr "Mono"
 msgid "Лайт-режим"
 msgstr "Lite režim"
 
-msgid "Вырубает постоянные анимации (вращение, пульсацию). Ноль лишней нагрузки."
-msgstr "Vypne neustále animácie (otáčanie, pulzovanie). Nulová záťaž navyše."
+msgid "Для слабых компьютеров: без фона из обложки, спектра в панели «Сейчас играет», плавающего фона и свечения в тексте песен. Текст обновляется реже."
+msgstr "Pre slabšie počítače: bez pozadia z obalu, spektra v paneli „Práve hrá“, plávajúceho pozadia a žiary v textoch piesní. Text sa obnovuje menej často."
 
 msgid "Упавшие буквы лежат: {} с"
 msgstr "Spadnuté písmená ležia: {} s"
@@ -1132,3 +1132,21 @@ msgstr "Rozhranie"
 
 msgid "История и настройки хранятся у тебя. Плейлисты и статистика — в твоём аккаунте, одинаковые на компьютере и телефоне. Никаких подписок, рекламы и телеметрии."
 msgstr "História a nastavenia zostávajú u teba. Playlisty a štatistiky sú v tvojom účte, rovnaké na počítači aj v telefóne. Žiadne predplatné, reklamy ani telemetria."
+
+msgid "Внешний вид"
+msgstr "Vzhľad"
+
+msgid "Воспроизведение"
+msgstr "Prehrávanie"
+
+msgid "Текст песен"
+msgstr "Texty piesní"
+
+msgid "Загрузки и кэш"
+msgstr "Sťahovanie a vyrovnávacia pamäť"
+
+msgid "YouTube и Discord"
+msgstr "YouTube a Discord"
+
+msgid "Служебное"
+msgstr "Údržba"

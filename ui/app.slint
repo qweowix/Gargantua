@@ -2101,32 +2101,39 @@ export component AppWindow inherits Window {
         }
     main-ui := Rectangle {
         visible: (!root.lyrics-open || lyr-screen.y > 0px) && !root.covered;
-        // фоновое свечение "аккреционного диска"
+        // фон окна стоит на месте — тоже слоем, чтобы кадры спектра его заново не рисовали
         Rectangle {
-            x: -260px;
-            y: -300px;
-            width: 760px;
-            height: 760px;
-            background: @radial-gradient(circle, Theme.glow.transparentize(1 - 0.22 - 0.1 * root.pulse) 0%, Theme.glow.transparentize(1) 70%);
-        }
+            cache-rendering-hint: true;
+            clip: true;
+            // фоновое свечение "аккреционного диска"
+            Rectangle {
+                x: -260px;
+                y: -300px;
+                width: 760px;
+                height: 760px;
+                background: @radial-gradient(circle, Theme.glow.transparentize(1 - 0.22 - 0.1 * root.pulse) 0%, Theme.glow.transparentize(1) 70%);
+            }
 
-        Rectangle {
-            x: root.width - 480px;
-            y: root.height - 560px;
-            width: 760px;
-            height: 760px;
-            background: @radial-gradient(circle, Theme.c2.transparentize(0.82) 0%, Theme.c2.transparentize(1) 70%);
-        }
+            Rectangle {
+                x: root.width - 480px;
+                y: root.height - 560px;
+                width: 760px;
+                height: 760px;
+                background: @radial-gradient(circle, Theme.c2.transparentize(0.82) 0%, Theme.c2.transparentize(1) 70%);
+            }
 
-        // размытая обложка играющего трека на весь фон, едва заметно: окно берёт цвет от музыки, а не стоит
-        // одним тёмным пятном. Картинка уже размыта и крошечная (её же показывает экран текста) — тут только растяжение
-        Image {
-            width: 100%;
-            height: 100%;
-            source: root.bg-img;
-            image-fit: fill;
-            opacity: root.has-big ? 0.16 : 0;
-            animate opacity { duration: 700ms; easing: ease-in-out; }
+            // размытая обложка играющего трека на весь фон, едва заметно: окно берёт цвет от музыки, а не стоит
+            // одним тёмным пятном. Картинка уже размыта и крошечная (её же показывает экран текста) — тут только растяжение.
+            // В лайт-режиме её нет
+            Image {
+                width: 100%;
+                height: 100%;
+                source: root.bg-img;
+                image-fit: fill;
+                opacity: root.has-big && !root.lite ? 0.16 : 0;
+                visible: self.opacity > 0.005;
+                animate opacity { duration: 700ms; easing: ease-in-out; }
+            }
         }
 
         VerticalLayout {
@@ -2701,8 +2708,10 @@ export component AppWindow inherits Window {
                                         }
                                     }
 
+                                    // у «Любимых треков» обложку не меняют — ни подсказки, ни клика
                                     pl-cover-ta := TouchArea {
-                                        mouse-cursor: pointer;
+                                        enabled: !root.pl-liked;
+                                        mouse-cursor: root.pl-liked ? default : pointer;
                                         clicked => {
                                             root.pick-pl-cover();
                                         }
@@ -3396,7 +3405,7 @@ export component AppWindow inherits Window {
                             if root.st-artists.length > 0: fav := Rectangle {
                                 property <length> big: max(self.width, self.height);
                                 // фон плывёт, только пока карточку видно
-                                property <float> ft: root.page == "stats" && root.st-fav-has && !root.lyrics-open ? animation-tick() / 1s * 1.2 : 0;
+                                property <float> ft: root.page == "stats" && root.st-fav-has && !root.lyrics-open && !root.lite ? animation-tick() / 1s * 1.2 : 0;
                                 height: 240px;
                                 border-radius: 24px;
                                 clip: true;
@@ -4219,11 +4228,56 @@ export component AppWindow inherits Window {
                             padding: 26px;
                             spacing: 14px;
                             alignment: start;
+
                             Text {
                                 text: @tr("Настройки");
                                 color: Theme.text;
                                 font-size: 28px;
                                 font-weight: 800;
+                            }
+
+                            if root.update-ver != "": HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text {
+                                        text: @tr("Вышла версия {}", root.update-ver);
+                                        color: Theme.text;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+
+                                    Text {
+                                        text: @tr("Плеер скачает её, заменит себя и перезапустится. Музыка на минуту прервётся.");
+                                        color: Theme.dim;
+                                        font-size: 13px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: root.update-busy ? @tr("Качаю…") : @tr("Обновить");
+                                        clicked => {
+                                            root.do-update();
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                height: 1px;
+                                background: Theme.line;
+                            }
+
+                            Text {
+                                text: @tr("Внешний вид");
+                                color: Theme.faint;
+                                font-size: 11px;
+                                font-weight: 700;
+                                letter-spacing: 1.5px;
                             }
 
                             HorizontalLayout {
@@ -4334,13 +4388,22 @@ export component AppWindow inherits Window {
                                 }
                             }
 
+                            SettingRow {
+                                title: @tr("Лайт-режим");
+                                desc: @tr("Для слабых компьютеров: без фона из обложки, спектра в панели «Сейчас играет», плавающего фона и свечения в тексте песен. Текст обновляется реже.");
+                                on: root.lite;
+                                toggled => {
+                                    root.set-lite(!root.lite);
+                                }
+                            }
+
                             Rectangle {
                                 height: 1px;
                                 background: Theme.line;
                             }
 
                             Text {
-                                text: @tr("Звук");
+                                text: @tr("Воспроизведение");
                                 color: Theme.faint;
                                 font-size: 11px;
                                 font-weight: 700;
@@ -4388,53 +4451,6 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            SettingRow {
-                                title: @tr("Офлайн-кэш");
-                                desc: @tr("Прослушанные треки тихо сохраняются на диск: повторно играют мгновенно и без интернета. Старые вытесняются, когда кэш упрётся в предел.");
-                                on: root.offline;
-                                toggled => {
-                                    root.set-offline(!root.offline);
-                                }
-                            }
-
-                            if root.offline: HorizontalLayout {
-                                spacing: 8px;
-                                alignment: start;
-                                Text {
-                                    text: @tr("Предел:");
-                                    color: Theme.dim;
-                                    font-size: 13px;
-                                    vertical-alignment: center;
-                                }
-
-                                for g in [1, 2, 5, 10]: VerticalLayout {
-                                    alignment: center;
-                                    Chip {
-                                        text: @tr("{} ГБ", g);
-                                        accent: Theme.soft1;
-                                        active: Math.abs(root.cache-gb - g) < 0.01;
-                                        clicked => {
-                                            root.set-cache-gb(g);
-                                        }
-                                    }
-                                }
-
-                                Rectangle {
-                                    width: 8px;
-                                }
-
-                                VerticalLayout {
-                                    alignment: center;
-                                    Pill {
-                                        text: @tr("Очистить · {}", root.cache-used);
-                                        primary: false;
-                                        clicked => {
-                                            root.clear-cache();
-                                        }
-                                    }
-                                }
-                            }
-
                             HorizontalLayout {
                                 spacing: 8px;
                                 VerticalLayout {
@@ -4468,155 +4484,25 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            SettingRow {
-                                title: @tr("Статус в Discord");
-                                desc: root.discord-ready
-                                    ? @tr("Друзья видят, что ты слушаешь: трек, исполнитель, обложка и сколько осталось. На паузе статус пропадает.")
-                                    : @tr("В этой сборке нет Application ID для Discord — статус пока не работает.");
-                                on: root.discord-on && root.discord-ready;
-                                toggled => {
-                                    root.set-discord(!root.discord-on);
-                                }
-                            }
-
-                            if root.update-ver != "": HorizontalLayout {
-                                spacing: 8px;
-                                VerticalLayout {
-                                    horizontal-stretch: 1;
-                                    alignment: center;
-                                    Text {
-                                        text: @tr("Вышла версия {}", root.update-ver);
-                                        color: Theme.text;
-                                        font-size: 15px;
-                                        font-weight: 700;
-                                    }
-
-                                    Text {
-                                        text: @tr("Плеер скачает её, заменит себя и перезапустится. Музыка на минуту прервётся.");
-                                        color: Theme.dim;
-                                        font-size: 13px;
-                                        wrap: word-wrap;
-                                    }
-                                }
-
-                                VerticalLayout {
-                                    alignment: center;
-                                    Pill {
-                                        text: root.update-busy ? @tr("Качаю…") : @tr("Обновить");
-                                        clicked => {
-                                            root.do-update();
-                                        }
-                                    }
-                                }
-                            }
-
-                            HorizontalLayout {
-                                spacing: 8px;
-                                VerticalLayout {
-                                    horizontal-stretch: 1;
-                                    alignment: center;
-                                    Text {
-                                        text: @tr("Журнал ошибок");
-                                        color: Theme.text;
-                                        font-size: 15px;
-                                        font-weight: 700;
-                                    }
-
-                                    Text {
-                                        text: @tr("Если трек не грузится или что-то сломалось — скопируй журнал и пришли его.");
-                                        color: Theme.dim;
-                                        font-size: 13px;
-                                        wrap: word-wrap;
-                                    }
-                                }
-
-                                VerticalLayout {
-                                    alignment: center;
-                                    Pill {
-                                        text: @tr("Скопировать");
-                                        primary: false;
-                                        clicked => {
-                                            root.copy-log();
-                                        }
-                                    }
-                                }
-                            }
-
-                            VerticalLayout {
-                                spacing: 6px;
-                                Text {
-                                    text: @tr("Горячие клавиши");
-                                    color: Theme.text;
-                                    font-size: 15px;
-                                    font-weight: 700;
-                                }
-
-                                Text {
-                                    text: @tr("Нажми на клавишу справа и потом новое сочетание. Занятая клавиша поменяется местами. Esc всегда закрывает окна и выходит из поля ввода.");
-                                    color: Theme.dim;
-                                    font-size: 13px;
-                                    wrap: word-wrap;
-                                }
-
-                                for k[i] in root.key-binds: HorizontalLayout {
-                                    spacing: 12px;
-                                    Text {
-                                        horizontal-stretch: 1;
-                                        text: k.name;
-                                        color: Theme.text;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
-                                    }
-
-                                    Rectangle {
-                                        property <bool> wait: root.rebinding == i;
-                                        width: max(64px, kb-txt.preferred-width + 20px);
-                                        height: 28px;
-                                        border-radius: 7px;
-                                        background: self.wait ? Theme.c1.transparentize(0.75) : kb-ta.has-hover ? #ffffff1a : #ffffff0f;
-                                        border-width: 1px;
-                                        border-color: self.wait ? Theme.c1 : #ffffff1c;
-                                        kb-txt := Text {
-                                            text: parent.wait ? @tr("жми клавишу… (Esc — отмена)") : k.key;
-                                            color: parent.wait ? Theme.pale1 : Theme.text;
-                                            font-size: 12px;
-                                            font-weight: 700;
-                                        }
-
-                                        kb-ta := TouchArea {
-                                            mouse-cursor: pointer;
-                                            clicked => {
-                                                root.start-rebind(i);
-                                                keys.focus(); // из поля ввода нажатие бы не дошло
-                                            }
-                                        }
-                                    }
-                                }
-
-                                HorizontalLayout {
-                                    alignment: start;
-                                    padding-top: 4px;
-                                    Pill {
-                                        text: @tr("Вернуть клавиши по умолчанию");
-                                        primary: false;
-                                        clicked => {
-                                            root.reset-keys();
-                                        }
-                                    }
-                                }
-                            }
-
                             Rectangle {
                                 height: 1px;
                                 background: Theme.line;
                             }
 
+                            Text {
+                                text: @tr("Текст песен");
+                                color: Theme.faint;
+                                font-size: 11px;
+                                font-weight: 700;
+                                letter-spacing: 1.5px;
+                            }
+
                             SettingRow {
-                                title: @tr("Лайт-режим");
-                                desc: @tr("Вырубает постоянные анимации (вращение, пульсацию). Ноль лишней нагрузки.");
-                                on: root.lite;
+                                title: @tr("Дыра в lyrics всегда");
+                                desc: @tr("Логотип-дыра в углу экрана lyrics виден всегда. Если выключить — появляется только с уходом строк «в дыру».");
+                                on: root.hole-always;
                                 toggled => {
-                                    root.set-lite(!root.lite);
+                                    root.set-hole-always(!root.hole-always);
                                 }
                             }
 
@@ -4715,13 +4601,161 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            SettingRow {
-                                title: @tr("Дыра в lyrics всегда");
-                                desc: @tr("Логотип-дыра в углу экрана lyrics виден всегда. Если выключить — появляется только с уходом строк «в дыру».");
-                                on: root.hole-always;
-                                toggled => {
-                                    root.set-hole-always(!root.hole-always);
+                            VerticalLayout {
+                                spacing: 8px;
+                                HorizontalLayout {
+                                    spacing: 14px;
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        Text {
+                                            text: @tr("Ключ Spicy Lyrics");
+                                            color: Theme.text;
+                                            font-size: 15px;
+                                            font-weight: 700;
+                                        }
+
+                                        Text {
+                                            text: @tr("Ещё один источник текстов: синки по слогам от сообщества и Apple Music. Нужен свой бесплатный ключ (secret key, sl_sk_…) — хранится только у тебя на компьютере. Пусто — источник выключен.");
+                                            color: Theme.dim;
+                                            font-size: 13px;
+                                            wrap: word-wrap;
+                                        }
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Pill {
+                                            text: @tr("Получить ключ");
+                                            clicked => {
+                                                root.open-url("https://developers.spicylyrics.org/dashboard/applications");
+                                            }
+                                        }
+                                    }
                                 }
+
+                                Field {
+                                    text: root.spicy-key;
+                                    placeholder: "sl_sk_…";
+                                    password: true;
+                                    changed text => {
+                                        root.set-spicy-key(self.text);
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                height: 1px;
+                                background: Theme.line;
+                            }
+
+                            Text {
+                                text: @tr("Загрузки и кэш");
+                                color: Theme.faint;
+                                font-size: 11px;
+                                font-weight: 700;
+                                letter-spacing: 1.5px;
+                            }
+
+                            SettingRow {
+                                title: @tr("Офлайн-кэш");
+                                desc: @tr("Прослушанные треки тихо сохраняются на диск: повторно играют мгновенно и без интернета. Старые вытесняются, когда кэш упрётся в предел.");
+                                on: root.offline;
+                                toggled => {
+                                    root.set-offline(!root.offline);
+                                }
+                            }
+
+                            if root.offline: HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                Text {
+                                    text: @tr("Предел:");
+                                    color: Theme.dim;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                }
+
+                                for g in [1, 2, 5, 10]: VerticalLayout {
+                                    alignment: center;
+                                    Chip {
+                                        text: @tr("{} ГБ", g);
+                                        accent: Theme.soft1;
+                                        active: Math.abs(root.cache-gb - g) < 0.01;
+                                        clicked => {
+                                            root.set-cache-gb(g);
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: 8px;
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: @tr("Очистить · {}", root.cache-used);
+                                        primary: false;
+                                        clicked => {
+                                            root.clear-cache();
+                                        }
+                                    }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 10px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    Text {
+                                        text: @tr("Папка загрузок");
+                                        color: Theme.text;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+
+                                    Text {
+                                        text: root.dl-dir;
+                                        color: Theme.dim;
+                                        font-size: 13px;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: @tr("Открыть");
+                                        icon: Icons.folder;
+                                        primary: false;
+                                        clicked => {
+                                            root.open-dl-dir();
+                                        }
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: @tr("Сменить");
+                                        clicked => {
+                                            root.pick-dl-dir();
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                height: 1px;
+                                background: Theme.line;
+                            }
+
+                            Text {
+                                text: @tr("YouTube и Discord");
+                                color: Theme.faint;
+                                font-size: 11px;
+                                font-weight: 700;
+                                letter-spacing: 1.5px;
                             }
 
                             ck := HorizontalLayout {
@@ -4782,86 +4816,82 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            HorizontalLayout {
-                                spacing: 10px;
-                                VerticalLayout {
-                                    horizontal-stretch: 1;
-                                    Text {
-                                        text: @tr("Папка загрузок");
-                                        color: Theme.text;
-                                        font-size: 15px;
-                                        font-weight: 700;
-                                    }
-
-                                    Text {
-                                        text: root.dl-dir;
-                                        color: Theme.dim;
-                                        font-size: 13px;
-                                        overflow: elide;
-                                    }
-                                }
-
-                                VerticalLayout {
-                                    alignment: center;
-                                    Pill {
-                                        text: @tr("Открыть");
-                                        icon: Icons.folder;
-                                        primary: false;
-                                        clicked => {
-                                            root.open-dl-dir();
-                                        }
-                                    }
-                                }
-
-                                VerticalLayout {
-                                    alignment: center;
-                                    Pill {
-                                        text: @tr("Сменить");
-                                        clicked => {
-                                            root.pick-dl-dir();
-                                        }
-                                    }
+                            SettingRow {
+                                title: @tr("Статус в Discord");
+                                desc: root.discord-ready
+                                    ? @tr("Друзья видят, что ты слушаешь: трек, исполнитель, обложка и сколько осталось. На паузе статус пропадает.")
+                                    : @tr("В этой сборке нет Application ID для Discord — статус пока не работает.");
+                                on: root.discord-on && root.discord-ready;
+                                toggled => {
+                                    root.set-discord(!root.discord-on);
                                 }
                             }
 
+                            Rectangle {
+                                height: 1px;
+                                background: Theme.line;
+                            }
+
                             VerticalLayout {
-                                spacing: 8px;
-                                HorizontalLayout {
-                                    spacing: 14px;
-                                    VerticalLayout {
+                                spacing: 6px;
+                                Text {
+                                    text: @tr("Горячие клавиши");
+                                    color: Theme.text;
+                                    font-size: 15px;
+                                    font-weight: 700;
+                                }
+
+                                Text {
+                                    text: @tr("Нажми на клавишу справа и потом новое сочетание. Занятая клавиша поменяется местами. Esc всегда закрывает окна и выходит из поля ввода.");
+                                    color: Theme.dim;
+                                    font-size: 13px;
+                                    wrap: word-wrap;
+                                }
+
+                                for k[i] in root.key-binds: HorizontalLayout {
+                                    spacing: 12px;
+                                    Text {
                                         horizontal-stretch: 1;
-                                        Text {
-                                            text: @tr("Ключ Spicy Lyrics");
-                                            color: Theme.text;
-                                            font-size: 15px;
+                                        text: k.name;
+                                        color: Theme.text;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+
+                                    Rectangle {
+                                        property <bool> wait: root.rebinding == i;
+                                        width: max(64px, kb-txt.preferred-width + 20px);
+                                        height: 28px;
+                                        border-radius: 7px;
+                                        background: self.wait ? Theme.c1.transparentize(0.75) : kb-ta.has-hover ? #ffffff1a : #ffffff0f;
+                                        border-width: 1px;
+                                        border-color: self.wait ? Theme.c1 : #ffffff1c;
+                                        kb-txt := Text {
+                                            text: parent.wait ? @tr("жми клавишу… (Esc — отмена)") : k.key;
+                                            color: parent.wait ? Theme.pale1 : Theme.text;
+                                            font-size: 12px;
                                             font-weight: 700;
                                         }
 
-                                        Text {
-                                            text: @tr("Ещё один источник текстов: синки по слогам от сообщества и Apple Music. Нужен свой бесплатный ключ (secret key, sl_sk_…) — хранится только у тебя на компьютере. Пусто — источник выключен.");
-                                            color: Theme.dim;
-                                            font-size: 13px;
-                                            wrap: word-wrap;
-                                        }
-                                    }
-
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Pill {
-                                            text: @tr("Получить ключ");
+                                        kb-ta := TouchArea {
+                                            mouse-cursor: pointer;
                                             clicked => {
-                                                root.open-url("https://developers.spicylyrics.org/dashboard/applications");
+                                                root.start-rebind(i);
+                                                keys.focus(); // из поля ввода нажатие бы не дошло
                                             }
                                         }
                                     }
                                 }
 
-                                Field {
-                                    text: root.spicy-key;
-                                    placeholder: "sl_sk_…";
-                                    password: true;
-                                    changed text => {
-                                        root.set-spicy-key(self.text);
+                                HorizontalLayout {
+                                    alignment: start;
+                                    padding-top: 4px;
+                                    Pill {
+                                        text: @tr("Вернуть клавиши по умолчанию");
+                                        primary: false;
+                                        clicked => {
+                                            root.reset-keys();
+                                        }
                                     }
                                 }
                             }
@@ -4869,6 +4899,46 @@ export component AppWindow inherits Window {
                             Rectangle {
                                 height: 1px;
                                 background: Theme.line;
+                            }
+
+                            Text {
+                                text: @tr("Служебное");
+                                color: Theme.faint;
+                                font-size: 11px;
+                                font-weight: 700;
+                                letter-spacing: 1.5px;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text {
+                                        text: @tr("Журнал ошибок");
+                                        color: Theme.text;
+                                        font-size: 15px;
+                                        font-weight: 700;
+                                    }
+
+                                    Text {
+                                        text: @tr("Если трек не грузится или что-то сломалось — скопируй журнал и пришли его.");
+                                        color: Theme.dim;
+                                        font-size: 13px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    Pill {
+                                        text: @tr("Скопировать");
+                                        primary: false;
+                                        clicked => {
+                                            root.copy-log();
+                                        }
+                                    }
+                                }
                             }
 
                             Text {
@@ -5727,7 +5797,8 @@ export component AppWindow inherits Window {
             // и раньше каждый его кадр перерисовывал всё окно — со всем текстом страницы (20%+ ядра). Теперь большие
             // куски окна — слои (cache-rendering-hint): за кадр спектра заново рисуются только столбики
             viz-box := Rectangle {
-                height: 54px;
+                visible: !root.lite; // в лайт-режиме спектра нет вовсе: и mpv его не считает
+                height: root.lite ? 0px : 54px;
                 for v[i] in root.viz: Rectangle {
                     property <length> step: viz-box.width / max(1, root.viz.length);
                     x: i * self.step + 1.5px;
@@ -6228,7 +6299,8 @@ export component AppWindow inherits Window {
         animate y { duration: 420ms; easing: cubic-bezier(0.2, 0.9, 0.2, 1); }
         // огромные вращающиеся слои фона (в 1.7 экрана) — самое дорогое на кадре. Пока экран едет,
         // под ним рисуется ещё и главный экран, поэтому фон проявляется, только когда экран доехал
-        property <float> bg-on: self.y < 1px ? 1 : 0;
+        // в лайт-режиме огромные плавающие слои не включаются вовсе: остаётся статичная заливка ниже
+        property <float> bg-on: self.y < 1px && !root.lite ? 1 : 0;
         animate bg-on { duration: self.y < 1px ? 450ms : 0ms; easing: ease-out; }
 
         // крошечная размытая обложка, растянутая на весь экран — мягкие пятна цвета; медленно вращается
@@ -6655,10 +6727,10 @@ export component AppWindow inherits Window {
                             exit: root.lyr-exit;
                             quiet: i < root.lyr-jump;
                             stay-ms: root.fall-stay * 1000;
-                            glow: root.lyr-glow;
+                            glow: root.lite ? 0 : root.lyr-glow; // лайт: без ореола
                             view-top: lyr-col.off-y;
                             view-h: lyr-screen.height;
-                            edge: root.lyr-edge * 1px;
+                            edge: root.lite ? 0px : root.lyr-edge * 1px; // и без растворения у краёв
                             step: root.lyr-step;
                             // пол — низ экрана, а не колонки текста
                             floor-y: lyr-screen.height - lyr-col.off-y - 26px;

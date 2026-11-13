@@ -254,8 +254,8 @@ msgstr "Mono"
 msgid "Лайт-режим"
 msgstr "Lite mode"
 
-msgid "Вырубает постоянные анимации (вращение, пульсацию). Ноль лишней нагрузки."
-msgstr "Turns off constant animations (spinning, pulsing). Zero extra load."
+msgid "Для слабых компьютеров: без фона из обложки, спектра в панели «Сейчас играет», плавающего фона и свечения в тексте песен. Текст обновляется реже."
+msgstr "For slower computers: no cover background, no spectrum in the Now Playing panel, no floating background or glow in lyrics. Lyrics update less often."
 
 msgid "Упавшие буквы лежат: {} с"
 msgstr "Fallen letters stay for: {} s"
@@ -1132,3 +1132,21 @@ msgstr "Interface"
 
 msgid "История и настройки хранятся у тебя. Плейлисты и статистика — в твоём аккаунте, одинаковые на компьютере и телефоне. Никаких подписок, рекламы и телеметрии."
 msgstr "History and settings stay with you. Playlists and stats live in your account, the same on your computer and phone. No subscriptions, ads or telemetry."
+
+msgid "Внешний вид"
+msgstr "Appearance"
+
+msgid "Воспроизведение"
+msgstr "Playback"
+
+msgid "Текст песен"
+msgstr "Lyrics"
+
+msgid "Загрузки и кэш"
+msgstr "Downloads and cache"
+
+msgid "YouTube и Discord"
+msgstr "YouTube and Discord"
+
+msgid "Служебное"
+msgstr "Maintenance"
