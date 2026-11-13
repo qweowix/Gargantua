@@ -84,6 +84,37 @@ val SmartShuffle: androidx.compose.ui.graphics.vector.ImageVector by lazy {
         .build()
 }
 
+/** Вышла новая версия — окно сразу при запуске, поверх любого экрана. Строка в «О программе» остаётся */
+@Composable
+fun UpdateDialog() {
+    val show by app.blackhole.Updater.prompt.collectAsState()
+    val ver by app.blackhole.Updater.version.collectAsState()
+    val busy by app.blackhole.Updater.busy.collectAsState()
+    if (!show || ver.isEmpty()) return
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val later = { app.blackhole.Updater.prompt.value = false }
+    GlassDialog(later, tr("Вышла версия $ver", "Version $ver is out", "Вийшла версія $ver", "Vyšla verzia $ver"), buttons = {
+        Pill(tr("Позже", "Later", "Пізніше", "Neskôr"), primary = false, onClick = later)
+        Pill(if (busy) tr("Качаю…", "Downloading…", "Завантажую…", "Sťahujem…") else tr("Обновить", "Update", "Оновити", "Aktualizovať"), enabled = !busy) {
+            scope.launch {
+                app.blackhole.Updater.install(ctx)
+                later()
+            }
+        }
+    }) {
+        Text(
+            tr(
+                "Сейчас у тебя ${app.blackhole.BuildConfig.VERSION_NAME}. Скачаю новую и открою установщик — плейлисты и вход останутся. Обновиться можно и потом, в «О программе».",
+                "You have ${app.blackhole.BuildConfig.VERSION_NAME}. I'll download the new one and open the installer — playlists and sign-in stay. You can also update later in About.",
+                "Зараз у тебе ${app.blackhole.BuildConfig.VERSION_NAME}. Завантажу нову й відкрию встановлювач — плейлисти і вхід залишаться. Оновитися можна й потім, у «Про програму».",
+                "Teraz máš ${app.blackhole.BuildConfig.VERSION_NAME}. Stiahnem novú a otvorím inštalátor — playlisty a prihlásenie zostanú. Aktualizovať môžeš aj neskôr v časti O aplikácii.",
+            ),
+            color = Pal.dim, fontSize = 14.sp,
+        )
+    }
+}
+
 /** Звёздочка трека, подмешанного умным перемешиванием — та же, что на ПК */
 val Sparkle: androidx.compose.ui.graphics.vector.ImageVector by lazy {
     androidx.compose.ui.graphics.vector.ImageVector.Builder("Sparkle", 24.dp, 24.dp, 24f, 24f)

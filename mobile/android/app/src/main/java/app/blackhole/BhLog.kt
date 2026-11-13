@@ -51,6 +51,8 @@ object Updater {
     /** версия новее нашей (пусто — нет) и её APK */
     val version = MutableStateFlow("")
     val busy = MutableStateFlow(false)
+    /** показать окно «Вышла версия» поверх всего (раз за запуск; «Позже» — до следующего запуска) */
+    val prompt = MutableStateFlow(false)
     private var url = ""
 
     private fun nums(v: String) = v.trimStart('v').split('.').map { p -> p.takeWhile { it.isDigit() }.toIntOrNull() ?: 0 }
@@ -76,6 +78,7 @@ object Updater {
             val apk = v["assets"]?.jsonArray.orEmpty().map { it.jsonObject }.firstOrNull { it["name"]?.jsonPrimitive?.contentOrNull == ASSET } ?: return@runCatching
             url = apk["browser_download_url"]?.jsonPrimitive?.contentOrNull ?: return@runCatching
             version.value = tag.trimStart('v')
+            prompt.value = true
         }.onFailure { BhLog.line("проверка обновлений: $it") }
     }
 

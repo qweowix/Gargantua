@@ -121,6 +121,7 @@ class MainActivity : ComponentActivity() {
 private fun Root(vm: AppState) {
     val snack = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { App.toasts.collect { snack.showSnackbar(it) } }
+    app.blackhole.ui.UpdateDialog() // вышла новая версия — окно поверх любого экрана, даже входа
 
     if (vm.cloudOn && !(vm.signedIn && vm.verified)) {
         Box(Modifier.fillMaxSize()) {

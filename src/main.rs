@@ -466,6 +466,7 @@ enum Confirm {
     Download(Vec<Track>),
     Remove(usize),
     Radio(Track),
+    Update(String), // вышла новая версия — окно сразу при запуске, чтобы не искать строку в настройках
 }
 
 /// Импорт из Spotify / Apple Music, который ждёт ответа юзера
@@ -1541,7 +1542,19 @@ impl App {
                 tr!("Очередь заменится треками, похожими на «{}».", "The queue will be replaced with tracks like “{}”.", "Черга заміниться треками, схожими на «{}».", "Front sa nahradí skladbami podobnými „{}“.", t.title),
                 tr!("Включить", "Start", "Увімкнути", "Zapnúť"),
             ),
+            Confirm::Update(v) => (
+                tr!("Вышла версия {}", "Version {} is out", "Вийшла версія {}", "Vyšla verzia {}", v),
+                tr!(
+                    "Сейчас у тебя {}. Плеер скачает новую, заменит себя и перезапустится — музыка на минуту прервётся. Обновиться можно и потом, в настройках.",
+                    "You have {}. The player will download the new one, replace itself and restart — music stops for a minute. You can also update later in Settings.",
+                    "Зараз у тебе {}. Плеєр завантажить нову, замінить себе й перезапуститься — музика на хвилину перерветься. Оновитися можна й потім, у налаштуваннях.",
+                    "Teraz máš {}. Prehrávač stiahne novú, nahradí sa a reštartuje — hudba sa na minútu preruší. Aktualizovať môžeš aj neskôr v nastaveniach.",
+                    update::VERSION
+                ),
+                tr!("Обновить", "Update", "Оновити", "Aktualizovať"),
+            ),
         };
+        self.ui.set_confirm_no(if matches!(c, Confirm::Update(_)) { tr!("Позже", "Later", "Пізніше", "Neskôr") } else { String::new() }.into());
         self.ui.set_confirm_title(title.into());
         self.ui.set_confirm_text(text.into());
         self.ui.set_confirm_ok(ok.into());
@@ -1556,6 +1569,7 @@ impl App {
             Some(Confirm::Download(v)) => self.download(v),
             Some(Confirm::Remove(i)) => self.remove_track(i),
             Some(Confirm::Radio(t)) => self.start_radio(t),
+            Some(Confirm::Update(_)) => self.ui.invoke_do_update(),
             None => {}
         }
     }
@@ -4721,7 +4735,13 @@ fn main() -> Result<(), slint::PlatformError> {
             Ok(Some((ver, url))) => post(move |a| {
                 a.update_url = url;
                 a.ui.set_update_ver(ver.as_str().into());
-                a.toast(&tr!("Вышла версия {} — обновиться можно в настройках", "Version {} is out — update in Settings", "Вийшла версія {} — оновитися можна в налаштуваннях", "Vyšla verzia {} — aktualizuj v nastaveniach", ver));
+                // сразу окном по центру; если уже открыто другое окно (вход, импорт…) — не перебиваем, только тост.
+                // Строка «Вышла версия» в настройках остаётся в любом случае
+                if a.ui.get_modal() == 0 {
+                    a.ask(Confirm::Update(ver));
+                } else {
+                    a.toast(&tr!("Вышла версия {} — обновиться можно в настройках", "Version {} is out — update in Settings", "Вийшла версія {} — оновитися можна в налаштуваннях", "Vyšla verzia {} — aktualizuj v nastaveniach", ver));
+                }
             }),
             Ok(None) => {}
             // 404 — релизов ещё нет (или репозиторий закрыт): это не ошибка

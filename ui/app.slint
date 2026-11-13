@@ -1708,6 +1708,7 @@ export component AppWindow inherits Window {
     in property <string> confirm-title;
     in property <string> confirm-text;
     in property <string> confirm-ok;
+    in property <string> confirm-no; // своя надпись на «Отмене» (у окна обновления — «Позже»), пусто — «Отмена»
     in property <bool> confirm-danger;
     callback confirm-yes();
     // импорт: трек нашёлся на YT Music не наверняка (modal 6) — оставить или пропустить
@@ -7231,7 +7232,7 @@ export component AppWindow inherits Window {
                     alignment: end;
                     spacing: 10px;
                     if root.modal != 6: Pill {
-                        text: @tr("Отмена");
+                        text: root.modal == 5 && root.confirm-no != "" ? root.confirm-no : @tr("Отмена");
                         primary: false;
                         clicked => {
                             root.modal = 0;
