@@ -285,6 +285,18 @@ pub fn artist(id: &str) -> Result<Artist> {
     if a.name.is_empty() {
         bail!("YouTube Music не отдал страницу артиста");
     }
+    // у верхних песен на странице артиста YouTube Music длительность больше не отдаёт («And One • 15M plays •
+    // Bodypop»), и в плейлист они ложились с пустой длиной. В «Все песни» она есть — первой страницы хватает
+    if let Some(sid) = a.songs_id.clone().filter(|_| a.top.iter().any(|t| t.dur == 0)) {
+        if let Ok(v) = post("browse", json!({"browseId": sid})) {
+            let mut items = Vec::new();
+            collect_key(&v, "musicResponsiveListItemRenderer", &mut items);
+            let durs: std::collections::HashMap<String, u64> = items.into_iter().filter_map(|r| parse_item(r, "", "")).filter(|t| t.dur > 0).map(|t| (t.id, t.dur)).collect();
+            for t in a.top.iter_mut().filter(|t| t.dur == 0) {
+                t.dur = durs.get(&t.id).copied().unwrap_or(0);
+            }
+        }
+    }
     Ok(a)
 }
 

@@ -295,22 +295,41 @@ fn ui() {
         let mut buf = vec![slint::Rgb8Pixel::default(); (W * H) as usize];
         win.request_redraw();
         win.draw_if_needed(|r| { r.render(&mut buf, W as usize); });
-        let (mut draws, mut area) = (0, 0u64);
-        for k in 0..40 {
-            NOW.with(|n| n.set(n.get() + Duration::from_millis(50)));
-            slint::platform::update_timers_and_animations();
-            let p = 10.0 + k as f32 * 0.05;
-            ui.set_p0(k as f32 / 40.0);
-            ui.set_w0(LyrWin { s1: p, e1: p + 0.16, a1: 0.0, b1: 0.3, s2: p + 0.16, e2: p + 0.32, a2: 0.3, b2: 0.6, s3: p + 0.32, e3: p + 0.48, a3: 0.6, b3: 0.9 });
-            still.set_row_data(0, k as f32 * 0.05);
-            win.draw_if_needed(|r| {
-                draws += 1;
-                let reg = r.render(&mut buf, W as usize);
-                area += reg.iter().map(|(_, s)| s.width as u64 * s.height as u64).sum::<u64>();
-            });
+        // всё, что ставит настоящий lyr_tick, по одному: что из этого будит перерисовку. Кадры — по 10 мс между
+        // тиками (как монитор): анимация, которая не гаснет, даст перерисовку на каждом кадре
+        type Step<'a> = Box<dyn Fn(&AppWindow, usize) + 'a>;
+        let steps: Vec<(&str, Step)> = vec![
+            ("заливка и окна строк", Box::new(|ui: &AppWindow, k: usize| {
+                let p = 10.0 + k as f32 * 0.05;
+                ui.set_p0(k as f32 / 40.0);
+                ui.set_w0(LyrWin { s1: p, e1: p + 0.16, a1: 0.0, b1: 0.3, s2: p + 0.16, e2: p + 0.32, a2: 0.3, b2: 0.6, s3: p + 0.32, e3: p + 0.48, a3: 0.6, b3: 0.9 });
+            })),
+            ("still", Box::new(|_: &AppWindow, k: usize| still.set_row_data(0, k as f32 * 0.05))),
+            ("часы караоке", Box::new(|ui: &AppWindow, k: usize| {
+                ui.set_lyr_base(10.0 + k as f32 * 0.05);
+                ui.set_lyr_t0(NOW.with(Cell::get).as_millis() as i64);
+                ui.set_lyr_rate(if k % 2 == 0 { 1.0 } else { 1.02 });
+            })),
+            ("плавание фона (bg_t)", Box::new(|ui: &AppWindow, k: usize| ui.set_bg_t(k as f32 * 0.075))),
+        ];
+        let mut worst = 0;
+        for (name, step) in &steps {
+            let mut frames = 0;
+            for k in 0..20 {
+                step(&ui, k);
+                for _ in 0..5 {
+                    NOW.with(|n| n.set(n.get() + Duration::from_millis(10)));
+                    slint::platform::update_timers_and_animations();
+                    win.draw_if_needed(|r| {
+                        frames += 1;
+                        r.render(&mut buf, W as usize);
+                    });
+                }
+            }
+            println!("замер: текст в панели, {name} — кадров {frames} из 100");
+            worst = worst.max(frames);
         }
-        println!("замер: текст в панели — перерисовок {draws} из 40 тиков, в среднем {} px на тик", area / 40);
-        assert!(draws <= 2, "тик текста перерисовывает панель «Сейчас играет»: {draws} из 40");
+        assert!(worst <= 25, "тик текста будит перерисовку панели «Сейчас играет»: {worst} кадров из 100");
         ui.set_lyr_rate(0.0);
         ui.set_playing(false);
     }

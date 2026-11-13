@@ -1323,6 +1323,36 @@ impl App {
         self.refresh_playlists();
     }
 
+    /// Длину некоторых треков источник не отдал (в данных 0 — в списке пустая «Длина»). Играет такой трек —
+    /// длину сказал mpv: записываем её во все плейлисты и очереди, где он есть, и отправляем в облако
+    fn learn_dur(&mut self, dur: f64) {
+        let Some(k) = self.current.as_ref().map(key) else { return };
+        let d = dur.round() as u64;
+        if d == 0 {
+            return;
+        }
+        let fix = |t: &mut Track| {
+            if t.dur == 0 && key(t) == k {
+                t.dur = d;
+            }
+        };
+        self.current.iter_mut().for_each(fix);
+        self.played.iter_mut().chain(&mut self.upnext).chain(&mut self.source).for_each(fix);
+        let before: usize = self.store.playlists.iter().map(|p| p.tracks.iter().filter(|t| t.dur == 0).count()).sum();
+        self.store.playlists.iter_mut().flat_map(|p| p.tracks.iter_mut()).for_each(fix);
+        let after: usize = self.store.playlists.iter().map(|p| p.tracks.iter().filter(|t| t.dur == 0).count()).sum();
+        if after != before {
+            self.save();
+            // в открытом плейлисте — только строки этого трека, без пересборки списка (прокрутка не прыгает)
+            if let Some(pl) = self.open_pl.and_then(|i| self.store.playlists.get(i)) {
+                let rows: Vec<(usize, TrackItem)> = self.pl_view.iter().enumerate().filter(|(_, &j)| key(&pl.tracks[j]) == k).map(|(r, &j)| (r, self.item(&pl.tracks[j]))).collect();
+                for (r, it) in rows {
+                    self.pl_model.set_row_data(r, it);
+                }
+            }
+        }
+    }
+
     /// Строки открытого плейлиста по поиску и сортировке. Поиск понимает и транслит: «skryptonit» найдёт «Скриптонит»
     fn pl_rebuild(&mut self) {
         let Some(pl) = self.open_pl.and_then(|i| self.store.playlists.get(i)) else { return };
@@ -2544,6 +2574,9 @@ impl App {
                     self.dur = dur;
                     if changed {
                         self.refresh_notes();
+                    }
+                    if !known {
+                        self.learn_dur(dur);
                     }
                     self.ui.set_position((pos / dur) as f32);
                     self.ui.set_dur_text(fmt_dur(dur as u64).into());
@@ -3856,12 +3889,12 @@ impl App {
         }
     }
 
-    /// Спектр рисуем 20 раз в секунду, пока панель видно и музыка играет
+    /// Спектр рисуем 30 раз в секунду, пока панель видно и музыка играет
     fn update_viz_timer(&mut self) {
         let on = self.ui.get_deck_open() && self.ui.get_playing() && !self.ui.get_lyrics_open() && self.mirror.is_none() && self.viz_used;
         if on && !self.viz_timer.running() {
-            // 20 кадров в секунду: глазу столбики с плавным спадом не отличить от 30, а кадр — это перерисовка окна
-            self.viz_timer.start(TimerMode::Repeated, Duration::from_millis(50), || {
+            // 30 кадров в секунду: на 20 рывки заметны (юзер проверил)
+            self.viz_timer.start(TimerMode::Repeated, Duration::from_millis(33), || {
                 with(|a| a.viz_tick());
             });
         } else if !on && self.viz_timer.running() {
@@ -3896,8 +3929,7 @@ impl App {
             let v = (a / self.viz_peak).powf(0.75).min(1.0);
             let b = &mut self.viz_bars[j];
             let old = *b;
-            // подъём и спад — те же, что были при 30 кадрах (0.7 и 0.86 за кадр), пересчитаны на 20
-            *b = if v > *b { *b + (v - *b) * 0.836 } else { (*b * 0.798).max(v) };
+            *b = if v > *b { *b + (v - *b) * 0.7 } else { (*b * 0.86).max(v) };
             // столбик сдвинулся меньше чем на полпикселя (высота 54 px) — не трогаем: каждая запись в модель — перерисовка
             if (*b - old).abs() * 54.0 >= 0.5 {
                 self.viz_model.set_row_data(j, *b);
@@ -3917,16 +3949,13 @@ impl App {
         }
     }
 
-    /// Тикаем только пока экран lyrics открыт и что-то играет: 20 fps, в лайт-режиме 15
+    /// Тикаем только пока экран lyrics открыт и что-то играет: 20 fps, в лайт-режиме ~12
     fn update_lyr_timer(&mut self) {
         self.update_viz_timer();
-        // часы караоке в интерфейсе двигают заливку на каждом кадре монитора — и окно перерисовывается с его
-        // частотой. В лайт-режиме заливку двигает этот таймер: 15 раз в секунду, ступеньками, зато и кадров столько же
-        self.ui.set_lyr_clock(!self.store.settings.lite);
         // текст нужен и на весь экран, и во вкладке панели «Сейчас играет»
         let on = (self.ui.get_lyrics_open() || (self.ui.get_deck_open() && self.ui.get_deck_tab() == 0)) && self.ui.get_playing();
         if on && !self.lyr_timer.running() {
-            let ms = if self.store.settings.lite { 66 } else { 50 };
+            let ms = if self.store.settings.lite { 80 } else { 50 };
             // UI интерполирует до следующего значения чуть дольше периода, чтобы опоздавший тик не давал остановку
             self.ui.set_lyr_step((ms + 16) as i64);
             self.lyr_last = Instant::now();
@@ -4268,10 +4297,8 @@ fn main() -> Result<(), slint::PlatformError> {
         conn_vol_sent: None,
     };
     APP.with(|a| *a.borrow_mut() = Some(app));
-    with(|a| {
-        a.ui.set_lyr_clock(!a.store.settings.lite);
-        a.apply_settings();
-    });
+    ui.set_lyr_clock(true);
+    with(|a| a.apply_settings());
     // MPRIS: панель, playerctl и медиа-клавиши видят и управляют плеером
     #[cfg(windows)]
     let hwnd = {

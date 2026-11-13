@@ -1197,10 +1197,6 @@ component LyricLine inherits Rectangle {
     // Дольше не держим — две строки буквами со свечением разом стоят вдвое дороже
     property <float> live: root.active ? 1 : 0;
     animate live { duration: 450ms; }
-    // строка не звучит и волна на ней осела — она неподвижна: рисуется готовой картинкой (слой), а не заново
-    // буква за буквой на каждом кадре. Часы караоке крутят кадры с частотой монитора, и раньше на каждом
-    // кадре заново рисовались все видимые строки, хотя меняется только поющаяся
-    cache-rendering-hint: !root.active && root.live < 0.001;
     in property <duration> step: 66ms;
     // заливка встала (дошла до конца ряда, а строка ещё звучит, или пауза между словами):
     // через 0.35 с поднятые буквы за полсекунды опускаются, а не висят в воздухе
@@ -5815,7 +5811,6 @@ export component AppWindow inherits Window {
             }
 
             if root.deck-tab == 0: Rectangle {
-                cache-rendering-hint: true; // слой: пока внутри ничего не менялось, рисуется готовой картинкой (см. viz-box)
                 vertical-stretch: 1;
                 clip: true;
                 if root.lyr-state == 0 || root.lyr-state == 3: Text {
@@ -5854,9 +5849,6 @@ export component AppWindow inherits Window {
                             // где поющаяся строка — узнаём от неё самой: высоты строк разные (перенос слов)
                             property <bool> me: i == max(0, root.lyr-cur);
                             property <bool> lit: i == root.act0 || i == root.act1 || i == root.act2 || i == root.lyr-cur;
-                            // каждая строка — свой слой: при прокрутке к новой строке (полсекунды кадров с частотой монитора)
-                            // едут готовые картинки, а не перерисовываются все буквы панели на каждом кадре
-                            cache-rendering-hint: true;
                             height: deck-line.preferred-height + 16px;
                             border-radius: 12px;
                             background: self.lit ? Theme.c1.transparentize(0.86) : deck-line-ta.has-hover ? #ffffff0a : #ffffff00;
@@ -5908,7 +5900,6 @@ export component AppWindow inherits Window {
             }
 
             if root.deck-tab == 1: Rectangle {
-                cache-rendering-hint: true; // слой, как у вкладки текста
                 vertical-stretch: 1;
                 VerticalLayout {
                     vertical-stretch: 1;
