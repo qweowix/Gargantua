@@ -81,6 +81,11 @@ fn run(m: &str, a: &Value) -> Result<Value> {
         "radio" => json!(radio_for(&track(a)?)?),
         "resolve" => json!(resolve(&track(a)?)?),
         "sc_stream" => json!(crate::soundcloud::stream(s(a, "url"))?),
+        // YouTube не дал звук никак — та же песня с SoundCloud; "" — не нашлась
+        "sc_same" => match soundcloud::find_same(&track(a)?)? {
+            Some(h) => json!(soundcloud::stream(&h.url)?),
+            None => json!(""),
+        },
         "import" => import(s(a, "url"))?,
         // QR плейлиста (формат как на ПК): картинки PNG в кэше, пути — по порядку частей
         "qr_encode" => {

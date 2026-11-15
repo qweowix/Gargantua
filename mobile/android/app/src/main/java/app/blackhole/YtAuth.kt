@@ -103,7 +103,7 @@ object YtAuth {
 
     /** Ответ плеера YouTube. params=2AMB: без рекламы, и ссылка открыта сразу, а не через ~4 с (замер на ПК).
      *  Параметр недокументирован: если с ним не вышло, спросим ещё раз без него */
-    private fun player(id: String, sts: Int?, noAds: Boolean): kotlinx.serialization.json.JsonObject {
+    private fun player(id: String, sts: Int?, noAds: Boolean, acc: Boolean): kotlinx.serialization.json.JsonObject {
         val body = buildJsonObject {
             putJsonObject("context") {
                 putJsonObject("client") {
@@ -115,6 +115,7 @@ object YtAuth {
                     put("osName", "Tizen")
                     put("osVersion", "2.4.0")
                     put("hl", "en")
+                    if (!acc) visitor()?.let { put("visitorData", it) }
                 }
             }
             put("videoId", id)
@@ -128,7 +129,7 @@ object YtAuth {
             put("contentCheckOk", true)
             put("racyCheckOk", true)
         }
-        val req = Request.Builder()
+        val b = Request.Builder()
             .url("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .header("User-Agent", TV_UA)
@@ -136,13 +137,19 @@ object YtAuth {
             .header("X-YouTube-Client-Version", TV_VER)
             .header("Origin", ORIGIN)
             .header("X-Origin", ORIGIN)
-            .header("Authorization", authorization())
-            .header("Cookie", jar.entries.joinToString("; ") { "${it.key}=${it.value}" })
-            .build()
-        return App.http.newCall(req).execute().use { r ->
-            absorb(r.headers("Set-Cookie"))
+        if (acc) {
+            b.header("Authorization", authorization()).header("Cookie", jar.entries.joinToString("; ") { "${it.key}=${it.value}" })
+        } else {
+            visitor()?.let { b.header("X-Goog-Visitor-Id", it) }
+        }
+        return App.http.newCall(b.build()).execute().use { r ->
+            if (acc) absorb(r.headers("Set-Cookie"))
             if (!r.isSuccessful) throw IOException("YouTube HTTP ${r.code}")
-            Json.parseToJsonElement(r.body!!.string()).jsonObject
+            Json.parseToJsonElement(r.body!!.string()).jsonObject.also { v ->
+                // без аккаунта YouTube узнаёт нас по visitorData: один и тот же «гость» выглядит живым телевизором,
+                // а не новым ботом на каждый трек
+                if (!acc && visitor() == null) v["responseContext"]?.jsonObject?.get("visitorData")?.jsonPrimitive?.contentOrNull?.let { setVisitor(it) }
+            }
         }
     }
 
@@ -155,24 +162,47 @@ object YtAuth {
         prefs.edit().putLong("no2amb", System.currentTimeMillis()).apply()
     }
 
+    private fun visitor(): String? = prefs.getString("visitor", null)?.takeIf { System.currentTimeMillis() - prefs.getLong("visitor_at", 0) < 7 * 24 * 3600_000L }
+
+    private fun setVisitor(v: String) = prefs.edit().putString("visitor", v).putLong("visitor_at", System.currentTimeMillis()).apply()
+
+    /** гостя забанили — следующий раз YouTube выдаст нового */
+    fun dropVisitor() = prefs.edit().remove("visitor").apply()
+
     private fun playable(v: kotlinx.serialization.json.JsonObject) = v["playabilityStatus"]?.jsonObject?.get("status")?.jsonPrimitive?.contentOrNull == "OK"
 
-    /** id видео → прямая ссылка на лучший звук. Ошибки — исключением (тогда пробуем анонимно через NewPipe) */
-    fun audio(id: String): String = try {
-        audioOnce(id)
+    private fun reason(v: kotlinx.serialization.json.JsonObject): String {
+        val ps = v["playabilityStatus"]?.jsonObject
+        return ps?.get("reason")?.jsonPrimitive?.contentOrNull ?: ps?.get("status")?.jsonPrimitive?.contentOrNull ?: "?"
+    }
+
+    /** «Sign in to confirm you’re not a bot»: этот путь на время закрыт, а не трек плохой */
+    private fun isBot(v: kotlinx.serialization.json.JsonObject): Boolean {
+        if (v["playabilityStatus"] == null || playable(v)) return false
+        return reason(v).contains("not a bot", ignoreCase = true)
+    }
+
+    /** id видео → прямая ссылка на лучший звук. acc — под аккаунтом (куки), иначе гостем-телевизором.
+     *  Ошибки — исключением; «подтверди, что не бот» — [BotCheck] */
+    fun audio(id: String, acc: Boolean): String = try {
+        audioOnce(id, acc)
     } catch (e: org.schabi.newpipe.extractor.exceptions.ParsingException) {
         // YouTube сменил плеер, а у NewPipe в памяти старый — разбор подписи падает. Сбрасываем и берём свежий
         BhLog.line("YouTube: плеер устарел ($e) — беру свежий")
         YoutubeJavaScriptPlayerManager.clearAllCaches()
-        audioOnce(id)
+        audioOnce(id, acc)
     }
 
-    private fun audioOnce(id: String): String {
+    private fun audioOnce(id: String, acc: Boolean): String {
         val sts = runCatching { YoutubeJavaScriptPlayerManager.getSignatureTimestamp(id) }.getOrNull()
-        val v = (if (noAdsOk()) runCatching { player(id, sts, true) }.getOrNull()?.takeIf(::playable) else null) ?: player(id, sts, false)
+        // на бан второй запрос без 2AMB не шлём — он только продлит бан
+        val first = if (noAdsOk()) runCatching { player(id, sts, true, acc) }.getOrNull() else null
+        if (first != null && isBot(first)) throw BotCheck(reason(first))
+        val v = first?.takeIf(::playable) ?: player(id, sts, false, acc)
         val ps = v["playabilityStatus"]?.jsonObject
         val status = ps?.get("status")?.jsonPrimitive?.contentOrNull
-        if (status != "OK") throw IOException("YouTube: ${ps?.get("reason")?.jsonPrimitive?.contentOrNull ?: status}")
+        if (isBot(v)) throw BotCheck(reason(v))
+        if (status != "OK") throw IOException("YouTube: ${reason(v)}")
         val best = v["streamingData"]?.jsonObject?.get("adaptiveFormats")?.jsonArray.orEmpty()
             .map { it.jsonObject }
             .filter { it["mimeType"]?.jsonPrimitive?.contentOrNull?.startsWith("audio/") == true }
@@ -189,3 +219,6 @@ object YtAuth {
         return YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(id, raw)
     }
 }
+
+/** YouTube просит подтвердить, что не бот: этот путь к звуку на время закрыт */
+class BotCheck(why: String) : IOException("YouTube: $why")

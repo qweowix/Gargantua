@@ -90,6 +90,33 @@ pub fn search(q: &str, limit: usize) -> Result<Vec<Track>> {
     Ok(v["collection"].as_array().map(|a| a.iter().filter_map(parse).collect()).unwrap_or_default())
 }
 
+fn norm(s: &str) -> String {
+    crate::lyrics::clean(s).to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect()
+}
+
+/// Та же песня на SoundCloud — запасной путь, когда YouTube не даёт звук ни так, ни эдак.
+/// Строго: название совпадает, исполнитель в имени автора или в названии, длительность ±3 с.
+/// Лучше ничего, чем чужая песня
+#[allow(dead_code)] // зовёт только телефон
+pub fn find_same(t: &Track) -> Result<Option<Track>> {
+    let (want_t, want_a) = (norm(&t.title), norm(t.artist.split([',', '&']).next().unwrap_or(&t.artist)));
+    if want_t.is_empty() {
+        return Ok(None);
+    }
+    let hits = search(&format!("{} {}", crate::lyrics::clean(&t.artist), crate::lyrics::clean(&t.title)), 10)?;
+    Ok(hits
+        .into_iter()
+        .filter(|h| !h.snip && !h.url.is_empty())
+        .filter(|h| t.dur == 0 || h.dur.abs_diff(t.dur) <= 3)
+        .filter(|h| {
+            let (ht, ha) = (norm(&h.title), norm(&h.artist));
+            // «Артист - Песня» в названии у перезаливов — тоже годится
+            let title_ok = ht == want_t || ht == format!("{want_a}{want_t}");
+            title_ok && (want_a.is_empty() || ha.contains(&want_a) || ht.starts_with(&want_a))
+        })
+        .min_by_key(|h| h.dur.abs_diff(t.dur)))
+}
+
 /// Аватар автора трека
 pub fn avatar(url: &str) -> Result<String> {
     let v = get("/resolve", &[("url", url)])?;

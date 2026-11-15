@@ -782,12 +782,20 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     fun moveInQueue(from: Int, to: Int) {
         remote?.let { r ->
-            // индексы — во всей очереди (прошлые + текущий + следующие); двигать можно только следующие
-            val base = r.played.size + 1
-            val up = r.upnext.toMutableList()
-            if (from - base !in up.indices || to - base !in up.indices) return
-            up.add(to - base, up.removeAt(from - base))
-            return connQueue(r.played, up, r.source, r.shuffle)
+            // индексы — во всей очереди (прошлые + текущий + следующие), как на экране. Текущий стоит на месте,
+            // что утащили выше него — ложится в историю и не играет
+            val cur = r.played.size
+            if (from == cur || from !in 0..cur + r.upnext.size || to !in 0..cur + r.upnext.size) return
+            val rest = (r.played + r.upnext).toMutableList()
+            val f = if (from > cur) from - 1 else from
+            val t = rest.removeAt(f)
+            // to — где строка встала в списке уже без себя; выше текущего — в историю
+            val toHist = to <= cur && !(from < cur && to == cur)
+            val played = rest.take(if (from < cur) cur - 1 else cur).toMutableList()
+            val upnext = rest.drop(played.size).toMutableList()
+            if (toHist) played.add(to.coerceAtMost(played.size), t)
+            else upnext.add((to - played.size - 1).coerceIn(0, upnext.size), t)
+            return connQueue(played, upnext, r.source, r.shuffle)
         }
         controller?.moveMediaItem(from, to)
     }

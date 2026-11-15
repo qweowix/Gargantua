@@ -646,7 +646,8 @@ private fun QueueView(vm: AppState) {
                 } else {
                     IconButton(onClick = { vm.removeFromQueue(iNow) }) { Icon(Icons.Rounded.Close, tr("Убрать", "Remove", "Прибрати", "Odstrániť"), tint = Pal.dim) }
                 }
-                Icon(
+                // играющий трек не таскаем: всё остальное двигается вокруг него, а выше него — история
+                if (!cur && !(dragKey == null && i == vm.queueIndex)) Icon(
                     Icons.Rounded.DragHandle,
                     tr("Перетащить", "Drag", "Перетягнути", "Presunúť"),
                     tint = Pal.dim,
@@ -667,7 +668,7 @@ private fun QueueView(vm: AppState) {
                                     dragKey = null
                                     dy = 0f
                                 },
-                                onDragCancel = { local = null; dragKey = null; dy = 0f },
+                                onDragCancel = { local = null; dragKey = null; dragFrom = -1; dy = 0f },
                             ) { ch, d ->
                                 ch.consume()
                                 dy += d.y
@@ -680,7 +681,14 @@ private fun QueueView(vm: AppState) {
                                     else -> 0
                                 }
                                 if (step != 0) {
-                                    local = l.toMutableList().apply { add(at + step, removeAt(at)) }
+                                    // список держит прокрутку за первую видимую строку: уедь наша строка выше неё —
+                                    // она пропала бы с экрана вместе с жестом, и очередь так и застревала в перетаскивании.
+                                    // Поэтому держим по номеру строки, а у верхнего края сами листаем вверх
+                                    val first = state.firstVisibleItemIndex
+                                    val n = at + step
+                                    if (n <= first) state.requestScrollToItem((n - 1).coerceAtLeast(0), 0)
+                                    else state.requestScrollToItem(first, state.firstVisibleItemScrollOffset)
+                                    local = l.toMutableList().apply { add(n, removeAt(at)) }
                                     dy -= step * rowPx
                                 }
                             }

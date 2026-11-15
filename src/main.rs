@@ -2430,6 +2430,15 @@ impl App {
         }
     }
 
+    /// Трек из «далее» утащили выше текущего: он просто ложится в историю, играть его не надо
+    fn queue_to_history(&mut self, i: usize) {
+        if i < self.upnext.len() {
+            let t = self.upnext.remove(i);
+            self.played.push(t);
+            self.queue_changed();
+        }
+    }
+
     /// Трек плейлиста перетащили мышью: from и to — строки в списке «как добавлены» без поиска, то есть сами индексы
     fn pl_move(&mut self, from: usize, to: usize) {
         let Some(i) = self.open_pl.filter(|&i| i < self.store.playlists.len()) else { return };
@@ -4523,6 +4532,9 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.on_queue_move(|i, d| {
         with(|a| a.queue_move(i as usize, d));
+    });
+    ui.on_queue_to_history(|i| {
+        with(|a| a.queue_to_history(i as usize));
     });
     ui.on_queue_remove(|i| {
         with(|a| a.queue_remove(i as usize));

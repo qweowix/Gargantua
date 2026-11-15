@@ -1,4 +1,4 @@
-import { ListView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 
 export struct TrackItem {
     title: string,
@@ -1935,6 +1935,7 @@ export component AppWindow inherits Window {
     callback queue-move(int, int);
     callback pl-move(int, int); // трек плейлиста перетащили: с какой строки на какую
     callback queue-remove(int);
+    callback queue-to-history(int);
     callback set-lyrics-open(bool);
     callback lyr-activity();
     callback set-karaoke(bool);
@@ -5940,10 +5941,12 @@ export component AppWindow inherits Window {
                         vertical-stretch: 1;
                         property <int> drag-from: -1;
                         property <length> drag-y;
+                        // утащили выше «далее» — в историю
+                        property <bool> to-hist: self.drag-y < -6px;
                         property <int> drag-to: max(0, min(root.q-next.length, Math.round((self.drag-y - q-list.viewport-y) / 52px)));
                         Rectangle {
                             x: 4px;
-                            y: q-box.drag-to * 52px + q-list.viewport-y - 1px;
+                            y: q-box.to-hist ? -30px : q-box.drag-to * 52px + q-list.viewport-y - 1px;
                             width: parent.width - 8px;
                             height: 2px;
                             border-radius: 1px;
@@ -5962,7 +5965,9 @@ export component AppWindow inherits Window {
                                 q-box.drag-y = y - q-box.absolute-position.y;
                             }
                             drag-end => {
-                                if q-box.drag-to != i && q-box.drag-to != i + 1 {
+                                if q-box.to-hist {
+                                    root.queue-to-history(i);
+                                } else if q-box.drag-to != i && q-box.drag-to != i + 1 {
                                     root.queue-move(i, (q-box.drag-to > i ? q-box.drag-to - 1 : q-box.drag-to) - i);
                                 }
                                 q-box.drag-from = -1;
@@ -7034,17 +7039,20 @@ export component AppWindow inherits Window {
                     font-weight: 800;
                 }
 
-                if root.modal == 1 && root.playlists.length > 0: ListView {
-                    height: min(240px, root.playlists.length * 44px);
-                    // в любимые — только сердечком, тут их нет
-                    for p[i] in root.playlists: NavItem {
-                        visible: !p.liked;
-                        height: p.liked ? 0px : 40px;
-                        icon: Icons.note;
-                        text: p.name;
-                        trailing: p.count;
-                        clicked => {
-                            root.add-to(i);
+                // не ListView: тот меряет строки по первой, а «Любимые» тут нулевой высоты — всё слипалось в одну
+                if root.modal == 1 && root.playlists.length > 0: ScrollView {
+                    height: min(240px, pl-pick.preferred-height);
+                    pl-pick := VerticalLayout {
+                        // в любимые — только сердечком, тут их нет
+                        for p[i] in root.playlists: NavItem {
+                            visible: !p.liked;
+                            height: p.liked ? 0px : 40px;
+                            icon: Icons.note;
+                            text: p.name;
+                            trailing: p.count;
+                            clicked => {
+                                root.add-to(i);
+                            }
                         }
                     }
                 }

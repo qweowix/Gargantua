@@ -240,7 +240,7 @@ class PlayerService : MediaSessionService() {
             // ошибка может быть и про следующий трек, поэтому индекс ищем по ключу из неё
             generateSequence<Throwable>(error) { it.cause }.filterIsInstance<HlsNeeded>().firstOrNull()?.let { h ->
                 val i = indexOf(h.key) ?: return
-                player.replaceMediaItem(i, player.getMediaItemAt(i).buildUpon().setUri(h.url).setMimeType(MimeTypes.APPLICATION_M3U8).setCustomCacheKey(null).build())
+                player.replaceMediaItem(i, player.getMediaItemAt(i).buildUpon().setUri(h.url).setMimeType(if (h.hls) MimeTypes.APPLICATION_M3U8 else null).setCustomCacheKey(null).build())
                 player.prepare()
                 player.play()
                 return

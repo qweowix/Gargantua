@@ -37,9 +37,10 @@ class NpDownloader(private val client: OkHttpClient) : Downloader() {
     }
 }
 
-/** Трек оказался HLS: его играет другой источник, а он выбирается по ссылке. PlayerService подменит элемент очереди.
+/** Трек надо играть по другой ссылке мимо кеша: HLS (его играет другой источник) или подмена с SoundCloud
+ *  (в кеш под ключом YouTube её класть нельзя — куски двух разных файлов смешались бы). PlayerService подменит элемент очереди.
  *  FileNotFoundException — чтобы ExoPlayer не тратил секунды на повторы */
-class HlsNeeded(val key: String, val url: String) : java.io.FileNotFoundException("hls")
+class HlsNeeded(val key: String, val url: String, val hls: Boolean = true) : java.io.FileNotFoundException("hls")
 
 /** Трек → прямая ссылка на звук. yt-dlp на телефоне нет — ссылку достаёт NewPipeExtractor */
 @UnstableApi
@@ -51,24 +52,34 @@ object Streams {
     /** Треки очереди по ключу: плеер знает только bh://t/<ключ>, сам трек берём отсюда */
     val tracks = ConcurrentHashMap<String, Track>()
 
-    /** YouTube «подтверди, что не бот»: IP на время забанен для анонимов. Каждый новый запрос продлевает бан,
-     *  поэтому до этого времени предзагрузка молчит, а плеер не перебирает треки */
-    @Volatile
-    var blockedUntil = 0L
-        private set
+    /** Пути к звуку YouTube: под аккаунтом, гостем-телевизором, через NewPipe. «Подтверди, что не бот» закрывает
+     *  только тот путь, где его сказали, и на время: повторы туда бан только продлевают. Остальные пробуем дальше */
+    private const val ACC = "акк"
+    private const val TV = "тв"
+    private const val NP = "newpipe"
+    private const val COOL = 15 * 60_000L
+    private val coolUntil = ConcurrentHashMap<String, Long>()
 
-    fun blocked() = System.currentTimeMillis() < blockedUntil
+    private fun cooling(way: String) = System.currentTimeMillis() < (coolUntil[way] ?: 0L)
 
-    /** вошли в YouTube — бан анонимов нас больше не касается */
+    private fun cool(way: String, e: Throwable) {
+        coolUntil[way] = System.currentTimeMillis() + COOL
+        BhLog.line("YouTube ($way) просит подтвердить, что не бот — этот путь отдыхает 15 мин: ${e.message}")
+    }
+
+    /** все пути YouTube на отдыхе: предзагрузка и скачивание молчат */
+    fun blocked() = (!YtAuth.has() || cooling(ACC)) && cooling(TV) && cooling(NP)
+
+    /** вошли в YouTube заново — путь под аккаунтом снова открыт */
     fun unblock() {
-        blockedUntil = 0
+        coolUntil.remove(ACC)
     }
 
     /** почему не вышло под аккаунтом YouTube — показываем это, а не «войди», если уже вошли */
     @Volatile
     var authError: String? = null
 
-    fun isBotBlock(e: Throwable?) = generateSequence(e) { it.cause }.any { it is SignInConfirmNotBotException }
+    fun isBotBlock(e: Throwable?) = generateSequence(e) { it.cause }.any { it is SignInConfirmNotBotException || it is BotCheck }
 
     fun forget(key: String) {
         cache.remove(key)
@@ -80,7 +91,12 @@ object Streams {
     fun resolve(spec: DataSpec): DataSpec {
         if (spec.uri.scheme != "bh") return spec
         val key = spec.uri.lastPathSegment ?: throw IOException("нет трека")
-        var url = urlFor(key)
+        var url = try {
+            urlFor(key)
+        } catch (e: Exception) {
+            if (!isBotBlock(e)) throw e
+            throw substitute(key) ?: e
+        }
         if (isHls(url)) throw HlsNeeded(key, url)
         // ссылка «без рекламы» обязана открыться сразу и отдавать весь файл. Нет — параметр сломали:
         // выключаем его на сутки и берём ссылку по-старому (она откроется через несколько секунд)
@@ -96,6 +112,34 @@ object Streams {
     }
 
     fun isHls(url: String) = Uri.parse(url).path?.endsWith(".m3u8") == true
+
+    /** ключ → ссылка SoundCloud и когда взята: повторы плеера не ищут заново */
+    private val subst = ConcurrentHashMap<String, Pair<String, Long>>()
+
+    @Volatile
+    private var substSaid = false
+
+    /** YouTube закрыт всеми путями — та же песня с SoundCloud (строго: название, артист, длительность ±3 с).
+     *  Играем мимо кеша и не качаем: это другая запись. null — не нашлась */
+    private fun substitute(key: String): HlsNeeded? {
+        subst[key]?.takeIf { System.currentTimeMillis() - it.second < 30 * 60_000L }?.let { return HlsNeeded(key, it.first, isHls(it.first)) }
+        val t = tracks[key] ?: return null
+        val u = runCatching { coreNow("sc_same", buildJsonObject { put("track", t) }).to<String>() }
+            .onFailure { BhLog.line("SoundCloud вместо YouTube (${t.title}): $it") }.getOrNull()
+        if (u.isNullOrEmpty()) return null
+        BhLog.line("YouTube не дал звук — ${t.title} играет с SoundCloud")
+        if (!substSaid) {
+            substSaid = true
+            App.toasts.tryEmit(tr(
+                "YouTube упёрся — пока беру те же песни с SoundCloud",
+                "YouTube is blocking — playing the same songs from SoundCloud for now",
+                "YouTube уперся — поки беру ті самі пісні з SoundCloud",
+                "YouTube blokuje — zatiaľ beriem tie isté skladby zo SoundCloudu",
+            ))
+        }
+        subst[key] = u to System.currentTimeMillis()
+        return HlsNeeded(key, u, isHls(u))
+    }
 
     /** Без Премиума YouTube вешает рекламу: ссылка клиента-телевизора секунды 3 отвечает 403. Не тратим на это
      *  попытки ExoPlayer (у него паузы растут, а потом ссылка выкидывается и таймер идёт заново) — щупаем сами, как на ПК */
@@ -155,27 +199,42 @@ object Streams {
         // NewPipe не умеет AAC-треки SoundCloud («Could not get any stream») и не отдаёт HLS — разбираем сами, в ядре
         if (page.contains("soundcloud.com")) return coreNow("sc_stream", buildJsonObject { put("url", kotlinx.serialization.json.JsonPrimitive(page)) }).to<String>()
         val url = page.replace("music.youtube.com", "www.youtube.com")
-        // есть вход YouTube — сначала под аккаунтом, как ПК; не вышло — по-старому, анонимно
+        // по очереди: под аккаунтом (как ПК) → гостем-телевизором (первый клиент свежего yt-dlp, токены ему не нужны) →
+        // NewPipe. Бан одного пути не трогает остальные; ни один не дал — resolve попробует SoundCloud
         val id = Regex("(?:[?&]v=|youtu\\.be/)([\\w-]{11})").find(url)?.groupValues?.get(1)
-        if (id != null && YtAuth.has()) {
-            runCatching { return YtAuth.audio(id).also { authError = null } }.onFailure {
+        var err: Throwable? = null
+        if (id != null && YtAuth.has() && !cooling(ACC)) {
+            runCatching { return YtAuth.audio(id, acc = true).also { authError = null } }.onFailure {
                 BhLog.line("YouTube под аккаунтом не дал звук ($id): $it")
                 authError = it.message ?: it.toString()
+                err = it
             }
             // чаще всего это устаревшая копия входа: браузер на компе уже сменил куки. Берём свежие и пробуем ещё раз
-            if (YtAuth.refreshFromPc(60_000)) {
-                runCatching { return YtAuth.audio(id).also { authError = null } }.onFailure {
+            if (err != null && YtAuth.refreshFromPc(60_000)) {
+                runCatching { return YtAuth.audio(id, acc = true).also { authError = null } }.onFailure {
                     BhLog.line("YouTube и со свежим входом не дал звук ($id): $it")
-                    authError = it.message ?: it.toString()
+                    err = it
                 }
             }
+            err?.let { if (isBotBlock(it)) cool(ACC, it) }
         }
+        if (id != null && !cooling(TV)) {
+            runCatching { return YtAuth.audio(id, acc = false) }.onFailure {
+                BhLog.line("YouTube гостем не дал звук ($id): $it")
+                if (isBotBlock(it)) {
+                    cool(TV, it)
+                    YtAuth.dropVisitor()
+                }
+                err = it
+            }
+        }
+        if (cooling(NP)) throw err ?: BotCheck("все пути отдыхают")
         // разовые сбои разбора (сеть, YouTube отдал не то) — одна повторная попытка
         // на бан не повторяем — только хуже
         val info = extract.withLock {
             runCatching { StreamInfo.getInfo(NewPipe.getServiceByUrl(url), url) }
                 .recoverCatching { if (it is SignInConfirmNotBotException) throw it; Thread.sleep(400); StreamInfo.getInfo(NewPipe.getServiceByUrl(url), url) }
-                .onFailure { if (isBotBlock(it)) blockedUntil = System.currentTimeMillis() + 15 * 60_000L }
+                .onFailure { if (isBotBlock(it)) cool(NP, it) }
                 .getOrThrow()
         }
         return info.audioStreams
