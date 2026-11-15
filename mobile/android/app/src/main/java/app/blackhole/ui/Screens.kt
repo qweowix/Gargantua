@@ -1,5 +1,12 @@
 package app.blackhole.ui
 
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.horizontalScroll
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.rounded.Download
@@ -109,8 +116,13 @@ fun AuthScreen(vm: AppState) {
     var pw2 by remember { mutableStateOf("") }
     var local by remember { mutableStateOf("") }
     val a = LocalAccent.current
+    // свой живой фон цвета темы: стекло полей и кнопок преломляет его
+    val bg = rememberGlassLayer()
+    Box(Modifier.fillMaxSize().background(Pal.bg)) {
+    AppBackground("", Modifier.fillMaxSize().glassSource(bg))
+    CompositionLocalProvider(LocalBackdrop provides if (LocalLite.current) null else bg) {
     Column(
-        Modifier.fillMaxSize().background(Pal.bg).statusBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp),
+        Modifier.fillMaxSize().statusBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Spacer(Modifier.height(40.dp))
@@ -123,7 +135,7 @@ fun AuthScreen(vm: AppState) {
                 vm.register -> tr("Регистрация", "Sign up", "Реєстрація", "Registrácia")
                 else -> tr("Вход в Gargantua", "Sign in to Gargantua", "Вхід у Gargantua", "Prihlásenie do Gargantua")
             },
-            color = Pal.text, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold,
+            color = Color.White, fontSize = 32.sp, lineHeight = 38.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp,
         )
         LangChips { vm.setLang(it) }
         if (vm.signedIn && !vm.verified) {
@@ -168,6 +180,8 @@ fun AuthScreen(vm: AppState) {
         val msg = if (vm.accBusy) tr("Секунду…", "One sec…", "Секунду…", "Moment…") else local.ifEmpty { vm.accMsg }
         if (msg.isNotEmpty()) Text(msg, color = Pal.dim, fontSize = 14.sp)
     }
+    }
+    }
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -175,14 +189,9 @@ fun AuthScreen(vm: AppState) {
 fun LangChips(onPick: (String) -> Unit = {}) {
     val vmLang = L.lang
     // четыре языка в ряд на узком экране не лезут — переносятся
-    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         for ((code, name) in listOf("ru" to "Русский", "en" to "English", "uk" to "Українська", "sk" to "Slovenčina")) {
-            FilterChip(
-                selected = vmLang == code,
-                onClick = { L.lang = code; onPick(code) },
-                label = { Text(name) },
-                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = LocalAccent.current.c1.copy(alpha = 0.25f)),
-            )
+            GlassChip(name, vmLang == code) { L.lang = code; onPick(code) }
         }
     }
 }
@@ -197,22 +206,28 @@ fun HomeScreen(vm: AppState) {
         vm.loadStats()
     }
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    val today = remember {
+        java.text.SimpleDateFormat("EEEE, d MMMM", java.util.Locale.forLanguageTag(L.lang)).format(java.util.Date())
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomPad.current)) {
         item {
-            Title(
-                when (hour) {
-                    in 5..11 -> tr("Доброе утро", "Good morning", "Доброго ранку", "Dobré ráno")
-                    in 12..17 -> tr("Добрый день", "Good afternoon", "Добрий день", "Dobrý deň")
-                    in 18..23 -> tr("Добрый вечер", "Good evening", "Добрий вечір", "Dobrý večer")
-                    else -> tr("Доброй ночи", "Good night", "Доброї ночі", "Dobrú noc")
-                },
-                Modifier.statusBarsPadding(),
-            )
+            // как «Слушать» в Apple Music: дата мелко сверху, приветствие крупно
+            Column(Modifier.statusBarsPadding().padding(top = 10.dp)) {
+                Text(today.uppercase(), color = Pal.dim, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp, modifier = Modifier.padding(start = 20.dp))
+                Title(
+                    when (hour) {
+                        in 5..11 -> tr("Доброе утро", "Good morning", "Доброго ранку", "Dobré ráno")
+                        in 12..17 -> tr("Добрый день", "Good afternoon", "Добрий день", "Dobrý deň")
+                        in 18..23 -> tr("Добрый вечер", "Good evening", "Добрий вечір", "Dobrý večer")
+                        else -> tr("Доброй ночи", "Good night", "Доброї ночі", "Dobrú noc")
+                    },
+                )
+            }
         }
         if (vm.home.mixes.isEmpty()) {
             item {
-                if (vm.homeLoading) Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                if (vm.homeLoading) Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp))
                     Text(tr("Собираю миксы…", "Building mixes…", "Збираю мікси…", "Skladám mixy…"), color = Pal.dim)
                 } else Dim(tr("Послушай что-нибудь — тут появятся миксы под тебя: «Твой микс», миксы по любимым артистам и «Открытия».", "Play something — your mixes will show up here: Your mix, mixes from your favourite artists and Discover.", "Послухай щось — тут з'являться мікси для тебе: «Твій мікс», мікси за улюбленими артистами й «Відкриття».", "Vypočuj si niečo — objavia sa tu mixy pre teba: „Tvoj mix“, mixy podľa obľúbených interpretov a „Objavy“."))
@@ -220,15 +235,8 @@ fun HomeScreen(vm: AppState) {
         } else {
             item { Section(tr("Миксы для тебя", "Mixes for you", "Мікси для тебе", "Mixy pre teba")) }
             item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(vm.home.mixes) { m ->
-                        Column(Modifier.width(150.dp).clickable { vm.go(Screen.Tracks(m.title, m.sub, m.cover, m.tracks)) }) {
-                            Cover(m.cover, 150.dp, 14.dp)
-                            Spacer(Modifier.height(6.dp))
-                            Text(m.title, color = Pal.text, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(m.sub, color = Pal.dim, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
+                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    items(vm.home.mixes) { m -> MixCard(m) { vm.go(Screen.Tracks(m.title, m.sub, m.cover, m.tracks)) } }
                 }
             }
         }
@@ -239,12 +247,67 @@ fun HomeScreen(vm: AppState) {
         val top = vm.stats.top.map { it.track }
         if (top.isNotEmpty()) {
             item { Section(tr("Чаще всего", "Most played", "Найчастіше", "Najčastejšie")) }
-            itemsIndexed(top.take(8)) { i, t -> TrackRow(vm, t, { vm.play(top, i) }) }
+            // пятёрка на одной стеклянной карточке, как подборки у Apple
+            item {
+                Column(Modifier.padding(horizontal = 12.dp).fillMaxWidth().liquid(RoundedCornerShape(26.dp), refraction = 12.dp).padding(vertical = 6.dp)) {
+                    top.take(5).forEachIndexed { i, t ->
+                        if (i > 0) GroupDivider(76.dp)
+                        TrackRow(vm, t, { vm.play(top, i) })
+                    }
+                }
+            }
         }
         if (vm.playlists.isNotEmpty()) {
             item { Section(tr("Твои плейлисты", "Your playlists", "Твої плейлисти", "Tvoje playlisty")) }
-            items(vm.playlists.take(6)) { p -> PlaylistRow(p.name, p.tracks) { vm.go(Screen.Pl(p.name)) } }
+            item {
+                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    items(vm.playlists, key = { it.name }) { p -> PlaylistTile(p, Modifier.width(150.dp)) { vm.go(Screen.Pl(p.name)) } }
+                }
+            }
         }
+    }
+}
+
+/** Микс: большая обложка, снизу на ней — стеклянная плашка с названием, сквозь неё видна сама обложка */
+@Composable
+private fun MixCard(m: app.blackhole.Mix, onClick: () -> Unit) {
+    val a = LocalAccent.current
+    val layer = rememberGlassLayer()
+    val shape = RoundedCornerShape(26.dp)
+    Box(Modifier.width(230.dp).aspectRatio(0.8f).pressable(onClick = onClick).shadow(18.dp, shape).clip(shape)) {
+        Box(Modifier.fillMaxSize().glassSource(layer).background(a.brush())) {
+            if (m.cover.isNotEmpty()) CoverImage(m.cover, Modifier.fillMaxSize(), big = true)
+        }
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(8.dp)
+                .fillMaxWidth()
+                .liquid(RoundedCornerShape(20.dp), backdrop = layer, tint = Color(0x33000000), refraction = 12.dp)
+                .padding(horizontal = 14.dp, vertical = 11.dp),
+        ) {
+            Text(m.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (m.sub.isNotEmpty()) Text(m.sub, color = Color.White.copy(alpha = 0.78f), fontSize = 12.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Плейлист плиткой: большая обложка с тенью, под ней название и сколько треков */
+@Composable
+fun PlaylistTile(p: app.blackhole.Playlist, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val cover = if (p.name == LIKED) LIKED_ART else p.cover.ifEmpty { p.tracks.firstOrNull { it.cover.isNotEmpty() }?.cover ?: "" }
+    val shape = RoundedCornerShape(18.dp)
+    Column(modifier.pressable(onClick = onClick)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).shadow(14.dp, shape).clip(shape).background(Pal.card), contentAlignment = Alignment.Center) {
+            if (cover == LIKED_ART) LikedArt(Modifier.fillMaxSize())
+            else {
+                Icon(Icons.Rounded.MusicNote, null, tint = Pal.faint, modifier = Modifier.size(48.dp))
+                if (cover.isNotEmpty()) CoverImage(cover, Modifier.fillMaxSize(), big = true)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(plName(p.name), color = Pal.text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(tr("${p.tracks.size} треков", "${p.tracks.size} tracks", "${p.tracks.size} треків", "${p.tracks.size} skladieb"), color = Pal.dim, fontSize = 13.sp)
     }
 }
 
@@ -267,6 +330,7 @@ fun PlaylistRow(name: String, tracks: List<Track>, onClick: () -> Unit) {
 fun SearchScreen(vm: AppState) {
     var q by remember { mutableStateOf(vm.query) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomPad.current)) {
+        item { Title(tr("Поиск", "Search", "Пошук", "Hľadať"), Modifier.statusBarsPadding()) }
         item {
             GlassField(
                 q, { q = it; vm.query = it },
@@ -280,15 +344,15 @@ fun SearchScreen(vm: AppState) {
                     // ссылка на плейлист — сразу импорт
                     if (q.trim().startsWith("http")) vm.importUrl(q) else vm.search(q)
                 }),
-                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             )
         }
         item {
-            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 listOf(tr("Все", "All", "Усі", "Všetko"), "YT Music", "SoundCloud", tr("Яндекс", "Yandex", "Яндекс", "Yandex"), tr("В текстах", "In lyrics", "У текстах", "V textoch")).forEachIndexed { i, n ->
-                    FilterChip(selected = vm.filter == i, onClick = { vm.filter = i }, label = { Text(n, fontSize = 12.sp) })
+                    GlassChip(n, vm.filter == i) { vm.filter = i }
                 }
-                if (vm.searching > 0) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                if (vm.searching > 0) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
             }
         }
         if (vm.filter == 0 && vm.cards.artists.isNotEmpty()) {
@@ -319,11 +383,20 @@ fun SearchScreen(vm: AppState) {
 fun LibraryScreen(vm: AppState) {
     var creating by remember { mutableStateOf(false) }
     var importing by remember { mutableStateOf(false) }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomPad.current)) {
-        item {
-            Row(Modifier.statusBarsPadding().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Title(tr("Плейлисты", "Playlists", "Плейлисти", "Playlisty"), Modifier.weight(1f))
-                IconButton(onClick = { vm.sync(true) }, enabled = !vm.syncing) { Icon(Icons.Rounded.Refresh, tr("Синхронизировать", "Sync", "Синхронізувати", "Synchronizovať"), tint = Pal.dim) }
+    // как «Медиатека» у Apple: плитки по две в ряд
+    val full = androidx.compose.foundation.lazy.grid.GridItemSpan(2)
+    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+        androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = LocalBottomPad.current),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        item(span = { full }) {
+            Row(Modifier.statusBarsPadding().padding(start = 0.dp), verticalAlignment = Alignment.CenterVertically) {
+                Title(tr("Плейлисты", "Playlists", "Плейлисти", "Playlisty"), Modifier.weight(1f), inset = 0.dp)
+                RoundButton(Icons.Rounded.Refresh, tr("Синхронизировать", "Sync", "Синхронізувати", "Synchronizovať"), 40.dp) { if (!vm.syncing) vm.sync(true) }
+                Spacer(Modifier.width(10.dp))
                 // «+»: новый, по ссылке, по QR из галереи или камерой
                 var addMenu by remember { mutableStateOf(false) }
                 val qr = rememberQrImport(vm)
@@ -339,7 +412,7 @@ fun LibraryScreen(vm: AppState) {
             }
         }
         if (!vm.loaded) {
-            item {
+            item(span = { full }) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp))
@@ -347,9 +420,9 @@ fun LibraryScreen(vm: AppState) {
                 }
             }
         } else if (vm.playlists.isEmpty()) {
-            item { Dim(tr("Пока пусто. Создай плейлист или вставь ссылку на плейлист из Spotify, Apple Music, YouTube Music, SoundCloud или Яндекса.", "Nothing yet. Create a playlist or paste a link to a Spotify, Apple Music, YouTube Music, SoundCloud or Yandex playlist.", "Поки порожньо. Створи плейлист або встав посилання на плейлист зі Spotify, Apple Music, YouTube Music, SoundCloud чи Яндекса.", "Zatiaľ prázdno. Vytvor playlist alebo vlož odkaz na playlist zo Spotify, Apple Music, YouTube Music, SoundCloud alebo Yandexu.")) }
+            item(span = { full }) { Dim(tr("Пока пусто. Создай плейлист или вставь ссылку на плейлист из Spotify, Apple Music, YouTube Music, SoundCloud или Яндекса.", "Nothing yet. Create a playlist or paste a link to a Spotify, Apple Music, YouTube Music, SoundCloud or Yandex playlist.", "Поки порожньо. Створи плейлист або встав посилання на плейлист зі Spotify, Apple Music, YouTube Music, SoundCloud чи Яндекса.", "Zatiaľ prázdno. Vytvor playlist alebo vlož odkaz na playlist zo Spotify, Apple Music, YouTube Music, SoundCloud alebo Yandexu.")) }
         }
-        items(vm.playlists, key = { it.name }) { p -> PlaylistRow(p.name, p.tracks) { vm.go(Screen.Pl(p.name)) } }
+        gridItems(vm.playlists, key = { it.name }) { p -> PlaylistTile(p) { vm.go(Screen.Pl(p.name)) } }
     }
     if (creating) NameDialog(tr("Новый плейлист", "New playlist", "Новий плейлист", "Nový playlist"), "") { n ->
         creating = false
@@ -371,13 +444,13 @@ fun TrackList(vm: AppState, title: String, sub: String, cover: String, tracks: L
     val shown = tracks.withIndex().filter { q.isBlank() || (it.value.title + " " + it.value.artist).contains(q.trim(), ignoreCase = true) }
     val list = rememberLazyListState()
     val a = LocalAccent.current
-    Box(Modifier.fillMaxSize()) {
+    GlassPage(content = {
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomPad.current)) {
             item {
                 Hero(cover.ifEmpty { tracks.firstOrNull { it.cover.isNotEmpty() }?.cover ?: "" }) {
                     Column(Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (sub.isNotEmpty()) Text(sub, color = a.c1, fontSize = 20.sp, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(title, color = Color.White, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.4).sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (sub.isNotEmpty()) Text(sub, color = a.c1, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(tr("${tracks.size} треков", "${tracks.size} tracks", "${tracks.size} треків", "${tracks.size} skladieb"), color = Pal.dim, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
@@ -390,7 +463,6 @@ fun TrackList(vm: AppState, title: String, sub: String, cover: String, tracks: L
                     PlayPill(tr("Слушать", "Play", "Слухати", "Počúvať"), tracks.isNotEmpty(), Modifier.weight(1f, fill = false).widthIn(min = 170.dp)) { vm.play(tracks, 0) }
                     actions()
                 }
-                HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = Pal.line)
             }
             if (tracks.size > 8) item {
                 GlassField(
@@ -403,9 +475,10 @@ fun TrackList(vm: AppState, title: String, sub: String, cover: String, tracks: L
                 TrackRow(vm, t, { vm.play(tracks, i) }, inPlaylist = playlist, number = if (numbered) i + 1 else null)
             }
         }
+    }, overlay = {
         FastScroll(list)
         BackButton(vm)
-    }
+    })
 }
 
 @UnstableApi
@@ -505,13 +578,13 @@ fun ArtistScreen(vm: AppState, id: String, name: String) {
         failed = artist == null
     }
     val ar = artist ?: return if (failed) Dim(tr("Артист не нашёлся", "Artist not found", "Артиста не знайдено", "Interpret sa nenašiel"), Modifier.statusBarsPadding()) else Loading()
-    Box(Modifier.fillMaxSize()) {
+    GlassPage(content = {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomPad.current)) {
             item {
                 // фото на весь верх, имя крупно по центру, под ним «перемешать» — большая ▶ — радио
                 Hero(ar.photo, round = true) {
                     Text(
-                        ar.name, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2,
+                        ar.name, color = Color.White, fontSize = 40.sp, lineHeight = 44.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.6).sp, textAlign = TextAlign.Center, maxLines = 2,
                         modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 20.dp),
                     )
                 }
@@ -523,7 +596,7 @@ fun ArtistScreen(vm: AppState, id: String, name: String) {
                 ) {
                     RoundButton(Icons.Rounded.Shuffle, tr("Вперемешку", "Shuffle", "Упереміш", "Náhodne"), 52.dp) { if (ar.top.isNotEmpty()) vm.play(ar.top, 0, shuffled = true) }
                     Box(
-                        Modifier.size(72.dp).clip(CircleShape).background(Color.White).clickable(enabled = ar.top.isNotEmpty()) { vm.play(ar.top, 0) },
+                        Modifier.size(72.dp).pressable(ar.top.isNotEmpty()) { vm.play(ar.top, 0) }.shadow(16.dp, CircleShape).clip(CircleShape).background(Color.White),
                         contentAlignment = Alignment.Center,
                     ) { Icon(Icons.Rounded.PlayArrow, tr("Слушать", "Play", "Слухати", "Počúvať"), tint = Color.Black, modifier = Modifier.size(42.dp)) }
                     RoundButton(Icons.Rounded.Radio, tr("Радио", "Radio", "Радіо", "Rádio"), 52.dp) { ar.top.firstOrNull()?.let { vm.startRadio(it) } }
@@ -545,11 +618,13 @@ fun ArtistScreen(vm: AppState, id: String, name: String) {
             }
             if (ar.desc.isNotEmpty()) {
                 item { BigSection(tr("Об артисте", "About", "Про артиста", "O interpretovi")) }
-                item { Dim(ar.desc) }
+                item {
+                    // описание — на стеклянной карточке
+                    Text(ar.desc, color = Pal.text.copy(alpha = 0.85f), fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().liquid(RoundedCornerShape(22.dp), refraction = 10.dp).padding(16.dp))
+                }
             }
         }
-        BackButton(vm)
-    }
+    }, overlay = { BackButton(vm) })
 }
 
 /** Заголовок раздела крупно, со стрелкой — как «Top Songs ›» у Apple */
@@ -569,51 +644,54 @@ fun AccountScreen(vm: AppState) {
     val a = LocalAccent.current
     Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = LocalBottomPad.current + 16.dp)) {
         Title(tr("Аккаунт", "Account", "Акаунт", "Účet"))
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(64.dp).clip(CircleShape).background(a.brush()), contentAlignment = Alignment.Center) {
-                Text(vm.email.take(1).uppercase().ifEmpty { "?" }, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+        // карточка профиля, как Apple ID в настройках iOS
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().liquid(RoundedCornerShape(28.dp), refraction = 14.dp).padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(68.dp).shadow(12.dp, CircleShape).clip(CircleShape).background(a.brush()), contentAlignment = Alignment.Center) {
+                Text(vm.email.take(1).uppercase().ifEmpty { "?" }, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black)
             }
             Spacer(Modifier.width(16.dp))
-            Column {
-                Text(vm.email, color = Pal.text, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.weight(1f)) {
+                Text(vm.email, color = Pal.text, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     when {
                         vm.syncing -> tr("Синхронизирую…", "Syncing…", "Синхронізую…", "Synchronizujem…")
                         vm.syncedAt.isNotEmpty() -> tr("Синхронизировано в ${vm.syncedAt}", "Synced at ${vm.syncedAt}", "Синхронізовано о ${vm.syncedAt}", "Synchronizované o ${vm.syncedAt}")
-                        else -> ""
+                        else -> tr("Аккаунт Gargantua", "Gargantua account", "Акаунт Gargantua", "Účet Gargantua")
                     },
                     color = Pal.dim, fontSize = 13.sp,
                 )
             }
         }
-        Dim(tr("Плейлисты хранятся в аккаунте и одинаковые на телефоне и компьютере. Правки уходят на сервер сразу, свежие подтягиваются раз в минуту.", "Playlists live in your account and are the same on your phone and computer. Edits go to the server right away, fresh ones are pulled every minute.", "Плейлисти зберігаються в акаунті й однакові на телефоні та комп'ютері. Зміни йдуть на сервер одразу, свіжі підтягуються щохвилини.", "Playlisty sú uložené v účte a sú rovnaké na telefóne aj na počítači. Úpravy idú na server hneď, nové sa sťahujú raz za minútu."))
-        Spacer(Modifier.height(12.dp))
-        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Pill(if (vm.syncing) tr("Синхронизирую…", "Syncing…", "Синхронізую…", "Synchronizujem…") else tr("Синхронизировать", "Sync", "Синхронізувати", "Synchronizovať"), Icons.Rounded.Refresh, enabled = !vm.syncing) { vm.sync(true) }
-            Pill(tr("Сменить пароль", "Change password", "Змінити пароль", "Zmeniť heslo"), primary = false) { vm.resetPassword(vm.email) }
+        GlassGroup(footer = tr("Плейлисты хранятся в аккаунте и одинаковые на телефоне и компьютере. Правки уходят на сервер сразу, свежие подтягиваются раз в минуту.", "Playlists live in your account and are the same on your phone and computer. Edits go to the server right away, fresh ones are pulled every minute.", "Плейлисти зберігаються в акаунті й однакові на телефоні та комп'ютері. Зміни йдуть на сервер одразу, свіжі підтягуються щохвилини.", "Playlisty sú uložené v účte a sú rovnaké na telefóne aj na počítači. Úpravy idú na server hneď, nové sa sťahujú raz za minútu.")) {
+            NavRow(Icons.Rounded.Refresh, Color(0xFF0A84FF), if (vm.syncing) tr("Синхронизирую…", "Syncing…", "Синхронізую…", "Synchronizujem…") else tr("Синхронизировать", "Sync", "Синхронізувати", "Synchronizovať"), chevron = false) { if (!vm.syncing) vm.sync(true) }
+            GroupDivider(62.dp)
+            NavRow(Icons.Rounded.Key, Color(0xFFFF9F0A), tr("Сменить пароль", "Change password", "Змінити пароль", "Zmeniť heslo"), chevron = false) { vm.resetPassword(vm.email) }
         }
-        Spacer(Modifier.height(20.dp))
-        MenuRow(Icons.Rounded.BarChart, tr("Статистика", "Stats", "Статистика", "Štatistiky")) { vm.go(Screen.Stats) }
-        MenuRow(Icons.Rounded.Settings, tr("Настройки", "Settings", "Налаштування", "Nastavenia")) { vm.go(Screen.Settings) }
-        MenuRow(Icons.AutoMirrored.Rounded.Logout, tr("Выйти", "Sign out", "Вийти", "Odhlásiť sa"), danger = true) { vm.signOut() }
-        if (vm.accMsg.isNotEmpty()) Dim(vm.accMsg)
+        GlassGroup {
+            NavRow(Icons.Rounded.BarChart, Color(0xFFFF375F), tr("Статистика", "Stats", "Статистика", "Štatistiky")) { vm.go(Screen.Stats) }
+            GroupDivider(62.dp)
+            NavRow(Icons.Rounded.Settings, Color(0xFF8E8E93), tr("Настройки", "Settings", "Налаштування", "Nastavenia")) { vm.go(Screen.Settings) }
+        }
+        GlassGroup {
+            Row(Modifier.fillMaxWidth().clickable { vm.signOut() }.padding(16.dp), horizontalArrangement = Arrangement.Center) {
+                Text(tr("Выйти", "Sign out", "Вийти", "Odhlásiť sa"), color = Color(0xFFFF5A6E), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        if (vm.accMsg.isNotEmpty()) Dim(vm.accMsg, Modifier.padding(top = 10.dp))
     }
 }
 
+/** Строка группы-меню: значок в цветном квадрате, подпись, стрелка */
 @Composable
-fun MenuRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, danger: Boolean = false, onClick: () -> Unit) {
-    // стеклянная строка: значок в кружке, подпись, стрелка
-    val c = if (danger) Color(0xFFFF5A6E) else Color.White
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp).glass(18).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(32.dp).clip(CircleShape).background(c.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = c, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(14.dp))
-        Text(text, color = c, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-        if (!danger) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = Pal.dim)
+fun NavRow(icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, text: String, chevron: Boolean = true, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        RowIcon(icon, color)
+        Spacer(Modifier.width(16.dp))
+        Text(text, color = Pal.text, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+        if (chevron) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = Pal.faint)
     }
 }
 
@@ -637,18 +715,18 @@ fun StatsScreen(vm: AppState) {
         item {
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for ((label, ms) in listOf(tr("Сегодня", "Today", "Сьогодні", "Dnes") to s.today, tr("Неделя", "Week", "Тиждень", "Týždeň") to s.week, tr("Месяц", "Month", "Місяць", "Mesiac") to s.month)) {
-                    Column(Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(Pal.card).padding(12.dp)) {
-                        Text(label, color = Pal.dim, fontSize = 12.sp)
-                        Text(fmtLong(ms), color = Pal.text, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Column(Modifier.weight(1f).liquid(RoundedCornerShape(20.dp), refraction = 10.dp).padding(14.dp)) {
+                        Text(label, color = Pal.dim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(fmtLong(ms), color = Pal.text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     }
                 }
             }
         }
         item { Section(tr("Год", "Year", "Рік", "Rok")) }
         item {
-            // клетки как на GitHub: колонка — неделя; последние 26 недель влезают в экран телефона
-            val weeks = s.heat.chunked(7).takeLast(26)
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            // клетки как на GitHub: колонка — неделя; с отступами карточки в экран влезают последние 23 недели
+            val weeks = s.heat.chunked(7).takeLast(23)
+            Row(Modifier.padding(horizontal = 16.dp).liquid(RoundedCornerShape(20.dp), refraction = 10.dp).padding(14.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 for (w in weeks) Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     for (lv in w) Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(if (lv == 0) Color(0x14FFFFFF) else a.c1.copy(alpha = 0.25f + lv * 0.18f)))
                 }
@@ -678,7 +756,9 @@ fun StatsScreen(vm: AppState) {
 @Composable
 private fun FavArtistCard(vm: AppState, f: FavArtist, photo: String) {
     val clock = remember { LyrClock() }
-    LaunchedEffect(Unit) {
+    val lite = LocalLite.current
+    LaunchedEffect(lite) {
+        if (lite) return@LaunchedEffect // в лайт-режиме фон карточки стоит
         var last = 0L
         while (true) withFrameNanos { n ->
             if (last != 0L) clock.bg += ((n - last) / 1e9f).coerceAtMost(0.1f) * 1.2f
@@ -686,7 +766,7 @@ private fun FavArtistCard(vm: AppState, f: FavArtist, photo: String) {
         }
     }
     Box(
-        Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(260.dp).clip(RoundedCornerShape(24.dp))
+        Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(260.dp).shadow(18.dp, RoundedCornerShape(28.dp)).clip(RoundedCornerShape(28.dp))
             .clickable { vm.go(Screen.ArtistPage("", f.name)) },
     ) {
         LyrBackdrop(photo, clock)
@@ -714,132 +794,175 @@ private fun FavArtistCard(vm: AppState, f: FavArtist, photo: String) {
 @UnstableApi
 @Composable
 fun SettingsScreen(vm: AppState) {
+    val a = LocalAccent.current
+    val sw = androidx.compose.material3.SwitchDefaults.colors(
+        checkedTrackColor = a.c1, checkedThumbColor = Color.White, checkedBorderColor = Color.Transparent,
+        uncheckedTrackColor = Color(0x33FFFFFF), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent,
+    )
     Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = LocalBottomPad.current + 16.dp)) {
         Title(tr("Настройки", "Settings", "Налаштування", "Nastavenia"))
-        Section(tr("Язык", "Language", "Мова", "Jazyk"))
-        Box(Modifier.padding(horizontal = 16.dp)) { LangChips { vm.setLang(it) } }
-        Section(tr("Тема", "Theme", "Тема", "Téma"))
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(ACCENTS) { i, ac ->
-                FilterChip(
-                    selected = vm.theme == i, onClick = { vm.setThemeId(i) },
-                    label = { Text(ac.name()) },
-                    leadingIcon = { Box(Modifier.size(10.dp).clip(CircleShape).background(ac.c1)) },
-                )
+
+        // ── вид ──
+        GlassGroup(tr("Внешний вид", "Appearance", "Вигляд", "Vzhľad")) {
+            Column(Modifier.padding(start = 16.dp, top = 14.dp, bottom = 12.dp)) {
+                Text(tr("Тема", "Theme", "Тема", "Téma"), color = Pal.text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                // кружки с градиентом темы, выбранный — в кольце
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 12.dp, end = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    ACCENTS.forEachIndexed { i, ac ->
+                        Column(Modifier.width(56.dp).pressable { vm.setThemeId(i) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                Modifier.size(46.dp).then(if (vm.theme == i) Modifier.border(2.dp, Color.White, CircleShape) else Modifier).padding(4.dp)
+                                    .shadow(8.dp, CircleShape).clip(CircleShape).background(ac.brush()),
+                            )
+                            Text(ac.name(), color = if (vm.theme == i) Color.White else Pal.dim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 5.dp))
+                        }
+                    }
+                }
+            }
+            GroupDivider()
+            GroupRow(
+                tr("Лайт-режим", "Lite mode", "Лайт-режим", "Lite režim"),
+                tr("Без жидкого стекла, живого фона и размытий: плашки простые, фон ровный, фон плеера не плавает. Для слабых телефонов и чтобы беречь батарею.", "No liquid glass, live background or blur: plain panels, a flat background, the player background stands still. For weaker phones and to save battery.", "Без рідкого скла, живого фону й розмиття: прості плашки, рівний фон, фон плеєра не пливе. Для слабких телефонів і щоб берегти батарею.", "Bez tekutého skla, živého pozadia a rozmazania: jednoduché panely, rovné pozadie, pozadie prehrávača sa nehýbe. Pre slabšie telefóny a na šetrenie batérie."),
+            ) { Switch(vm.lite, { vm.setLiteOn(it) }, colors = sw) }
+            GroupDivider()
+            Column(Modifier.padding(16.dp)) {
+                Text(tr("Язык", "Language", "Мова", "Jazyk"), color = Pal.text, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 10.dp))
+                LangChips { vm.setLang(it) }
             }
         }
-        Section(tr("Звук", "Sound", "Звук", "Zvuk"))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(tr("Дальше похожее", "Keep playing similar", "Далі схоже", "Ďalej podobné"), color = Pal.text, fontWeight = FontWeight.Bold)
-                Text(tr("Когда очередь заканчивается, музыка не замолкает — включаются похожие треки.", "When the queue runs out, similar tracks keep the music going.", "Коли черга закінчується, музика не замовкає — вмикаються схожі треки.", "Keď sa front minie, hudba neutíchne — pustia sa podobné skladby."), color = Pal.dim, fontSize = 13.sp)
+
+        // ── звук ──
+        GlassGroup(tr("Звук", "Sound", "Звук", "Zvuk")) {
+            GroupRow(
+                tr("Дальше похожее", "Keep playing similar", "Далі схоже", "Ďalej podobné"),
+                tr("Когда очередь заканчивается, музыка не замолкает — включаются похожие треки.", "When the queue runs out, similar tracks keep the music going.", "Коли черга закінчується, музика не замовкає — вмикаються схожі треки.", "Keď sa front minie, hudba neutíchne — pustia sa podobné skladby."),
+            ) { Switch(vm.autoplay, { vm.setAutoplayOn(it) }, colors = sw) }
+            GroupDivider()
+            GroupRow(
+                tr("Эквалайзер и скорость", "Equalizer and speed", "Еквалайзер і швидкість", "Ekvalizér a rýchlosť"),
+                tr("10 полос и пресеты — те же, что на компе.", "10 bands and presets — the same as on the PC.", "10 смуг і пресети — ті самі, що на компі.", "10 pásiem a predvoľby — rovnaké ako na PC."),
+                onClick = { vm.go(Screen.Eq) },
+            ) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = Pal.faint) }
+            GroupDivider()
+            Column(Modifier.padding(16.dp)) {
+                Text(tr("Кроссфейд", "Crossfade", "Кросфейд", "Crossfade"), color = Pal.text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                Text(tr("Конец трека плавно перетекает в начало следующего.", "The end of a track blends into the start of the next.", "Кінець треку плавно перетікає в початок наступного.", "Koniec skladby plynule prejde do ďalšej."), color = Pal.dim, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+                Row(Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (x in listOf(0, 3, 5, 8, 12)) GlassChip(if (x == 0) tr("Выкл", "Off", "Вимк", "Vyp") else tr("$x с", "$x s", "$x с", "$x s"), vm.xfade == x) { vm.setXfadeSecs(x) }
+                }
             }
-            Switch(
-                vm.autoplay, { vm.setAutoplayOn(it) },
-                colors = androidx.compose.material3.SwitchDefaults.colors(
-                    checkedTrackColor = LocalAccent.current.c1, checkedThumbColor = Color.White,
-                    uncheckedTrackColor = Color(0x26FFFFFF), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent,
+        }
+
+        // ── память ──
+        val have by app.blackhole.Offline.have.collectAsState()
+        var offBytes by remember(have) { mutableStateOf(app.blackhole.Offline.size()) }
+        // размер считаем при открытии экрана: кеш меняется только пока что-то играет
+        var cached by remember { mutableStateOf(App.cache.cacheSpace) }
+        GlassGroup(tr("Память", "Storage", "Пам'ять", "Úložisko")) {
+            GroupRow(
+                tr("Скачанное", "Downloads", "Завантажене", "Stiahnuté"),
+                tr("Треков: ${have.size}, ${offBytes / 1048576} МБ. Играют без интернета и не вытесняются. Скачать плейлист — в его меню «•••».", "Tracks: ${have.size}, ${offBytes / 1048576} MB. They play offline and are never evicted. Download a playlist from its “•••” menu.", "Треків: ${have.size}, ${offBytes / 1048576} МБ. Грають без інтернету і не витісняються. Завантажити плейлист — у його меню «•••».", "Skladieb: ${have.size}, ${offBytes / 1048576} MB. Hrajú offline a nemažú sa. Playlist stiahneš v jeho menu „•••“."),
+            ) {
+                Pill(tr("Удалить", "Delete", "Видалити", "Zmazať"), primary = false, enabled = have.isNotEmpty()) {
+                    app.blackhole.Offline.clear()
+                    offBytes = 0
+                }
+            }
+            GroupDivider()
+            GroupRow(
+                tr("Кэш треков", "Track cache", "Кеш треків", "Vyrovnávacia pamäť"),
+                tr("Прослушанное играет сразу и без интернета: ${cached / 1048576} МБ из 2 ГБ.", "Played tracks start instantly and offline: ${cached / 1048576} MB of 2 GB.", "Прослухане грає одразу й без інтернету: ${cached / 1048576} МБ із 2 ГБ.", "Prehraté skladby hrajú hneď aj offline: ${cached / 1048576} MB z 2 GB."),
+            ) {
+                Pill(tr("Очистить", "Clear", "Очистити", "Vymazať"), primary = false) {
+                    App.cache.keys.toList().forEach { App.cache.removeResource(it) }
+                    cached = App.cache.cacheSpace
+                }
+            }
+        }
+
+        // ── YouTube ──
+        val ytOn by YtAuth.on.collectAsState()
+        var login by remember { mutableStateOf(false) }
+        GlassGroup(
+            "YouTube",
+            footer = if (ytOn) tr("Вошёл: треки берутся под аккаунтом, как на компе. Не дал звук — телефон сам попробует без аккаунта и через другие пути.", "Signed in: tracks load via your account, like on the PC. If it gives no audio, the phone tries without the account and other ways by itself.", "Увійшов: треки беруться під акаунтом, як на компі. Не дав звук — телефон сам спробує без акаунта й іншими шляхами.", "Prihlásený: skladby idú cez účet, ako na PC. Ak nedá zvuk, telefón sám skúsi bez účtu a inými cestami.")
+            else tr("Без входа тоже играет: телефон сам перебирает пути к звуку. Вход с компа (там Настройки → Куки YouTube → «На телефон») — ещё один путь. Лучше запасной аккаунт.", "It plays without signing in too: the phone tries different ways to get audio by itself. Taking the sign-in from the PC (Settings → YouTube cookies → “To phone” there) adds one more. A spare account is better.", "Без входу теж грає: телефон сам перебирає шляхи до звуку. Вхід з компа (там Налаштування → Куки YouTube → «На телефон») — ще один шлях. Краще запасний акаунт.", "Hrá aj bez prihlásenia: telefón sám skúša cesty k zvuku. Prihlásenie z PC (tam Nastavenia → Cookies YouTube → „Na telefón“) je ďalšia cesta. Lepšie je použiť záložný účet."),
+        ) {
+            GroupRow(
+                if (ytOn) tr("Вход есть", "Signed in", "Вхід є", "Prihlásený") else tr("Не вошёл", "Not signed in", "Не увійшов", "Neprihlásený"),
+            ) {
+                if (ytOn) Pill(tr("Выйти", "Sign out", "Вийти", "Odhlásiť sa"), primary = false, danger = true) { YtAuth.clear(); android.webkit.CookieManager.getInstance().removeAllCookies(null) }
+            }
+            GroupDivider()
+            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill(tr("Взять с компа", "Take from PC", "Взяти з компа", "Zobrať z PC")) { vm.pullYtCookies() }
+                Pill(tr("Войти", "Sign in", "Увійти", "Prihlásiť sa"), primary = false) { login = true }
+            }
+        }
+        if (login) YtLoginDialog(close = { login = false }) { vm.ytSignedIn() }
+
+        // ── тексты ──
+        var key by remember { mutableStateOf(vm.spicyKey) }
+        GlassGroup(
+            tr("Тексты", "Lyrics", "Тексти", "Texty"),
+            footer = tr("Ключ Spicy Lyrics — ещё один источник текстов (синки по слогам). Пусто — источник выключен.", "Spicy Lyrics key — one more lyrics source (syllable syncs). Empty — source is off.", "Ключ Spicy Lyrics — ще одне джерело текстів (синки за складами). Порожньо — джерело вимкнено.", "Kľúč Spicy Lyrics — ďalší zdroj textov (synchronizácia po slabikách). Prázdne — zdroj je vypnutý."),
+        ) {
+            androidx.compose.material3.TextField(
+                key, { key = it; vm.setSpicy(it) }, placeholder = { Text("sl_sk_…") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+                colors = androidx.compose.material3.TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = a.c1, focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                    focusedPlaceholderColor = Pal.dim, unfocusedPlaceholderColor = Pal.dim,
                 ),
             )
         }
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(tr("Эквалайзер и скорость", "Equalizer and speed", "Еквалайзер і швидкість", "Ekvalizér a rýchlosť"), color = Pal.text, fontWeight = FontWeight.Bold)
-                Text(tr("10 полос и пресеты — те же, что на компе.", "10 bands and presets — the same as on the PC.", "10 смуг і пресети — ті самі, що на компі.", "10 pásiem a predvoľby — rovnaké ako na PC."), color = Pal.dim, fontSize = 13.sp)
-            }
-            Spacer(Modifier.width(8.dp))
-            Pill(tr("Открыть", "Open", "Відкрити", "Otvoriť"), primary = false) { vm.go(Screen.Eq) }
-        }
-        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
-            Text(tr("Кроссфейд", "Crossfade", "Кросфейд", "Crossfade"), color = Pal.text, fontWeight = FontWeight.Bold)
-            Text(tr("Конец трека плавно перетекает в начало следующего.", "The end of a track blends into the start of the next.", "Кінець треку плавно перетікає в початок наступного.", "Koniec skladby plynule prejde do ďalšej."), color = Pal.dim, fontSize = 13.sp)
-            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (x in listOf(0, 3, 5, 8, 12)) FilterChip(
-                    selected = vm.xfade == x, onClick = { vm.setXfadeSecs(x) },
-                    label = { Text(if (x == 0) tr("Выкл", "Off", "Вимк", "Vyp") else tr("$x с", "$x s", "$x с", "$x s")) },
-                )
-            }
-        }
-        val have by app.blackhole.Offline.have.collectAsState()
-        var offBytes by remember(have) { mutableStateOf(app.blackhole.Offline.size()) }
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(tr("Скачанное", "Downloads", "Завантажене", "Stiahnuté"), color = Pal.text, fontWeight = FontWeight.Bold)
-                Text(tr("Треков: ${have.size}, ${offBytes / 1048576} МБ. Играют без интернета и не вытесняются. Скачать плейлист — в его меню «•••».", "Tracks: ${have.size}, ${offBytes / 1048576} MB. They play offline and are never evicted. Download a playlist from its “•••” menu.", "Треків: ${have.size}, ${offBytes / 1048576} МБ. Грають без інтернету і не витісняються. Завантажити плейлист — у його меню «•••».", "Skladieb: ${have.size}, ${offBytes / 1048576} MB. Hrajú offline a nemažú sa. Playlist stiahneš v jeho menu „•••“."), color = Pal.dim, fontSize = 13.sp)
-            }
-            Spacer(Modifier.width(8.dp))
-            Pill(tr("Удалить", "Delete", "Видалити", "Zmazať"), primary = false, enabled = have.isNotEmpty()) {
-                app.blackhole.Offline.clear()
-                offBytes = 0
-            }
-        }
-        // размер считаем при открытии экрана: кеш меняется только пока что-то играет
-        var cached by remember { mutableStateOf(App.cache.cacheSpace) }
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(tr("Кэш треков", "Track cache", "Кеш треків", "Vyrovnávacia pamäť"), color = Pal.text, fontWeight = FontWeight.Bold)
-                Text(tr("Прослушанное играет сразу и без интернета: ${cached / 1048576} МБ из 2 ГБ.", "Played tracks start instantly and offline: ${cached / 1048576} MB of 2 GB.", "Прослухане грає одразу й без інтернету: ${cached / 1048576} МБ із 2 ГБ.", "Prehraté skladby hrajú hneď aj offline: ${cached / 1048576} MB z 2 GB."), color = Pal.dim, fontSize = 13.sp)
-            }
-            Spacer(Modifier.width(8.dp))
-            Pill(tr("Очистить", "Clear", "Очистити", "Vymazať"), primary = false) {
-                App.cache.keys.toList().forEach { App.cache.removeResource(it) }
-                cached = App.cache.cacheSpace
-            }
-        }
-        Section("YouTube")
-        val ytOn by YtAuth.on.collectAsState()
-        var login by remember { mutableStateOf(false) }
-        Dim(
-            if (ytOn) tr("Вошёл: треки берутся под аккаунтом, как на компе — бан «подтверди, что не бот» не мешает.", "Signed in: tracks load via your account, like on the PC — the “confirm you're not a bot” ban doesn't apply.", "Увійшов: треки беруться під акаунтом, як на компі — бан «підтверди, що не бот» не заважає.", "Prihlásený: skladby idú cez účet, ako na PC — ban „potvrď, že nie si bot“ neprekáža.")
-            else tr("Если YouTube пишет «подтверди, что не бот» — войди. Проще всего взять вход с компа (там Настройки → Куки YouTube → «На телефон»). Лучше запасной аккаунт.", "If YouTube says “confirm you're not a bot” — sign in. Easiest is to take the sign-in from the PC (Settings → YouTube cookies → “To phone” there). A spare account is better.", "Якщо YouTube пише «підтверди, що не бот» — увійди. Найпростіше взяти вхід з компа (там Налаштування → Куки YouTube → «На телефон»). Краще запасний акаунт.", "Ak YouTube píše „potvrď, že nie si bot“ — prihlás sa. Najľahšie je zobrať prihlásenie z PC (tam Nastavenia → Cookies YouTube → „Na telefón“). Lepšie je použiť záložný účet.")
-        )
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(tr("Взять с компа", "Take from PC", "Взяти з компа", "Zobrať z PC")) { vm.pullYtCookies() }
-            Pill(tr("Войти", "Sign in", "Увійти", "Prihlásiť sa"), primary = false) { login = true }
-            if (ytOn) Pill(tr("Выйти", "Sign out", "Вийти", "Odhlásiť sa"), primary = false, danger = true) { YtAuth.clear(); android.webkit.CookieManager.getInstance().removeAllCookies(null) }
-        }
-        if (login) YtLoginDialog(close = { login = false }) { vm.ytSignedIn() }
-        Section(tr("Тексты", "Lyrics", "Тексти", "Texty"))
-        Dim(tr("Ключ Spicy Lyrics — ещё один источник текстов (синки по слогам). Пусто — источник выключен.", "Spicy Lyrics key — one more lyrics source (syllable syncs). Empty — source is off.", "Ключ Spicy Lyrics — ще одне джерело текстів (синки за складами). Порожньо — джерело вимкнено.", "Kľúč Spicy Lyrics — ďalší zdroj textov (synchronizácia po slabikách). Prázdne — zdroj je vypnutý."))
-        var key by remember { mutableStateOf(vm.spicyKey) }
-        GlassField(
-            key, { key = it; vm.setSpicy(it) }, placeholder = { Text("sl_sk_…") }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        )
-        Section(tr("О программе", "About", "Про програму", "O aplikácii"))
-        Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.MusicNote, null, tint = LocalAccent.current.c1)
-            Spacer(Modifier.width(8.dp))
-            Text("Gargantua ${app.blackhole.BuildConfig.VERSION_NAME} · qweowix · MIT", color = Pal.dim, fontSize = 13.sp)
-        }
-        Dim(tr(
-            "Бесплатный плеер без рекламы: YouTube Music, SoundCloud и Яндекс в одном поиске, импорт плейлистов из Spotify и Apple Music по ссылке или QR. Тексты по словам, эквалайзер и скорость, кроссфейд, умное перемешивание, скачивание плейлистов для офлайна, статистика с итогами месяца и года, заметки к моментам трека. Плейлисты общие с плеером на компьютере, а через Connect можно управлять им с телефона и перекидывать звук между устройствами.",
-            "A free player with no ads: YouTube Music, SoundCloud and Yandex in one search, playlist import from Spotify and Apple Music by link or QR. Word-by-word lyrics, equalizer and speed, crossfade, smart shuffle, playlist downloads for offline, stats with month and year recaps, notes at moments of a track. Playlists are shared with the desktop player, and Connect lets you control it from the phone and move the sound between devices.",
-            "Безкоштовний плеєр без реклами: YouTube Music, SoundCloud і Яндекс в одному пошуку, імпорт плейлистів зі Spotify та Apple Music за посиланням або QR. Тексти по словах, еквалайзер і швидкість, кросфейд, розумне перемішування, завантаження плейлистів для офлайну, статистика з підсумками місяця й року, нотатки до моментів треку. Плейлисти спільні з плеєром на комп'ютері, а через Connect ним можна керувати з телефона й перекидати звук між пристроями.",
-            "Bezplatný prehrávač bez reklám: YouTube Music, SoundCloud a Yandex v jednom vyhľadávaní, import playlistov zo Spotify a Apple Music cez odkaz alebo QR. Texty po slovách, ekvalizér a rýchlosť, crossfade, inteligentné miešanie, sťahovanie playlistov na offline, štatistiky so zhrnutím mesiaca a roka, poznámky k momentom skladby. Playlisty sú spoločné s prehrávačom na počítači a cez Connect ho ovládaš z telefónu a presúvaš zvuk medzi zariadeniami.",
-        ))
-        Dim("GitHub: github.com/qweowix/Gargantua · Telegram: t.me/qweowixsrealm")
+
+        // ── обновление ──
         val newVer by app.blackhole.Updater.version.collectAsState()
         val updating by app.blackhole.Updater.busy.collectAsState()
         val ctx = androidx.compose.ui.platform.LocalContext.current
         val scope = androidx.compose.runtime.rememberCoroutineScope()
-        if (newVer.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(tr("Вышла версия $newVer", "Version $newVer is out", "Вийшла версія $newVer", "Vyšla verzia $newVer"), color = Pal.text, fontWeight = FontWeight.Bold)
-                Text(tr("Скачаю и открою установщик. Плейлисты и вход останутся.", "I'll download it and open the installer. Playlists and sign-in stay.", "Завантажу і відкрию встановлювач. Плейлисти і вхід залишаться.", "Stiahnem ju a otvorím inštalátor. Playlisty a prihlásenie zostanú."), color = Pal.dim, fontSize = 13.sp)
-            }
-            Spacer(Modifier.width(8.dp))
-            Pill(if (updating) tr("Качаю…", "Downloading…", "Завантажую…", "Sťahujem…") else tr("Обновить", "Update", "Оновити", "Aktualizovať"), enabled = !updating) {
-                scope.launch { app.blackhole.Updater.install(ctx) }
+        if (newVer.isNotEmpty()) GlassGroup {
+            GroupRow(
+                tr("Вышла версия $newVer", "Version $newVer is out", "Вийшла версія $newVer", "Vyšla verzia $newVer"),
+                tr("Скачаю и открою установщик. Плейлисты и вход останутся.", "I'll download it and open the installer. Playlists and sign-in stay.", "Завантажу і відкрию встановлювач. Плейлисти і вхід залишаться.", "Stiahnem ju a otvorím inštalátor. Playlisty a prihlásenie zostanú."),
+            ) {
+                Pill(if (updating) tr("Качаю…", "Downloading…", "Завантажую…", "Sťahujem…") else tr("Обновить", "Update", "Оновити", "Aktualizovať"), enabled = !updating) {
+                    scope.launch { app.blackhole.Updater.install(ctx) }
+                }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(tr("Журнал ошибок", "Error log", "Журнал помилок", "Záznam chýb"), color = Pal.text, fontWeight = FontWeight.Bold)
-                Text(tr("Трек не играет или что-то сломалось — скопируй журнал и пришли его.", "A track won't play or something broke — copy the log and send it.", "Трек не грає або щось зламалося — скопіюй журнал і надішли його.", "Skladba nehrá alebo sa niečo pokazilo — skopíruj záznam a pošli ho."), color = Pal.dim, fontSize = 13.sp)
+
+        // ── о программе ──
+        GlassGroup(tr("О программе", "About", "Про програму", "O aplikácii")) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(52.dp).shadow(10.dp, RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)).background(a.brush()), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(22.dp).clip(CircleShape).background(Color.Black))
+                }
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text("Gargantua", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("${app.blackhole.BuildConfig.VERSION_NAME} · qweowix · MIT", color = Pal.dim, fontSize = 13.sp)
+                }
             }
-            Spacer(Modifier.width(8.dp))
-            Pill(tr("Скопировать", "Copy", "Скопіювати", "Kopírovať"), primary = false) { vm.copyLog() }
+            Text(
+                tr(
+                    "Бесплатный плеер без рекламы: YouTube Music, SoundCloud и Яндекс в одном поиске, импорт плейлистов из Spotify и Apple Music по ссылке или QR. Тексты по словам, эквалайзер и скорость, кроссфейд, умное перемешивание, скачивание плейлистов для офлайна, статистика с итогами месяца и года, заметки к моментам трека. Плейлисты общие с плеером на компьютере, а через Connect можно управлять им с телефона и перекидывать звук между устройствами.",
+                    "A free player with no ads: YouTube Music, SoundCloud and Yandex in one search, playlist import from Spotify and Apple Music by link or QR. Word-by-word lyrics, equalizer and speed, crossfade, smart shuffle, playlist downloads for offline, stats with month and year recaps, notes at moments of a track. Playlists are shared with the desktop player, and Connect lets you control it from the phone and move the sound between devices.",
+                    "Безкоштовний плеєр без реклами: YouTube Music, SoundCloud і Яндекс в одному пошуку, імпорт плейлистів зі Spotify та Apple Music за посиланням або QR. Тексти по словах, еквалайзер і швидкість, кросфейд, розумне перемішування, завантаження плейлистів для офлайну, статистика з підсумками місяця й року, нотатки до моментів треку. Плейлисти спільні з плеєром на комп'ютері, а через Connect ним можна керувати з телефона й перекидати звук між пристроями.",
+                    "Bezplatný prehrávač bez reklám: YouTube Music, SoundCloud a Yandex v jednom vyhľadávaní, import playlistov zo Spotify a Apple Music cez odkaz alebo QR. Texty po slovách, ekvalizér a rýchlosť, crossfade, inteligentné miešanie, sťahovanie playlistov na offline, štatistiky so zhrnutím mesiaca a roka, poznámky k momentom skladby. Playlisty sú spoločné s prehrávačom na počítači a cez Connect ho ovládaš z telefónu a presúvaš zvuk medzi zariadeniami.",
+                ),
+                color = Pal.dim, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+            )
+            GroupDivider()
+            Text("GitHub: github.com/qweowix/Gargantua\nTelegram: t.me/qweowixsrealm", color = Pal.dim, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(16.dp))
+            GroupDivider()
+            GroupRow(
+                tr("Журнал ошибок", "Error log", "Журнал помилок", "Záznam chýb"),
+                tr("Трек не играет или что-то сломалось — скопируй журнал и пришли его.", "A track won't play or something broke — copy the log and send it.", "Трек не грає або щось зламалося — скопіюй журнал і надішли його.", "Skladba nehrá alebo sa niečo pokazilo — skopíruj záznam a pošli ho."),
+            ) { Pill(tr("Скопировать", "Copy", "Скопіювати", "Kopírovať"), primary = false) { vm.copyLog() } }
         }
     }
 }

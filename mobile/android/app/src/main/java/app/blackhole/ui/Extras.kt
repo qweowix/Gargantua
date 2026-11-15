@@ -1,5 +1,6 @@
 package app.blackhole.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -135,10 +136,11 @@ fun EqScreen(vm: AppState) {
         Title(tr("Эквалайзер и скорость", "Equalizer and speed", "Еквалайзер і швидкість", "Ekvalizér a rýchlosť"))
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(Eq.presets) { i, p ->
-                FilterChip(selected = i == cur, onClick = { Eq.set(p.gains) }, label = { Text(if (L.lang == "ru" || L.lang == "uk") p.ru else p.en) })
+                GlassChip(if (L.lang == "ru" || L.lang == "uk") p.ru else p.en, i == cur) { Eq.set(p.gains) }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 12.dp)) {
+        // полосы — на стеклянной карточке
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 14.dp).fillMaxWidth().liquid(RoundedCornerShape(26.dp), refraction = 12.dp).padding(horizontal = 4.dp, vertical = 14.dp)) {
             val labels = listOf("31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k")
             gains.forEachIndexed { i, g ->
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -159,7 +161,7 @@ fun EqScreen(vm: AppState) {
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(listOf(0.75f, 0.85f, 1f, 1.15f, 1.25f, 1.5f)) { _, v ->
-                FilterChip(selected = kotlin.math.abs(Eq.speed - v) < 0.01f, onClick = { Eq.setSpeed(v) }, label = { Text(if (v == 1f) "1×" else "$v×") })
+                GlassChip(if (v == 1f) "1×" else "$v×", kotlin.math.abs(Eq.speed - v) < 0.01f) { Eq.setSpeed(v) }
             }
         }
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -221,6 +223,7 @@ fun RecapDialog(vm: AppState, close: () -> Unit) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     Dialog(onDismissRequest = close) {
+        CompositionLocalProvider(LocalBackdrop provides null) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Column(
                 Modifier
@@ -276,8 +279,8 @@ fun RecapDialog(vm: AppState, close: () -> Unit) {
                 }
             }
             Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                FilterChip(selected = !vm.recapYear, onClick = { vm.loadRecap(false) }, label = { Text(tr("Месяц", "Month", "Місяць", "Mesiac")) })
-                FilterChip(selected = vm.recapYear, onClick = { vm.loadRecap(true) }, label = { Text(tr("Год", "Year", "Рік", "Rok")) })
+                GlassChip(tr("Месяц", "Month", "Місяць", "Mesiac"), !vm.recapYear) { vm.loadRecap(false) }
+                GlassChip(tr("Год", "Year", "Рік", "Rok"), vm.recapYear) { vm.loadRecap(true) }
                 Pill(tr("Поделиться", "Share", "Поділитися", "Zdieľať"), Icons.Rounded.Share, enabled = r != null) {
                     scope.launch {
                         runCatching {
@@ -294,6 +297,7 @@ fun RecapDialog(vm: AppState, close: () -> Unit) {
                 }
             }
         }
+    }
     }
 }
 

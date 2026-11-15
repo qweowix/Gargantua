@@ -1,5 +1,6 @@
 package app.blackhole.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Bedtime
@@ -155,11 +156,8 @@ fun MiniPlayer(vm: AppState) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .shadow(16.dp, RoundedCornerShape(26.dp))
-            .clip(RoundedCornerShape(26.dp))
-            .background(Glass)
-            .border(0.5.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
+            .padding(horizontal = 12.dp)
+            .liquid(RoundedCornerShape(28.dp), refraction = 16.dp)
             .onSizeChanged { w = it.width.toFloat().coerceAtLeast(1f) }
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
@@ -188,8 +186,8 @@ fun MiniPlayer(vm: AppState) {
             },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-        Cover(t.cover, 40.dp, 8.dp)
-        Spacer(Modifier.width(10.dp))
+        Cover(t.cover, 44.dp, 10.dp, Modifier.shadow(6.dp, RoundedCornerShape(10.dp)))
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(t.title, color = Pal.text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (vm.remote != null) Text(tr("Играет на «${vm.remoteName}»", "Playing on “${vm.remoteName}”", "Грає на «${vm.remoteName}»", "Hrá na „${vm.remoteName}“"), color = LocalAccent.current.c1, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -289,7 +287,13 @@ fun NowPlaying(vm: AppState) {
                 }
             },
     ) {
-        LyrBackdrop(t.cover, clock)
+        val lite = LocalLite.current
+        val still = remember { LyrClock() }
+        val np = rememberGlassLayer()
+        // фон и обложка — в свой слой: стеклянные кнопки поверх них преломляют именно их
+        Box(Modifier.fillMaxSize().glassSource(np)) {
+        // в лайт-режиме фон не плавает
+        LyrBackdrop(t.cover, if (lite) still else clock)
         // в режиме плеера обложка на всю ширину сверху и плавно уходит в фон
         AnimatedVisibility(mode == 0, enter = fadeIn(tween(350)), exit = fadeOut(tween(250))) {
             CoverImage(
@@ -317,6 +321,8 @@ fun NowPlaying(vm: AppState) {
                     .then(swipe),
             )
         }
+        }
+        CompositionLocalProvider(LocalBackdrop provides if (lite) null else np) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             // ручка: за неё (и за шапку) экран смахивается вниз
             Box(Modifier.fillMaxWidth().height(28.dp).then(swipe), contentAlignment = Alignment.Center) {
@@ -341,10 +347,8 @@ fun NowPlaying(vm: AppState) {
                             Box(
                                 Modifier
                                     .padding(end = 20.dp, bottom = 12.dp)
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(if (vm.lyrTr) Color(0xCCFFFFFF) else Color(0x33FFFFFF))
-                                    .clickable { vm.toggleLyrTr() },
+                                    .size(48.dp)
+                                    .liquid(CircleShape, tint = if (vm.lyrTr) Color(0xE6FFFFFF) else GlassTint, refraction = 12.dp) { vm.toggleLyrTr() },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(Icons.Rounded.Translate, tr("Перевод текста", "Translate lyrics", "Переклад тексту", "Preklad textu"), tint = if (vm.lyrTr) Color.Black else Color.White, modifier = Modifier.size(22.dp))
@@ -381,7 +385,12 @@ fun NowPlaying(vm: AppState) {
                     var devices by remember { mutableStateOf(false) }
                     if (devices) ConnDialog(vm) { devices = false }
                     // низ: текст, устройства, повтор, очередь (на очереди — значок, если включена перемешка)
-                    Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 12.dp), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
+                    // нижний ряд — на стеклянной «таблетке», как панели в iOS 26
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp).liquid(RoundedCornerShape(30.dp), refraction = 16.dp).padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         ModeButton(Icons.Rounded.FormatQuote, mode == 1) { mode = if (mode == 1) 0 else 1 }
                         if (vm.connOn) ModeButton(Icons.Rounded.Devices, vm.remote != null) { devices = true }
                         ModeButton(if (vm.repeat == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, vm.repeat != Player.REPEAT_MODE_OFF) { vm.cycleRepeat() }
@@ -398,8 +407,10 @@ fun NowPlaying(vm: AppState) {
                 }
             }
         }
+        }
     }
 }
+
 
 @UnstableApi
 @Composable
@@ -417,7 +428,7 @@ private fun TitleBlock(vm: AppState, t: Track, modifier: Modifier, size: android
 @Composable
 private fun ModeButton(icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.size(46.dp).clip(CircleShape).background(if (on) Color(0x40FFFFFF) else Color.Transparent).clickable(onClick = onClick),
+        Modifier.size(46.dp).pressable(onClick = onClick).clip(CircleShape).background(if (on) Color(0x38FFFFFF) else Color.Transparent),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, null, tint = if (on) Color.White else Color.White.copy(alpha = 0.6f), modifier = Modifier.size(26.dp)) }
 }
@@ -703,7 +714,7 @@ private fun QueueView(vm: AppState) {
 @Composable
 private fun QueueToggle(icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.size(width = 52.dp, height = 34.dp).clip(RoundedCornerShape(17.dp)).background(if (on) Color(0xCCFFFFFF) else Color(0x26FFFFFF)).clickable(onClick = onClick),
+        Modifier.size(width = 54.dp, height = 36.dp).liquid(RoundedCornerShape(18.dp), tint = if (on) Color(0xE6FFFFFF) else GlassTint, refraction = 8.dp, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, null, tint = if (on) Color.Black else Color.White, modifier = Modifier.size(20.dp)) }
 }

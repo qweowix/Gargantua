@@ -1,5 +1,11 @@
 package app.blackhole.ui
 
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.shadow
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Favorite
@@ -127,19 +133,23 @@ fun Cover(url: String, size: Dp, radius: Dp = 10.dp, modifier: Modifier = Modifi
 }
 
 @Composable
-fun Title(text: String, modifier: Modifier = Modifier) {
-    Text(text, color = Pal.text, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+fun Title(text: String, modifier: Modifier = Modifier, inset: Dp = 20.dp) {
+    // крупный заголовок, как large title в iOS
+    Text(text, color = Color.White, fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp, modifier = modifier.padding(start = inset, end = 16.dp, top = 10.dp, bottom = 6.dp))
 }
 
 @Composable
 fun Section(text: String) {
+    // заголовок раздела как у Apple Music: крупно и жирно, без капса
     Text(
-        text.uppercase(),
-        color = Pal.faint,
-        fontSize = 11.sp,
+        text,
+        color = Color.White,
+        fontSize = 22.sp,
         fontWeight = FontWeight.Bold,
-        letterSpacing = 1.5.sp,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 6.dp),
+        letterSpacing = (-0.3).sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 26.dp, bottom = 10.dp),
     )
 }
 
@@ -152,11 +162,14 @@ fun Pill(text: String, icon: ImageVector? = null, primary: Boolean = true, enabl
         solid -> Color.Black
         else -> Color.White
     }.copy(alpha = if (enabled) 1f else 0.45f)
+    val shape = RoundedCornerShape(22.dp)
     Row(
         Modifier
             .height(44.dp)
-            .then(if (solid) Modifier.clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = if (enabled) 1f else 0.5f)) else Modifier.glass(22))
-            .clickable(enabled = enabled, onClick = onClick)
+            .then(
+                if (solid) Modifier.pressable(enabled, onClick).shadow(10.dp, shape).clip(shape).background(Color.White.copy(alpha = if (enabled) 1f else 0.5f))
+                else Modifier.liquid(shape, refraction = 10.dp, enabled = enabled, onClick = onClick),
+            )
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -397,10 +410,7 @@ fun BoxScope.FastScroll(state: LazyListState) {
 /** Круглая кнопка на «стекле» — по бокам от «Слушать», «назад» поверх обложки */
 @Composable
 fun RoundButton(icon: ImageVector, desc: String?, size: Dp = 48.dp, onClick: () -> Unit) {
-    Box(
-        Modifier.size(size).clip(CircleShape).background(Glass).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Icon(icon, desc, tint = Color.White, modifier = Modifier.size(size * 0.5f)) }
+    GlassCircle(size, onClick) { Icon(icon, desc, tint = Color.White, modifier = Modifier.size(size * 0.5f)) }
 }
 
 /** Главная кнопка страницы: белая «таблетка» с чёрным текстом */
@@ -408,10 +418,11 @@ fun RoundButton(icon: ImageVector, desc: String?, size: Dp = 48.dp, onClick: () 
 fun PlayPill(text: String, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Row(
         modifier
-            .height(48.dp)
-            .clip(RoundedCornerShape(24.dp))
+            .height(50.dp)
+            .pressable(enabled, onClick)
+            .shadow(14.dp, RoundedCornerShape(25.dp))
+            .clip(RoundedCornerShape(25.dp))
             .background(Color.White.copy(alpha = if (enabled) 1f else 0.5f))
-            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -425,7 +436,17 @@ fun PlayPill(text: String, enabled: Boolean, modifier: Modifier = Modifier, onCl
 /** Картинка на всю ширину сверху страницы, низом плавно уходит в фон; content — поверх нижней части */
 @Composable
 fun Hero(image: String, round: Boolean = false, content: @Composable BoxScope.() -> Unit) {
-    Box(Modifier.fillMaxWidth().aspectRatio(0.95f)) {
+    // картинка снизу растворяется в живом фоне приложения (а не в чёрной заливке поверх него)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(0.95f)
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                drawRect(Brush.verticalGradient(0.42f to Color.Black, 0.78f to Color.Black.copy(alpha = 0.35f), 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+            },
+    ) {
         if (image == LIKED_ART) {
             LikedArt(Modifier.fillMaxSize())
         } else if (image.isNotEmpty()) {
@@ -435,7 +456,6 @@ fun Hero(image: String, round: Boolean = false, content: @Composable BoxScope.()
                 Icon(if (round) Icons.Rounded.Person else Icons.Rounded.MusicNote, null, tint = Pal.faint, modifier = Modifier.size(96.dp))
             }
         }
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 0.82f to Pal.bg.copy(alpha = 0.85f), 1f to Pal.bg)))
         content()
     }
 }
@@ -476,5 +496,31 @@ fun LikedArt(modifier: Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(Icons.Rounded.Favorite, null, tint = Color.White, modifier = Modifier.size(min(maxWidth, maxHeight) * 0.42f))
+    }
+}
+
+/** Нажатие с пружинкой, как у кнопок iOS: под пальцем элемент чуть проседает */
+@Composable
+fun Modifier.pressable(enabled: Boolean = true, onClick: () -> Unit): Modifier {
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val k by animateFloatAsState(if (pressed) 0.95f else 1f, androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 700f), label = "press")
+    return this.graphicsLayer { scaleX = k; scaleY = k }.clickable(src, indication = null, enabled = enabled, onClick = onClick)
+}
+
+/** Страница, поверх которой плавает стекло (кнопка «назад» над обложкой): содержимое пишется в свой слой,
+ *  и стекло сверху преломляет и фон, и саму страницу */
+@Composable
+fun GlassPage(content: @Composable BoxScope.() -> Unit, overlay: @Composable BoxScope.() -> Unit) {
+    val bg = LocalBackdrop.current
+    val page = rememberGlassLayer()
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().glassSource(page), content = content)
+        if (bg != null) {
+            val stack = rememberGlassStack(bg, page)
+            CompositionLocalProvider(LocalBackdrop provides stack) { overlay() }
+        } else {
+            overlay()
+        }
     }
 }

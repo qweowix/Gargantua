@@ -21,7 +21,26 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.blackhole.ui.Glass
+import app.blackhole.ui.AppBackground
+import app.blackhole.ui.LocalBackdrop
+import app.blackhole.ui.LocalLite
+import app.blackhole.ui.glassSource
+import app.blackhole.ui.liquid
+import app.blackhole.ui.rememberGlassLayer
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.unit.IntOffset
 import app.blackhole.ui.LocalBottomPad
 import android.content.Intent
 import android.os.Build
@@ -86,7 +105,7 @@ class MainActivity : ComponentActivity() {
             registerForActivityResult(ActivityResultContracts.RequestPermission()) {}.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         shared(intent)
-        setContent { BhTheme(vm.theme) { Root(vm) } }
+        setContent { BhTheme(vm.theme) { CompositionLocalProvider(LocalLite provides vm.lite) { Root(vm) } } }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -135,31 +154,46 @@ private fun Root(vm: AppState) {
         if (vm.nowOpen) vm.nowOpen = false else vm.back()
     }
     // контент на весь экран, снизу поверх него плавают мини-плеер и меню — списки проезжают под ними
-    val bottomPad = (if (vm.current != null) 138.dp else 80.dp) + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val bottomPad = (if (vm.current != null) 146.dp else 86.dp) + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // слои для жидкого стекла: bg — только живой фон (его преломляет стекло внутри экранов),
+    // all — фон вместе с экраном (его преломляют мини-плеер и меню, плавающие поверх)
+    val bg = rememberGlassLayer()
+    val all = rememberGlassLayer()
     Box(Modifier.fillMaxSize().background(Pal.bg)) {
-        CompositionLocalProvider(LocalBottomPad provides bottomPad) {
-            Box(Modifier.fillMaxSize()) {
-                when (val s = vm.screen) {
-                    Screen.Home -> HomeScreen(vm)
-                    Screen.Search -> SearchScreen(vm)
-                    Screen.Library -> LibraryScreen(vm)
-                    Screen.Account -> AccountScreen(vm)
-                    Screen.Settings -> SettingsScreen(vm)
-                    Screen.Stats -> StatsScreen(vm)
-                    Screen.Eq -> app.blackhole.ui.EqScreen(vm)
-                    is Screen.Pl -> PlaylistScreen(vm, s.name)
-                    is Screen.ArtistPage -> ArtistScreen(vm, s.id, s.name)
-                    is Screen.AlbumPage -> AlbumScreen(vm, s.id)
-                    is Screen.Tracks -> TrackList(vm, s.title, s.sub, s.cover, s.tracks) {
-                        app.blackhole.ui.RoundButton(Icons.Rounded.Add, tr("Сохранить", "Save", "Зберегти", "Uložiť")) { vm.go(Screen.Pl(vm.createPlaylist(s.title, s.tracks))) }
+        Box(Modifier.fillMaxSize().glassSource(all)) {
+            AppBackground(vm.current?.cover ?: "", Modifier.fillMaxSize().glassSource(bg))
+            CompositionLocalProvider(LocalBottomPad provides bottomPad, LocalBackdrop provides if (vm.lite) null else bg) {
+                Box(Modifier.fillMaxSize()) {
+                    when (val s = vm.screen) {
+                        Screen.Home -> HomeScreen(vm)
+                        Screen.Search -> SearchScreen(vm)
+                        Screen.Library -> LibraryScreen(vm)
+                        Screen.Account -> AccountScreen(vm)
+                        Screen.Settings -> SettingsScreen(vm)
+                        Screen.Stats -> StatsScreen(vm)
+                        Screen.Eq -> app.blackhole.ui.EqScreen(vm)
+                        is Screen.Pl -> PlaylistScreen(vm, s.name)
+                        is Screen.ArtistPage -> ArtistScreen(vm, s.id, s.name)
+                        is Screen.AlbumPage -> AlbumScreen(vm, s.id)
+                        is Screen.Tracks -> TrackList(vm, s.title, s.sub, s.cover, s.tracks) {
+                            app.blackhole.ui.RoundButton(Icons.Rounded.Add, tr("Сохранить", "Save", "Зберегти", "Uložiť")) { vm.go(Screen.Pl(vm.createPlaylist(s.title, s.tracks))) }
+                        }
                     }
                 }
             }
+            // под строкой состояния список уходит в затемнение — часы и значки читаются на любой обложке
+            Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(Brush.verticalGradient(listOf(Color(0xB3000000), Color(0x00000000)))))
         }
-        Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SnackbarHost(snack)
-            MiniPlayer(vm)
-            BottomNav(vm)
+        CompositionLocalProvider(LocalBackdrop provides if (vm.lite) null else all) {
+            Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SnackbarHost(snack) { d ->
+                    Box(Modifier.padding(horizontal = 12.dp).fillMaxWidth().liquid(RoundedCornerShape(22.dp), tint = Color(0x80141220)).padding(horizontal = 18.dp, vertical = 14.dp)) {
+                        Text(d.visuals.message, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                MiniPlayer(vm)
+                BottomNav(vm)
+            }
         }
         AnimatedVisibility(vm.nowOpen, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
             NowPlaying(vm)
@@ -167,40 +201,57 @@ private fun Root(vm: AppState) {
     }
 }
 
-/** Нижнее меню — плавающая «таблетка», выбранная вкладка в своей подсветке, как в Apple Music */
+/** Нижнее меню как в iOS 26: стеклянная «таблетка», под выбранной вкладкой — стеклянная капля,
+ *  которая пружинисто переезжает к нажатой */
 @UnstableApi
 @Composable
 private fun BottomNav(vm: AppState) {
     val a = LocalAccent.current
     val root = vm.stack.first()
-    Row(
+    val tabs = listOf(
+        Triple(Screen.Home, Icons.Rounded.Home, tr("Главная", "Home", "Головна", "Domov")),
+        Triple(Screen.Search, Icons.Rounded.Search, tr("Поиск", "Search", "Пошук", "Hľadať")),
+        Triple(Screen.Library, Icons.Rounded.LibraryMusic, tr("Плейлисты", "Playlists", "Плейлисти", "Playlisty")),
+        Triple(Screen.Account, Icons.Rounded.Person, tr("Аккаунт", "Account", "Акаунт", "Účet")),
+    )
+    val sel = tabs.indexOfFirst { it.first == root }
+    val pos by animateFloatAsState(sel.coerceAtLeast(0).toFloat(), spring(dampingRatio = 0.68f, stiffness = 380f), label = "tab")
+    BoxWithConstraints(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .shadow(16.dp, RoundedCornerShape(28.dp))
-            .clip(RoundedCornerShape(28.dp))
-            .background(Glass)
-            .border(0.5.dp, Color(0x22FFFFFF), RoundedCornerShape(28.dp))
-            .padding(3.dp),
+            .padding(horizontal = 12.dp)
+            .height(62.dp)
+            .liquid(RoundedCornerShape(31.dp), refraction = 18.dp)
+            .padding(4.dp),
     ) {
-        for ((s, icon, label) in listOf(
-            Triple(Screen.Home, Icons.Rounded.Home, tr("Главная", "Home", "Головна", "Domov")),
-            Triple(Screen.Search, Icons.Rounded.Search, tr("Поиск", "Search", "Пошук", "Hľadať")),
-            Triple(Screen.Library, Icons.Rounded.LibraryMusic, tr("Плейлисты", "Playlists", "Плейлисти", "Playlisty")),
-            Triple(Screen.Account, Icons.Rounded.Person, tr("Аккаунт", "Account", "Акаунт", "Účet")),
-        )) {
-            val on = root == s
-            Column(
+        val w = maxWidth / tabs.size
+        if (sel >= 0) {
+            Box(
                 Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(25.dp))
-                    .background(if (on) Color(0x1FFFFFFF) else Color.Transparent)
-                    .clickable { vm.go(s) }
-                    .padding(vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(icon, null, tint = if (on) a.c1 else Pal.text, modifier = Modifier.size(22.dp))
-                Text(label, color = if (on) a.c1 else Pal.text, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    .offset { IntOffset((w * pos).roundToPx(), 0) }
+                    .width(w)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(27.dp))
+                    .background(Color(0x24FFFFFF)),
+            )
+        }
+        Row(Modifier.fillMaxSize()) {
+            for ((i, t) in tabs.withIndex()) {
+                val (s, icon, label) = t
+                val on = i == sel
+                val c by animateColorAsState(if (on) a.c1 else Pal.text, label = "tabc")
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(27.dp))
+                        .clickable(remember { MutableInteractionSource() }, indication = null) { vm.go(s) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(icon, null, tint = c, modifier = Modifier.size(24.dp))
+                    Text(label, color = c, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
             }
         }
     }

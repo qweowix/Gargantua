@@ -62,7 +62,7 @@ kotlin {
 }
 
 dependencies {
-    val bom = platform("androidx.compose:compose-bom:2025.07.00")
+    val bom = platform("androidx.compose:compose-bom:2025.11.00")
     implementation(bom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
@@ -76,6 +76,7 @@ dependencies {
     implementation("androidx.media3:media3-database:1.8.0") // дисковый кеш звука
     implementation("androidx.media3:media3-session:1.8.0")
     implementation("androidx.media3:media3-datasource-okhttp:1.8.0")
+    implementation("io.github.kyant0:backdrop:1.0.0") // жидкое стекло: размытие, преломление, блики (Apache-2.0)
     implementation("io.coil-kt.coil3:coil-compose:3.3.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")

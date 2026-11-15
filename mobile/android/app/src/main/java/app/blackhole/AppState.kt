@@ -64,6 +64,14 @@ class AppState(app: Application) : AndroidViewModel(app) {
         private set
     var spicyKey by mutableStateOf(prefs.getString("spicy", "") ?: "")
         private set
+    /** лайт-режим: без жидкого стекла, живого фона и размытий — для слабых телефонов и экономии батареи */
+    var lite by mutableStateOf(prefs.getBoolean("lite", false))
+        private set
+
+    fun setLiteOn(on: Boolean) {
+        lite = on
+        prefs.edit { putBoolean("lite", on) }
+    }
 
     fun setLang(l: String) {
         L.lang = l
