@@ -1,5 +1,11 @@
 package app.blackhole
 
+import app.blackhole.ui.Overlays
+import app.blackhole.ui.OverlayHost
+import app.blackhole.ui.rememberGlassStack
+import androidx.compose.runtime.SideEffect
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import android.Manifest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -105,7 +111,8 @@ class MainActivity : ComponentActivity() {
             registerForActivityResult(ActivityResultContracts.RequestPermission()) {}.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         shared(intent)
-        setContent { BhTheme(vm.theme) { CompositionLocalProvider(LocalLite provides vm.lite) { Root(vm) } } }
+        // OverlayHost — над всем: туда приезжают стеклянные меню и диалоги
+        setContent { BhTheme(vm.theme) { CompositionLocalProvider(LocalLite provides vm.lite) { OverlayHost { Root(vm) } } } }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -143,6 +150,7 @@ private fun Root(vm: AppState) {
     app.blackhole.ui.UpdateDialog() // вышла новая версия — окно поверх любого экрана, даже входа
 
     if (vm.cloudOn && !(vm.signedIn && vm.verified)) {
+        SideEffect { Overlays.backdrop = null } // у экрана входа слои свои, диалоги на нём — простое стекло
         Box(Modifier.fillMaxSize()) {
             AuthScreen(vm)
             SnackbarHost(snack)
@@ -155,13 +163,17 @@ private fun Root(vm: AppState) {
     }
     // контент на весь экран, снизу поверх него плавают мини-плеер и меню — списки проезжают под ними
     val bottomPad = (if (vm.current != null) 146.dp else 86.dp) + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    // слои для жидкого стекла: bg — только живой фон (его преломляет стекло внутри экранов),
-    // all — фон вместе с экраном (его преломляют мини-плеер и меню, плавающие поверх)
+    // слои для жидкого стекла, независимые, друг в друга не вложены: bg — живой фон (его преломляет стекло
+    // внутри экранов), page — сам экран на прозрачном. Плавающее поверх (мини-плеер, меню, «назад», всплывающие
+    // меню и диалоги) преломляет их стопку
     val bg = rememberGlassLayer()
-    val all = rememberGlassLayer()
+    val page = rememberGlassLayer()
+    val stack = rememberGlassStack(bg, page)
+    val under = if (vm.lite) null else stack
+    SideEffect { Overlays.backdrop = under }
     Box(Modifier.fillMaxSize().background(Pal.bg)) {
-        Box(Modifier.fillMaxSize().glassSource(all)) {
-            AppBackground(vm.current?.cover ?: "", Modifier.fillMaxSize().glassSource(bg))
+        AppBackground(vm.current?.cover ?: "", Modifier.fillMaxSize().glassSource(bg))
+        Box(Modifier.fillMaxSize().glassSource(page)) {
             CompositionLocalProvider(LocalBottomPad provides bottomPad, LocalBackdrop provides if (vm.lite) null else bg) {
                 Box(Modifier.fillMaxSize()) {
                     when (val s = vm.screen) {
@@ -184,7 +196,14 @@ private fun Root(vm: AppState) {
             // под строкой состояния список уходит в затемнение — часы и значки читаются на любой обложке
             Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(Brush.verticalGradient(listOf(Color(0xB3000000), Color(0x00000000)))))
         }
-        CompositionLocalProvider(LocalBackdrop provides if (vm.lite) null else all) {
+        CompositionLocalProvider(LocalBackdrop provides under) {
+            // «назад» — над обложкой страниц плейлиста, альбома и артиста
+            val s = vm.screen
+            if (vm.stack.size > 1 && (s is Screen.Pl || s is Screen.ArtistPage || s is Screen.AlbumPage || s is Screen.Tracks)) {
+                Box(Modifier.statusBarsPadding().padding(12.dp)) {
+                    app.blackhole.ui.RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, null, 44.dp) { vm.back() }
+                }
+            }
             Column(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SnackbarHost(snack) { d ->
                     Box(Modifier.padding(horizontal = 12.dp).fillMaxWidth().liquid(RoundedCornerShape(22.dp), tint = Color(0x80141220)).padding(horizontal = 18.dp, vertical = 14.dp)) {

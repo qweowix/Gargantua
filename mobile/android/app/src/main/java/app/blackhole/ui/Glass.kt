@@ -228,42 +228,6 @@ fun RowIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color)
     }
 }
 
-/** Диалог из стекла. Всё, что под ним, система размывает целиком (Android 12+), как алерты iOS */
-@Composable
-fun GlassDialog(onDismiss: () -> Unit, title: String, buttons: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
-        // диалог — отдельное окно: слои приложения отсюда не преломить, кнопки внутри — простое стекло
-        CompositionLocalProvider(LocalBackdrop provides null) {
-        val lite = LocalLite.current
-        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        val blurPx = with(LocalDensity.current) { 28.dp.roundToPx() }
-        DisposableEffect(window, lite) {
-            if (window != null && Build.VERSION.SDK_INT >= 31 && !lite) {
-                window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                window.attributes = window.attributes.apply { blurBehindRadius = blurPx }
-                window.setDimAmount(0.35f)
-            }
-            onDispose {}
-        }
-        val shape = RoundedCornerShape(32.dp)
-        Column(
-            Modifier
-                .widthIn(max = 420.dp)
-                .fillMaxWidth()
-                .shadow(30.dp, shape)
-                .clip(shape)
-                .background(if (lite || !canBlur) Color(0xF21C1A24) else Color(0xB8201D2B))
-                .border(0.5.dp, Color(0x2EFFFFFF), shape)
-                .padding(22.dp),
-        ) {
-            Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Column(Modifier.padding(top = 14.dp, bottom = 18.dp)) { content() }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End), content = buttons)
-        }
-        }
-    }
-}
-
 /** Поле ввода на стекле: без рамки Material, мягкая светлая подложка */
 @Composable
 fun GlassField(
@@ -304,20 +268,6 @@ fun GlassField(
             focusedPlaceholderColor = Pal.dim,
             unfocusedPlaceholderColor = Pal.dim,
         ),
-    )
-}
-
-/** Выпадающее меню. Это отдельное окно — фон приложения ему не виден, поэтому почти непрозрачное */
-@Composable
-fun GlassMenu(expanded: Boolean, onDismissRequest: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismissRequest,
-        shape = RoundedCornerShape(22.dp),
-        containerColor = Color(0xF51E1B28),
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0x2EFFFFFF)),
-        shadowElevation = 22.dp,
-        content = content,
     )
 }
 

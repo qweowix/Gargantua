@@ -433,41 +433,31 @@ fun PlayPill(text: String, enabled: Boolean, modifier: Modifier = Modifier, onCl
     }
 }
 
-/** Картинка на всю ширину сверху страницы, низом плавно уходит в фон; content — поверх нижней части */
+/** Картинка на всю ширину сверху страницы, низом плавно растворяется в живом фоне; content — поверх нижней части.
+ *  Растворяется только картинка: название поверх неё остаётся ярким */
 @Composable
 fun Hero(image: String, round: Boolean = false, content: @Composable BoxScope.() -> Unit) {
-    // картинка снизу растворяется в живом фоне приложения (а не в чёрной заливке поверх него)
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .aspectRatio(0.95f)
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                drawRect(Brush.verticalGradient(0.42f to Color.Black, 0.78f to Color.Black.copy(alpha = 0.35f), 1f to Color.Transparent), blendMode = BlendMode.DstIn)
-            },
-    ) {
-        if (image == LIKED_ART) {
-            LikedArt(Modifier.fillMaxSize())
-        } else if (image.isNotEmpty()) {
-            CoverImage(image, Modifier.fillMaxSize(), big = true)
-        } else {
-            Box(Modifier.fillMaxSize().background(Pal.card), contentAlignment = Alignment.Center) {
-                Icon(if (round) Icons.Rounded.Person else Icons.Rounded.MusicNote, null, tint = Pal.faint, modifier = Modifier.size(96.dp))
+    Box(Modifier.fillMaxWidth().aspectRatio(0.95f)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(Brush.verticalGradient(0.42f to Color.Black, 0.78f to Color.Black.copy(alpha = 0.35f), 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+                },
+        ) {
+            if (image == LIKED_ART) {
+                LikedArt(Modifier.fillMaxSize())
+            } else if (image.isNotEmpty()) {
+                CoverImage(image, Modifier.fillMaxSize(), big = true)
+            } else {
+                Box(Modifier.fillMaxSize().background(Pal.card), contentAlignment = Alignment.Center) {
+                    Icon(if (round) Icons.Rounded.Person else Icons.Rounded.MusicNote, null, tint = Pal.faint, modifier = Modifier.size(96.dp))
+                }
             }
         }
         content()
-    }
-}
-
-/** «Назад» кружком поверх страницы, когда есть куда возвращаться */
-@UnstableApi
-@Composable
-fun BoxScope.BackButton(vm: AppState) {
-    if (vm.stack.size > 1) {
-        Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp)) {
-            RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, null, 44.dp) { vm.back() }
-        }
     }
 }
 
@@ -506,21 +496,4 @@ fun Modifier.pressable(enabled: Boolean = true, onClick: () -> Unit): Modifier {
     val pressed by src.collectIsPressedAsState()
     val k by animateFloatAsState(if (pressed) 0.95f else 1f, androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 700f), label = "press")
     return this.graphicsLayer { scaleX = k; scaleY = k }.clickable(src, indication = null, enabled = enabled, onClick = onClick)
-}
-
-/** Страница, поверх которой плавает стекло (кнопка «назад» над обложкой): содержимое пишется в свой слой,
- *  и стекло сверху преломляет и фон, и саму страницу */
-@Composable
-fun GlassPage(content: @Composable BoxScope.() -> Unit, overlay: @Composable BoxScope.() -> Unit) {
-    val bg = LocalBackdrop.current
-    val page = rememberGlassLayer()
-    Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().glassSource(page), content = content)
-        if (bg != null) {
-            val stack = rememberGlassStack(bg, page)
-            CompositionLocalProvider(LocalBackdrop provides stack) { overlay() }
-        } else {
-            overlay()
-        }
-    }
 }

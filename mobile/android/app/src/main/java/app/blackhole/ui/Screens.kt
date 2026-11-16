@@ -444,7 +444,7 @@ fun TrackList(vm: AppState, title: String, sub: String, cover: String, tracks: L
     val shown = tracks.withIndex().filter { q.isBlank() || (it.value.title + " " + it.value.artist).contains(q.trim(), ignoreCase = true) }
     val list = rememberLazyListState()
     val a = LocalAccent.current
-    GlassPage(content = {
+    Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = LocalBottomPad.current)) {
             item {
                 Hero(cover.ifEmpty { tracks.firstOrNull { it.cover.isNotEmpty() }?.cover ?: "" }) {
@@ -475,10 +475,8 @@ fun TrackList(vm: AppState, title: String, sub: String, cover: String, tracks: L
                 TrackRow(vm, t, { vm.play(tracks, i) }, inPlaylist = playlist, number = if (numbered) i + 1 else null)
             }
         }
-    }, overlay = {
         FastScroll(list)
-        BackButton(vm)
-    })
+    }
 }
 
 @UnstableApi
@@ -578,7 +576,7 @@ fun ArtistScreen(vm: AppState, id: String, name: String) {
         failed = artist == null
     }
     val ar = artist ?: return if (failed) Dim(tr("Артист не нашёлся", "Artist not found", "Артиста не знайдено", "Interpret sa nenašiel"), Modifier.statusBarsPadding()) else Loading()
-    GlassPage(content = {
+    Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomPad.current)) {
             item {
                 // фото на весь верх, имя крупно по центру, под ним «перемешать» — большая ▶ — радио
@@ -624,7 +622,7 @@ fun ArtistScreen(vm: AppState, id: String, name: String) {
                 }
             }
         }
-    }, overlay = { BackButton(vm) })
+    }
 }
 
 /** Заголовок раздела крупно, со стрелкой — как «Top Songs ›» у Apple */

@@ -1,5 +1,6 @@
 package app.blackhole.ui
 
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.EditNote
@@ -290,6 +291,11 @@ fun NowPlaying(vm: AppState) {
         val lite = LocalLite.current
         val still = remember { LyrClock() }
         val np = rememberGlassLayer()
+        // меню «•••» и диалоги поверх плеера преломляют его фон и обложку
+        DisposableEffect(np, lite) {
+            Overlays.player = if (lite) null else np
+            onDispose { Overlays.player = null }
+        }
         // фон и обложка — в свой слой: стеклянные кнопки поверх них преломляют именно их
         Box(Modifier.fillMaxSize().glassSource(np)) {
         // в лайт-режиме фон не плавает
