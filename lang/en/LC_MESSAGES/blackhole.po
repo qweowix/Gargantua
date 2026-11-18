@@ -1150,3 +1150,330 @@ msgstr "YouTube and Discord"
 
 msgid "Служебное"
 msgstr "Maintenance"
+
+msgid "факт"
+msgstr "fact"
+
+msgid "алгоритм"
+msgstr "algorithm"
+
+msgid "вычислено"
+msgstr "computed"
+
+msgid "нет данных"
+msgstr "no data"
+
+msgid "Вселенная пока пустая"
+msgstr "The universe is empty for now"
+
+msgid "Она строится из твоих плейлистов и того, что ты слушал. Послушай что-нибудь — и тут появятся звёзды."
+msgstr "It's built from your playlists and what you've listened to. Play something and stars will appear here."
+
+msgid "Вселенная"
+msgstr "Universe"
+
+msgid "Мосты"
+msgstr "Bridges"
+
+msgid "Подтягиваю…"
+msgstr "Fetching…"
+
+msgid "Подтянуть связи"
+msgstr "Fetch links"
+
+msgid "Вся вселенная"
+msgstr "Whole universe"
+
+msgid "Найти артиста, альбом, трек…"
+msgstr "Find an artist, album, track…"
+
+msgid "Мой вкус"
+msgstr "My taste"
+
+msgid "Жанры"
+msgstr "Genres"
+
+msgid "Люди"
+msgstr "People"
+
+msgid "Лейблы"
+msgstr "Labels"
+
+msgid "Факты"
+msgstr "Facts"
+
+msgid "YouTube"
+msgstr "YouTube"
+
+msgid "Вычислено"
+msgstr "Computed"
+
+msgid "В комнату"
+msgstr "To the room"
+
+msgid "Показать всем"
+msgstr "Show everyone"
+
+msgid "Мост отсюда"
+msgstr "Bridge from here"
+
+msgid "Мост сюда"
+msgstr "Bridge to here"
+
+msgid "Связи · {}"
+msgstr "Links · {}"
+
+msgid "Связей пока нет"
+msgstr "No links yet"
+
+msgid "Музыкальные мосты"
+msgstr "Musical bridges"
+
+msgid "Выбери на карте два узла: «Мост отсюда» и «Мост сюда». Я найду цепочку связей между ними и объясню каждый шаг."
+msgstr "Pick two nodes on the map: “Bridge from here” and “Bridge to here”. I'll find a chain of links between them and explain every step."
+
+msgid "От"
+msgstr "From"
+
+msgid "До"
+msgstr "To"
+
+msgid "Шагов до {}"
+msgstr "Up to {} steps"
+
+msgid "Плейлисты"
+msgstr "Playlists"
+
+msgid "Найти мост"
+msgstr "Find a bridge"
+
+msgid "{} шагов · фактов {}"
+msgstr "{} steps · {} facts"
+
+msgid "Сравнение: {}"
+msgstr "Compared with: {}"
+
+msgid "Выбери второй на карте…"
+msgstr "Pick the second one on the map…"
+
+msgid "Сравнить с…"
+msgstr "Compare with…"
+
+msgid "Сходство"
+msgstr "Similarity"
+
+msgid "Звучит похоже"
+msgstr "Sounds alike"
+
+msgid "Совсем не как обычно"
+msgstr "Nothing like your usual"
+
+msgid "Комнаты"
+msgstr "Rooms"
+
+msgid "Слушайте вместе, даже если вы в разных странах: один трек, одна позиция, общая очередь с голосованием, реакции и сообщения. Звук у каждого свой — через YouTube Music и SoundCloud, плеер сам держит всех в такт."
+msgstr "Listen together, even from different countries: one track, one position, a shared queue with voting, reactions and messages. Everyone plays their own audio via YouTube Music and SoundCloud, and the player keeps everyone in time."
+
+msgid "Новая комната"
+msgstr "New room"
+
+msgid "Название, например «Пятничный вечер»"
+msgstr "Name, e.g. “Friday night”"
+
+msgid "Открытая"
+msgstr "Public"
+
+msgid "Видна всем в списке ниже. Закрытая — только по коду"
+msgstr "Everyone sees it in the list below. Private — by code only"
+
+msgid "Очередь пополняют все"
+msgstr "Everyone can add to the queue"
+
+msgid "Плеером управляют все"
+msgstr "Everyone controls the player"
+
+msgid "Иначе пауза, перемотка и переключение — только у тебя"
+msgstr "Otherwise only you pause, seek and switch tracks"
+
+msgid "Создаю…"
+msgstr "Creating…"
+
+msgid "Войти по коду"
+msgstr "Join by code"
+
+msgid "Открытые комнаты"
+msgstr "Public rooms"
+
+msgid "Сейчас открытых комнат нет"
+msgstr "No public rooms right now"
+
+msgid "Комната"
+msgstr "Room"
+
+msgid "Код {} · {} в комнате"
+msgstr "Code {} · {} in the room"
+
+msgid "Скопировать код"
+msgstr "Copy code"
+
+msgid "Закрыть комнату"
+msgstr "Close the room"
+
+msgid "Пока тихо — включи что-нибудь"
+msgstr "Quiet for now — play something"
+
+msgid "ты управляешь"
+msgstr "you're in control"
+
+msgid "в такт с комнатой"
+msgstr "in sync with the room"
+
+msgid "догоняю: {} мс"
+msgstr "catching up: {} ms"
+
+msgid "Очередь комнаты"
+msgstr "Room queue"
+
+msgid "Добавить играющий"
+msgstr "Add what's playing"
+
+msgid "Следующим играет трек с большим числом голосов. Добавлять можно и из «Вселенной»."
+msgstr "The track with the most votes plays next. You can also add from the Universe."
+
+msgid "Очередь пуста"
+msgstr "The queue is empty"
+
+msgid "добавил(а) {}"
+msgstr "added by {}"
+
+msgid "следующий"
+msgstr "next"
+
+msgid "Выше"
+msgstr "Up"
+
+msgid "Ниже"
+msgstr "Down"
+
+msgid "В комнате"
+msgstr "In the room"
+
+msgid "владелец"
+msgstr "owner"
+
+msgid "ты"
+msgstr "you"
+
+msgid "Убрать из комнаты"
+msgstr "Remove from the room"
+
+msgid "Разговор"
+msgstr "Chat"
+
+msgid "поделиться вкусом"
+msgstr "share my taste"
+
+msgid "про этот трек"
+msgstr "about this track"
+
+msgid "показать во Вселенной →"
+msgstr "show in the Universe →"
+
+msgid "Написать…"
+msgstr "Write…"
+
+msgid "Всё время"
+msgstr "All time"
+
+msgid "Полгода"
+msgstr "6 months"
+
+msgid "3 месяца"
+msgstr "3 months"
+
+msgid "Пока не из чего собрать отпечаток — послушай музыку, и он появится."
+msgstr "Nothing to build a fingerprint from yet — listen to some music and it will appear."
+
+msgid "жанры — крупно, артисты — вокруг них, светлые линии — твои необычные сочетания"
+msgstr "genres are big, artists sit around them, bright lines are your unusual combinations"
+
+msgid "Необычные сочетания"
+msgstr "Unusual combinations"
+
+msgid "Жанры, которые ты слушаешь оба, хотя у твоих же артистов они почти не встречаются вместе"
+msgstr "Genres you listen to both of, even though your own artists hardly ever combine them"
+
+msgid "Твои миры"
+msgstr "Your worlds"
+
+msgid "Кластеры артистов, которые держатся вместе в твоём графе связей"
+msgstr "Clusters of artists that stick together in your link graph"
+
+msgid "Показать во Вселенной"
+msgstr "Show in the Universe"
+
+msgid "Звучание"
+msgstr "Sound"
+
+msgid "По Music DNA треков, взвешенно временем прослушивания"
+msgstr "From tracks' Music DNA, weighted by listening time"
+
+msgid "Как ты слушаешь"
+msgstr "How you listen"
+
+msgid "По часам суток"
+msgstr "By hour of day"
+
+msgid "Как меняется вкус"
+msgstr "How your taste changes"
+
+msgid "Последние три месяца периода против трёх перед ними"
+msgstr "The period's last three months against the three before"
+
+msgid "Новые в твоей жизни: {}"
+msgstr "New in your life: {}"
+
+msgid "С тобой всегда: {}"
+msgstr "Always with you: {}"
+
+msgid "Открыл(а) направления: {}"
+msgstr "Discovered: {}"
+
+msgid "Разнообразие по месяцам"
+msgstr "Diversity by month"
+
+msgid "Музыкальная идентичность"
+msgstr "Musical identity"
+
+msgid "Публичная карточка вкуса. Друг вводит твой код и видит только то, что ты отметил(а)."
+msgstr "A public taste card. A friend enters your code and sees only what you ticked."
+
+msgid "Динамика"
+msgstr "Dynamics"
+
+msgid "Опубликовать"
+msgstr "Publish"
+
+msgid "Скрыть"
+msgstr "Hide"
+
+msgid "Твой код: {}"
+msgstr "Your code: {}"
+
+msgid "Совместимость вкусов"
+msgstr "Taste compatibility"
+
+msgid "Не один процент, а из чего он складывается: общее, разное и неожиданное"
+msgstr "Not one percentage but what it's made of: shared, different and unexpected"
+
+msgid "Код друга"
+msgstr "Friend's code"
+
+msgid "Сравнить"
+msgstr "Compare"
+
+msgid "Ты и {}"
+msgstr "You and {}"
+
+msgid "Может понравиться вам обоим"
+msgstr "You might both like"

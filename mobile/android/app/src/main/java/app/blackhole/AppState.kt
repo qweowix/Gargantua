@@ -51,6 +51,9 @@ sealed interface Screen {
     data class ArtistPage(val id: String, val name: String) : Screen
     data class AlbumPage(val id: String) : Screen
     data class Tracks(val title: String, val sub: String, val cover: String, val tracks: List<Track>) : Screen
+    data object Universe : Screen
+    data object Taste : Screen
+    data object Rooms : Screen
 }
 
 @UnstableApi
@@ -193,6 +196,15 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     fun toast(s: String) {
         App.toasts.tryEmit(s)
+    }
+
+    /** Вселенная, вкус, комнаты, Music DNA */
+    val eco = EcoState(this)
+
+    fun copyText(s: String) {
+        val clip = getApplication<Application>().getSystemService(android.content.ClipboardManager::class.java)
+        clip.setPrimaryClip(android.content.ClipData.newPlainText("Gargantua", s))
+        toast(tr("Скопировано", "Copied", "Скопійовано", "Skopírované"))
     }
 
     // ── аккаунт ──

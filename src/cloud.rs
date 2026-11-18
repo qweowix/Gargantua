@@ -263,6 +263,46 @@ pub fn share(c: &Cfg, name: &str, blob: &[u8]) -> Result<String> {
     }
 }
 
+fn profile_url(c: &Cfg, code: &str) -> String {
+    format!("https://firestore.googleapis.com/v1/projects/{}/databases/(default)/documents/profiles/{code}", c.project)
+}
+
+/// Публичная карточка вкуса: JSON строкой в поле fp (Firestore не нужно знать её устройство)
+pub fn put_profile(c: &Cfg, code: &str, fp: &str) -> Result<()> {
+    let a = account();
+    if !a.verified {
+        bail!("NOT_VERIFIED");
+    }
+    let tok = id_token(c, false)?;
+    let body = json!({"fields": {"owner": {"stringValue": a.uid}, "fp": {"stringValue": fp}}});
+    match crate::util::agent().request("PATCH", &profile_url(c, code)).set("Authorization", &format!("Bearer {tok}")).send_json(body) {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(code, r)) => bail!("Firestore {code}: {}", r.into_string().unwrap_or_default()),
+        Err(e) => bail!("NETWORK {e}"),
+    }
+}
+
+pub fn get_profile(c: &Cfg, code: &str) -> Result<String> {
+    let tok = id_token(c, false)?;
+    match crate::util::agent().get(&profile_url(c, code)).set("Authorization", &format!("Bearer {tok}")).call() {
+        Ok(r) => {
+            let v: Value = r.into_json()?;
+            Ok(v["fields"]["fp"]["stringValue"].as_str().unwrap_or_default().to_string())
+        }
+        Err(ureq::Error::Status(code, r)) => bail!("Firestore {code}: {}", r.into_string().unwrap_or_default()),
+        Err(e) => bail!("NETWORK {e}"),
+    }
+}
+
+pub fn delete_profile(c: &Cfg, code: &str) -> Result<()> {
+    let tok = id_token(c, false)?;
+    match crate::util::agent().request("DELETE", &profile_url(c, code)).set("Authorization", &format!("Bearer {tok}")).call() {
+        Ok(_) | Err(ureq::Error::Status(404, _)) => Ok(()),
+        Err(ureq::Error::Status(code, r)) => bail!("Firestore {code}: {}", r.into_string().unwrap_or_default()),
+        Err(e) => bail!("NETWORK {e}"),
+    }
+}
+
 /// Плейлист из облачного QR (сжатые байты, как их положил share)
 pub fn fetch_shared(c: &Cfg, id: &str) -> Result<Vec<u8>> {
     let tok = id_token(c, false)?;

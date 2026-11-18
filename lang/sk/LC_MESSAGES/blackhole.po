@@ -1150,3 +1150,330 @@ msgstr "YouTube a Discord"
 
 msgid "Служебное"
 msgstr "Údržba"
+
+msgid "факт"
+msgstr "fakt"
+
+msgid "алгоритм"
+msgstr "algoritmus"
+
+msgid "вычислено"
+msgstr "vypočítané"
+
+msgid "нет данных"
+msgstr "žiadne údaje"
+
+msgid "Вселенная пока пустая"
+msgstr "Vesmír je zatiaľ prázdny"
+
+msgid "Она строится из твоих плейлистов и того, что ты слушал. Послушай что-нибудь — и тут появятся звёзды."
+msgstr "Vzniká z tvojich playlistov a toho, čo si počúval. Pusti si niečo a objavia sa tu hviezdy."
+
+msgid "Вселенная"
+msgstr "Vesmír"
+
+msgid "Мосты"
+msgstr "Mosty"
+
+msgid "Подтягиваю…"
+msgstr "Doťahujem…"
+
+msgid "Подтянуть связи"
+msgstr "Doplniť väzby"
+
+msgid "Вся вселенная"
+msgstr "Celý vesmír"
+
+msgid "Найти артиста, альбом, трек…"
+msgstr "Nájsť interpreta, album, skladbu…"
+
+msgid "Мой вкус"
+msgstr "Môj vkus"
+
+msgid "Жанры"
+msgstr "Žánre"
+
+msgid "Люди"
+msgstr "Ľudia"
+
+msgid "Лейблы"
+msgstr "Vydavateľstvá"
+
+msgid "Факты"
+msgstr "Fakty"
+
+msgid "YouTube"
+msgstr "YouTube"
+
+msgid "Вычислено"
+msgstr "Vypočítané"
+
+msgid "В комнату"
+msgstr "Do miestnosti"
+
+msgid "Показать всем"
+msgstr "Ukázať všetkým"
+
+msgid "Мост отсюда"
+msgstr "Most odtiaľto"
+
+msgid "Мост сюда"
+msgstr "Most sem"
+
+msgid "Связи · {}"
+msgstr "Väzby · {}"
+
+msgid "Связей пока нет"
+msgstr "Zatiaľ žiadne väzby"
+
+msgid "Музыкальные мосты"
+msgstr "Hudobné mosty"
+
+msgid "Выбери на карте два узла: «Мост отсюда» и «Мост сюда». Я найду цепочку связей между ними и объясню каждый шаг."
+msgstr "Vyber na mape dva uzly: „Most odtiaľto“ a „Most sem“. Nájdem medzi nimi reťaz väzieb a vysvetlím každý krok."
+
+msgid "От"
+msgstr "Od"
+
+msgid "До"
+msgstr "Do"
+
+msgid "Шагов до {}"
+msgstr "Krokov do {}"
+
+msgid "Плейлисты"
+msgstr "Playlisty"
+
+msgid "Найти мост"
+msgstr "Nájsť most"
+
+msgid "{} шагов · фактов {}"
+msgstr "{} krokov · faktov {}"
+
+msgid "Сравнение: {}"
+msgstr "Porovnanie: {}"
+
+msgid "Выбери второй на карте…"
+msgstr "Vyber druhý na mape…"
+
+msgid "Сравнить с…"
+msgstr "Porovnať s…"
+
+msgid "Сходство"
+msgstr "Podobnosť"
+
+msgid "Звучит похоже"
+msgstr "Znie podobne"
+
+msgid "Совсем не как обычно"
+msgstr "Úplne iné než zvyčajne"
+
+msgid "Комнаты"
+msgstr "Miestnosti"
+
+msgid "Слушайте вместе, даже если вы в разных странах: один трек, одна позиция, общая очередь с голосованием, реакции и сообщения. Звук у каждого свой — через YouTube Music и SoundCloud, плеер сам держит всех в такт."
+msgstr "Počúvajte spolu, aj keď ste v rôznych krajinách: jedna skladba, jedna pozícia, spoločný front s hlasovaním, reakcie a správy. Zvuk má každý svoj — cez YouTube Music a SoundCloud, prehrávač drží všetkých v rytme."
+
+msgid "Новая комната"
+msgstr "Nová miestnosť"
+
+msgid "Название, например «Пятничный вечер»"
+msgstr "Názov, napr. „Piatkový večer“"
+
+msgid "Открытая"
+msgstr "Verejná"
+
+msgid "Видна всем в списке ниже. Закрытая — только по коду"
+msgstr "Vidia ju všetci v zozname nižšie. Súkromná — len s kódom"
+
+msgid "Очередь пополняют все"
+msgstr "Do frontu pridáva každý"
+
+msgid "Плеером управляют все"
+msgstr "Prehrávač ovláda každý"
+
+msgid "Иначе пауза, перемотка и переключение — только у тебя"
+msgstr "Inak pauzu, posun a prepínanie máš len ty"
+
+msgid "Создаю…"
+msgstr "Vytváram…"
+
+msgid "Войти по коду"
+msgstr "Vstúpiť s kódom"
+
+msgid "Открытые комнаты"
+msgstr "Verejné miestnosti"
+
+msgid "Сейчас открытых комнат нет"
+msgstr "Teraz nie sú žiadne verejné miestnosti"
+
+msgid "Комната"
+msgstr "Miestnosť"
+
+msgid "Код {} · {} в комнате"
+msgstr "Kód {} · {} v miestnosti"
+
+msgid "Скопировать код"
+msgstr "Kopírovať kód"
+
+msgid "Закрыть комнату"
+msgstr "Zatvoriť miestnosť"
+
+msgid "Пока тихо — включи что-нибудь"
+msgstr "Zatiaľ ticho — pusti niečo"
+
+msgid "ты управляешь"
+msgstr "ovládaš ty"
+
+msgid "в такт с комнатой"
+msgstr "v rytme s miestnosťou"
+
+msgid "догоняю: {} мс"
+msgstr "doháňam: {} ms"
+
+msgid "Очередь комнаты"
+msgstr "Front miestnosti"
+
+msgid "Добавить играющий"
+msgstr "Pridať hrajúcu"
+
+msgid "Следующим играет трек с большим числом голосов. Добавлять можно и из «Вселенной»."
+msgstr "Ďalej hrá skladba s najviac hlasmi. Pridávať môžeš aj z Vesmíru."
+
+msgid "Очередь пуста"
+msgstr "Front je prázdny"
+
+msgid "добавил(а) {}"
+msgstr "pridal(a) {}"
+
+msgid "следующий"
+msgstr "ďalšia"
+
+msgid "Выше"
+msgstr "Vyššie"
+
+msgid "Ниже"
+msgstr "Nižšie"
+
+msgid "В комнате"
+msgstr "V miestnosti"
+
+msgid "владелец"
+msgstr "vlastník"
+
+msgid "ты"
+msgstr "ty"
+
+msgid "Убрать из комнаты"
+msgstr "Odstrániť z miestnosti"
+
+msgid "Разговор"
+msgstr "Rozhovor"
+
+msgid "поделиться вкусом"
+msgstr "zdieľať vkus"
+
+msgid "про этот трек"
+msgstr "o tejto skladbe"
+
+msgid "показать во Вселенной →"
+msgstr "ukázať vo Vesmíre →"
+
+msgid "Написать…"
+msgstr "Napísať…"
+
+msgid "Всё время"
+msgstr "Celý čas"
+
+msgid "Полгода"
+msgstr "Pol roka"
+
+msgid "3 месяца"
+msgstr "3 mesiace"
+
+msgid "Пока не из чего собрать отпечаток — послушай музыку, и он появится."
+msgstr "Zatiaľ nie je z čoho zostaviť odtlačok — počúvaj hudbu a objaví sa."
+
+msgid "жанры — крупно, артисты — вокруг них, светлые линии — твои необычные сочетания"
+msgstr "žánre sú veľké, interpreti okolo nich, svetlé čiary sú tvoje nezvyčajné kombinácie"
+
+msgid "Необычные сочетания"
+msgstr "Nezvyčajné kombinácie"
+
+msgid "Жанры, которые ты слушаешь оба, хотя у твоих же артистов они почти не встречаются вместе"
+msgstr "Žánre, ktoré počúvaš oba, hoci ich tvoji vlastní interpreti takmer nespájajú"
+
+msgid "Твои миры"
+msgstr "Tvoje svety"
+
+msgid "Кластеры артистов, которые держатся вместе в твоём графе связей"
+msgstr "Zhluky interpretov, ktoré držia spolu v tvojom grafe väzieb"
+
+msgid "Показать во Вселенной"
+msgstr "Ukázať vo Vesmíre"
+
+msgid "Звучание"
+msgstr "Zvuk"
+
+msgid "По Music DNA треков, взвешенно временем прослушивания"
+msgstr "Z Music DNA skladieb, vážené časom počúvania"
+
+msgid "Как ты слушаешь"
+msgstr "Ako počúvaš"
+
+msgid "По часам суток"
+msgstr "Podľa hodín dňa"
+
+msgid "Как меняется вкус"
+msgstr "Ako sa mení vkus"
+
+msgid "Последние три месяца периода против трёх перед ними"
+msgstr "Posledné tri mesiace obdobia oproti trom pred nimi"
+
+msgid "Новые в твоей жизни: {}"
+msgstr "Noví v tvojom živote: {}"
+
+msgid "С тобой всегда: {}"
+msgstr "Vždy s tebou: {}"
+
+msgid "Открыл(а) направления: {}"
+msgstr "Objavil(a) smery: {}"
+
+msgid "Разнообразие по месяцам"
+msgstr "Rozmanitosť podľa mesiacov"
+
+msgid "Музыкальная идентичность"
+msgstr "Hudobná identita"
+
+msgid "Публичная карточка вкуса. Друг вводит твой код и видит только то, что ты отметил(а)."
+msgstr "Verejná karta vkusu. Priateľ zadá tvoj kód a uvidí len to, čo si označil(a)."
+
+msgid "Динамика"
+msgstr "Dynamika"
+
+msgid "Опубликовать"
+msgstr "Zverejniť"
+
+msgid "Скрыть"
+msgstr "Skryť"
+
+msgid "Твой код: {}"
+msgstr "Tvoj kód: {}"
+
+msgid "Совместимость вкусов"
+msgstr "Zhoda vkusov"
+
+msgid "Не один процент, а из чего он складывается: общее, разное и неожиданное"
+msgstr "Nie jedno percento, ale z čoho sa skladá: spoločné, odlišné a nečakané"
+
+msgid "Код друга"
+msgstr "Kód priateľa"
+
+msgid "Сравнить"
+msgstr "Porovnať"
+
+msgid "Ты и {}"
+msgstr "Ty a {}"
+
+msgid "Может понравиться вам обоим"
+msgstr "Mohlo by sa páčiť vám obom"

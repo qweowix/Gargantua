@@ -273,7 +273,10 @@ fn run(m: &str, a: &Value) -> Result<Value> {
             let local: Vec<Playlist> = serde_json::from_value(a["playlists"].clone())?;
             json!(cloud::dirty(&local))
         }
-        _ => bail!("нет метода {m}"),
+        _ => match crate::eco::run(m, a) {
+            Some(r) => r?,
+            None => bail!("нет метода {m}"),
+        },
     })
 }
 
@@ -289,6 +292,11 @@ fn pending() -> std::sync::MutexGuard<'static, Option<HashMap<String, u64>>> {
 fn others_lock() -> std::sync::MutexGuard<'static, Stats> {
     static S: OnceLock<Mutex<Stats>> = OnceLock::new();
     S.get_or_init(Default::default).lock().unwrap()
+}
+
+/// Статистика всего аккаунта: своя доля и доли других устройств
+pub(crate) fn stats_all() -> Stats {
+    stats_lock().with(&others_lock())
 }
 
 fn stats_lock() -> std::sync::MutexGuard<'static, Stats> {

@@ -39,7 +39,22 @@ pub mod fx;
 #[path = "../../../src/journal.rs"]
 pub mod journal;
 
+#[path = "../../../src/graph.rs"]
+pub mod graph;
+#[path = "../../../src/universe.rs"]
+pub mod universe;
+#[path = "../../../src/explore.rs"]
+pub mod explore;
+#[path = "../../../src/dna.rs"]
+pub mod dna;
+#[path = "../../../src/musicbrainz.rs"]
+pub mod musicbrainz;
+#[path = "../../../src/taste.rs"]
+pub mod taste;
+#[path = "../../../src/rooms.rs"]
+pub mod rooms;
 mod api;
+mod eco;
 #[cfg(target_os = "android")]
 mod jni_entry;
 

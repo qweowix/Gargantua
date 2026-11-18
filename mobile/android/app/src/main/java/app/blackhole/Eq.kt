@@ -57,6 +57,9 @@ object Eq {
     /** то же для сервиса плеера: он подписан и ставит параметры на лету */
     val tempo = kotlinx.coroutines.flow.MutableStateFlow(1f to true)
 
+    /** подстройка под комнату совместного прослушивания: ±3 % на несколько секунд, чтобы догнать остальных */
+    val nudge = kotlinx.coroutines.flow.MutableStateFlow(1f)
+
     fun setSpeed(v: Float, keep: Boolean = keepPitch) {
         speed = (Math.round(v * 20) / 20f).coerceIn(0.5f, 2f)
         keepPitch = keep

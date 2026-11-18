@@ -191,6 +191,12 @@ global Icons {
     out property <string> moon: "M12.3 3a9 9 0 1 0 8.7 11.3A7 7 0 0 1 12.3 3z";
     out property <string> library: "M4 6H2v14a2 2 0 0 0 2 2h14v-2H4zm16-4H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-2 5h-3v5.5a2.5 2.5 0 1 1-1-2V5h4z";
     out property <string> user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
+    // планета с кольцом — «Вселенная»
+    out property <string> orbit: "M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM1.5 12a10.5 4.2 0 1 0 21 0 10.5 4.2 0 1 0-21 0zm1.8 0a8.7 2.8 0 1 0 17.4 0 8.7 2.8 0 1 0-17.4 0z";
+    // два человечка — «Комнаты»
+    out property <string> people: "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm7.5 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM9 13c-3.3 0-7 1.6-7 4v2h14v-2c0-2.4-3.7-4-7-4zm7.5 0c-.5 0-1 0-1.6.1 1.3.9 2.1 2.2 2.1 3.9v2H22v-2c0-2.3-3.1-4-5.5-4z";
+    // отпечаток пальца — «Мой вкус»
+    out property <string> finger: "M12 2a9 9 0 0 0-9 9v2h2v-2a7 7 0 0 1 14 0v2.5h2V11a9 9 0 0 0-9-9zm0 4a5 5 0 0 0-5 5v4h2v-4a3 3 0 0 1 6 0v6h2v-6a5 5 0 0 0-5-5zm-1 5v8h2v-8zM7 17v3h2v-3zm8 2v2h2v-2z";
     out property <string> refresh: "M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z";
 }
 
@@ -1646,6 +1652,2418 @@ component SettingRow inherits HorizontalLayout {
     }
 }
 
+// ── Вселенная: узлы и связи из src/graph.rs, раскладка — src/universe.rs ──
+export struct UNode {
+    x: float, y: float, // координаты мира
+    r: float,
+    c: color,
+    label: string,
+    kind: int, // 0 трек, 1 артист, 2 альбом, 3 жанр, 4 человек, 5 лейбл
+    sel: bool,
+    dim: bool,
+    lab: bool, // подписывать всегда
+    id: int,
+}
+
+export struct URel {
+    name: string,  // с кем связь
+    rel: string,   // что за связь
+    note: string,  // пояснение: «guitar», «в 3 плейлистах», «ритм 91 %»
+    origin: int,   // 0 факт, 1 чужой алгоритм, 2 вычислено
+    src: string,   // откуда: MusicBrainz, YouTube Music, Music DNA…
+    id: int,
+}
+
+export struct UStep {
+    name: string,
+    kind: int,
+    rel: string, // как пришли в этот узел из прошлого
+    note: string,
+    origin: int,
+    src: string,
+}
+
+export struct UBridge {
+    steps: [UStep],
+    facts: int, // сколько шагов — подтверждённые факты
+}
+
+export struct DnaRow {
+    label: string,
+    value: string,
+    frac: float,
+    known: bool,
+}
+
+export struct DnaPick {
+    name: string,
+    sub: string,
+    pct: int,
+    why: string,
+    id: int,
+}
+
+export struct RadarLabel {
+    text: string,
+    x: float,
+    y: float,
+}
+
+export global Uni {
+    in property <[UNode]> nodes;
+    // рёбра путями SVG в координатах мира: факты, чужой алгоритм, вычислено, подсветка
+    in property <[string]> paths: ["", "", "", ""];
+    in-out property <float> cam-x;
+    in-out property <float> cam-y;
+    in property <float> zoom: 1;
+    in property <int> sel: -1;
+    in property <string> sel-name;
+    in property <string> sel-kind;
+    in property <string> sel-sub;
+    in property <color> sel-color;
+    in property <bool> sel-play;
+    in property <bool> sel-dna;
+    in property <bool> in-room; // в комнате: «В комнату» и «Показать всем»
+    in property <bool> sel-track;
+    in property <bool> taste-on; // подсветка своих областей вкуса
+    in property <[URel]> rels;
+    in property <[URel]> found;
+    in-out property <string> query;
+    // фильтры: виды узлов (по kind) и происхождение связей
+    in property <[bool]> kinds: [true, true, true, true, true, true];
+    in property <[bool]> origins: [true, true, true];
+    in property <string> status;
+    in property <bool> empty;
+    in property <bool> busy;
+    in property <bool> mb-on;
+    in property <bool> mb-busy;
+    // мосты
+    in-out property <bool> br-open;
+    in property <string> br-a;
+    in property <string> br-b;
+    in-out property <float> br-depth: 0.5; // 0..1 → 2..8 шагов
+    in property <[bool]> br-rels: [true, true, true, true];
+    in property <[UBridge]> bridges;
+    in property <string> br-status;
+    in property <int> br-shown: -1;
+    // Music DNA
+    in-out property <bool> dna-open;
+    in property <string> dna-title;
+    in property <string> dna-sub;
+    in property <[DnaRow]> dna-rows;
+    in property <[string]> dna-radar; // многоугольники 0..200, до трёх
+    in property <[RadarLabel]> dna-axes;
+    in property <string> dna-cmp; // с чем сравниваем, пусто — не сравниваем
+    in property <bool> dna-cmp-pick; // ждём выбора второго на карте
+    in property <[DnaRow]> dna-sim;
+    in property <[DnaPick]> dna-similar;
+    in property <[DnaPick]> dna-far;
+    in property <string> dna-note;
+
+    callback wheel(float, length, length, length, length); // прокрутка, x, y, ширина, высота карты
+    callback panned();
+    callback pick(int);
+    callback blank();
+    callback fly(int);
+    callback drag(int, float, float);
+    callback search(string);
+    callback toggle-kind(int);
+    callback toggle-origin(int);
+    callback play(int);
+    callback dna(int);
+    callback dna-compare();
+    callback dna-close();
+    callback bridge-from(int);
+    callback bridge-to(int);
+    callback bridge-run();
+    callback bridge-rel(int);
+    callback bridge-show(int);
+    callback fetch();
+    callback fit();
+    callback opened();
+    callback to-room(int);
+    callback show-all(int);
+    callback taste(bool);
+}
+
+component OriginDot inherits Rectangle {
+    in property <int> origin;
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: root.origin == 0 ? #e9e4ff : root.origin == 1 ? #60a5fa : #fb923c;
+}
+
+component UniTag inherits Rectangle {
+    in property <int> origin;
+    in property <string> src;
+    height: 20px;
+    border-radius: 10px;
+    background: root.origin == 0 ? #ffffff14 : root.origin == 1 ? #60a5fa26 : #fb923c26;
+    horizontal-stretch: 0;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 5px;
+        VerticalLayout {
+            alignment: center;
+            OriginDot {
+                origin: root.origin;
+            }
+        }
+
+        Text {
+            text: (root.origin == 0 ? @tr("факт") : root.origin == 1 ? @tr("алгоритм") : @tr("вычислено")) + " · " + root.src;
+            color: Theme.dim;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component Glass inherits Rectangle {
+    border-radius: 18px;
+    background: #141120e6;
+    border-width: 1px;
+    border-color: #ffffff17;
+    drop-shadow-blur: 28px;
+    drop-shadow-color: #0000008c;
+}
+
+component UniverseMap inherits Rectangle {
+    clip: true;
+    property <float> cx0;
+    property <float> cy0;
+    property <bool> dragged;
+    // радиус на экране растёт медленнее приближения: издалека точки, вблизи — шары
+    property <float> rk: pow(Uni.zoom, 0.6);
+    background: @radial-gradient(circle, Theme.deep1.transparentize(0.35) 0%, #07060b00 70%);
+
+    pan := TouchArea {
+        mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.cx0 = Uni.cam-x;
+                root.cy0 = Uni.cam-y;
+                root.dragged = false;
+            }
+            if e.kind == PointerEventKind.up && root.dragged {
+                Uni.panned();
+            }
+        }
+        moved => {
+            if abs((self.mouse-x - self.pressed-x) / 1px) + abs((self.mouse-y - self.pressed-y) / 1px) > 4 {
+                root.dragged = true;
+            }
+            Uni.cam-x = root.cx0 - (self.mouse-x - self.pressed-x) / 1px / Uni.zoom;
+            Uni.cam-y = root.cy0 - (self.mouse-y - self.pressed-y) / 1px / Uni.zoom;
+        }
+        clicked => {
+            if !root.dragged {
+                Uni.blank();
+            }
+        }
+        scroll-event(e) => {
+            Uni.wheel(e.delta-y / 1px, self.mouse-x, self.mouse-y, root.width, root.height);
+            accept
+        }
+    }
+
+    for p[i] in Uni.paths: Path {
+        width: root.width;
+        height: root.height;
+        commands: p;
+        fill: transparent;
+        stroke: i == 0 ? #e9e4ff33 : i == 1 ? #60a5fa40 : i == 2 ? #fb923c40 : Theme.soft2;
+        stroke-width: i == 3 ? 2.5px : 1px;
+        viewbox-x: Uni.cam-x - root.width / 1px / 2 / Uni.zoom;
+        viewbox-y: Uni.cam-y - root.height / 1px / 2 / Uni.zoom;
+        viewbox-width: root.width / 1px / Uni.zoom;
+        viewbox-height: root.height / 1px / Uni.zoom;
+    }
+
+    for n in Uni.nodes: Rectangle {
+        property <length> rr: max(n.kind == 3 ? 5px : 2.5px, n.r * root.rk * 1px);
+        property <length> sx: (n.x - Uni.cam-x) * Uni.zoom * 1px + root.width / 2;
+        property <length> sy: (n.y - Uni.cam-y) * Uni.zoom * 1px + root.height / 2;
+        x: self.sx - self.rr;
+        y: self.sy - self.rr;
+        width: self.rr * 2;
+        height: self.rr * 2;
+        visible: self.sx > -60px && self.sx < root.width + 60px && self.sy > -60px && self.sy < root.height + 60px;
+        border-radius: self.rr;
+        background: n.kind == 3 ? n.c.transparentize(n.dim ? 0.9 : 0.55) : n.c.transparentize(n.dim ? 0.85 : 0.05);
+        border-width: n.sel ? 3px : n.kind == 3 ? 1.5px : 0px;
+        border-color: n.sel ? #ffffff : n.c;
+        drop-shadow-blur: n.sel || nta.has-hover ? 18px : 0px;
+        drop-shadow-color: n.c;
+        nta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                Uni.pick(n.id);
+            }
+            double-clicked => {
+                Uni.fly(n.id);
+            }
+            moved => {
+                if self.pressed {
+                    Uni.drag(n.id, (self.mouse-x - self.pressed-x) / 1px / Uni.zoom, (self.mouse-y - self.pressed-y) / 1px / Uni.zoom);
+                }
+            }
+        }
+    }
+
+    // подписи — поверх всех точек
+    for n in Uni.nodes: Text {
+        property <length> rr: max(n.kind == 3 ? 5px : 2.5px, n.r * root.rk * 1px);
+        property <length> sx: (n.x - Uni.cam-x) * Uni.zoom * 1px + root.width / 2;
+        property <length> sy: (n.y - Uni.cam-y) * Uni.zoom * 1px + root.height / 2;
+        visible: (n.lab || self.rr >= 7px) && !n.dim && self.sx > -100px && self.sx < root.width + 100px && self.sy > -40px && self.sy < root.height + 40px;
+        x: self.sx - self.width / 2;
+        y: n.kind == 3 ? self.sy - self.height / 2 : self.sy + self.rr + 3px;
+        text: n.label;
+        color: n.kind == 3 ? n.c : n.sel ? #ffffff : #ece8f6d9;
+        font-size: n.kind == 3 ? 13px : 11px;
+        font-weight: n.kind == 3 || n.sel ? 700 : 500;
+        width: min(160px, self.preferred-width);
+        overflow: elide;
+        horizontal-alignment: center;
+    }
+}
+
+component UniRelRow inherits Rectangle {
+    in property <URel> r;
+    height: rl.preferred-height + 12px;
+    border-radius: 10px;
+    background: rta.has-hover ? #ffffff0d : transparent;
+    rl := HorizontalLayout {
+        padding: 6px;
+        padding-left: 8px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            OriginDot {
+                origin: root.r.origin;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 1px;
+            Text {
+                text: root.r.name;
+                color: Theme.text;
+                font-size: 13px;
+                font-weight: 600;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.r.rel + (root.r.note != "" ? " · " + root.r.note : "") + " · " + root.r.src;
+                color: Theme.faint;
+                font-size: 11px;
+                overflow: elide;
+            }
+        }
+    }
+
+    rta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            Uni.fly(root.r.id);
+        }
+    }
+}
+
+component Radar inherits Rectangle {
+    in property <[string]> polys;
+    in property <[RadarLabel]> axes;
+    width: 260px;
+    height: 260px;
+    // сетка: три кольца и восемь осей
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 200;
+        viewbox-height: 200;
+        commands: "M100 20L100 180M20 100L180 100M43.4 43.4L156.6 156.6M156.6 43.4L43.4 156.6M100 20L156.6 43.4L180 100L156.6 156.6L100 180L43.4 156.6L20 100L43.4 43.4ZM100 46.7L137.7 62.3L153.3 100L137.7 137.7L100 153.3L62.3 137.7L46.7 100L62.3 62.3ZM100 73.3L118.9 81.1L126.7 100L118.9 118.9L100 126.7L81.1 118.9L73.3 100L81.1 81.1Z";
+        stroke: #ffffff1f;
+        stroke-width: 1px;
+        fill: transparent;
+    }
+
+    for poly[i] in root.polys: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 200;
+        viewbox-height: 200;
+        commands: poly;
+        fill: (i == 0 ? Theme.c1 : i == 1 ? #22d3ee : #fbbf24).transparentize(0.72);
+        stroke: i == 0 ? Theme.soft1 : i == 1 ? #22d3ee : #fbbf24;
+        stroke-width: 2px;
+    }
+
+    for a in root.axes: Text {
+        x: a.x * root.width / 200 - self.width / 2;
+        y: a.y * root.height / 200 - self.height / 2;
+        text: a.text;
+        color: Theme.dim;
+        font-size: 11px;
+        font-weight: 600;
+    }
+}
+
+component DnaBar inherits HorizontalLayout {
+    in property <DnaRow> item;
+    in property <color> tint: Theme.c1;
+    spacing: 10px;
+    height: 22px;
+    Text {
+        width: 130px;
+        text: root.item.label;
+        color: Theme.dim;
+        font-size: 12px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Rectangle {
+        horizontal-stretch: 1;
+        Rectangle {
+            y: (parent.height - 6px) / 2;
+            height: 6px;
+            border-radius: 3px;
+            background: #ffffff12;
+            Rectangle {
+                x: 0;
+                width: root.item.known ? parent.width * max(0.02, min(1, root.item.frac)) : 0px;
+                border-radius: 3px;
+                background: @linear-gradient(90deg, root.tint 0%, Theme.c2 100%);
+            }
+        }
+    }
+
+    Text {
+        width: 96px;
+        text: root.item.known ? root.item.value : @tr("нет данных");
+        color: root.item.known ? Theme.text : Theme.faint;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component DnaPickRow inherits Rectangle {
+    in property <DnaPick> p;
+    height: 46px;
+    border-radius: 10px;
+    background: pta.has-hover ? #ffffff0d : transparent;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 10px;
+        Text {
+            width: 40px;
+            text: root.p.pct + "%";
+            color: Theme.soft2;
+            font-size: 14px;
+            font-weight: 800;
+            vertical-alignment: center;
+        }
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: root.p.name;
+                color: Theme.text;
+                font-size: 13px;
+                font-weight: 600;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.p.sub + (root.p.why != "" ? " · " + root.p.why : "");
+                color: Theme.faint;
+                font-size: 11px;
+                overflow: elide;
+            }
+        }
+    }
+
+    pta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            Uni.fly(root.p.id);
+            Uni.dna(root.p.id);
+        }
+    }
+}
+
+component UniversePage inherits Rectangle {
+    UniverseMap {
+        width: 100%;
+        height: 100%;
+    }
+
+    if Uni.empty: VerticalLayout {
+        alignment: center;
+        spacing: 10px;
+        Text {
+            text: @tr("Вселенная пока пустая");
+            color: Theme.text;
+            font-size: 22px;
+            font-weight: 800;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: @tr("Она строится из твоих плейлистов и того, что ты слушал. Послушай что-нибудь — и тут появятся звёзды.");
+            color: Theme.dim;
+            font-size: 14px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+
+    // ── верх: заголовок, поиск, фильтры ──
+    top := VerticalLayout {
+        x: 20px;
+        y: 18px;
+        width: root.width - 40px - (Uni.sel >= 0 ? 350px : 0px);
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 10px;
+            Text {
+                text: @tr("Вселенная");
+                color: Theme.text;
+                font-size: 28px;
+                font-weight: 800;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                Pill {
+                    text: @tr("Мосты");
+                    primary: Uni.br-open;
+                    clicked => {
+                        Uni.br-open = !Uni.br-open;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                Pill {
+                    text: Uni.mb-busy ? @tr("Подтягиваю…") : @tr("Подтянуть связи");
+                    primary: false;
+                    enabled: !Uni.mb-busy;
+                    clicked => {
+                        Uni.fetch();
+                    }
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                IconBtn {
+                    icon: Icons.fullscreen;
+                    tip: @tr("Вся вселенная");
+                    clicked => {
+                        Uni.fit();
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Field {
+                width: 260px;
+                height: 40px;
+                icon: Icons.search;
+                placeholder: @tr("Найти артиста, альбом, трек…");
+                text <=> Uni.query;
+                changed text => {
+                    Uni.search(self.text);
+                }
+                accepted => {
+                    if Uni.found.length > 0 {
+                        Uni.fly(Uni.found[0].id);
+                    }
+                }
+            }
+
+            Chip {
+                text: @tr("Мой вкус");
+                active: Uni.taste-on;
+                accent: Theme.soft2;
+                clicked => {
+                    Uni.taste(!Uni.taste-on);
+                }
+            }
+
+            for k[i] in [@tr("Артисты"), @tr("Альбомы"), @tr("Треки"), @tr("Жанры"), @tr("Люди"), @tr("Лейблы")]: Chip {
+                property <int> kind: i == 0 ? 1 : i == 1 ? 2 : i == 2 ? 0 : i;
+                text: k;
+                active: Uni.kinds[self.kind];
+                accent: i == 0 ? #a78bfa : i == 1 ? #f472b6 : i == 2 ? #94a3b8 : i == 3 ? #fbbf24 : i == 4 ? #34d399 : #60a5fa;
+                clicked => {
+                    Uni.toggle-kind(self.kind);
+                }
+            }
+        }
+
+        if Uni.found.length > 0 && Uni.query != "": Glass {
+            width: 300px;
+            height: fl.preferred-height + 12px;
+            fl := VerticalLayout {
+                padding: 6px;
+                for r in Uni.found: UniRelRow {
+                    r: r;
+                }
+            }
+        }
+    }
+
+    // ── низ: легенда и что сейчас знаем ──
+    Glass {
+        x: 20px;
+        y: root.height - self.height - 18px;
+        width: leg.preferred-width + 24px;
+        height: leg.preferred-height + 20px;
+        leg := VerticalLayout {
+            padding: 10px;
+            padding-left: 12px;
+            spacing: 6px;
+            HorizontalLayout {
+                spacing: 6px;
+                for o[i] in [@tr("Факты"), @tr("YouTube"), @tr("Вычислено")]: Rectangle {
+                    width: ot.preferred-width + 30px;
+                    height: 26px;
+                    border-radius: 13px;
+                    background: Uni.origins[i] ? #ffffff14 : transparent;
+                    border-width: 1px;
+                    border-color: #ffffff17;
+                    opacity: Uni.origins[i] ? 1 : 0.5;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        spacing: 6px;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 12px;
+                                height: 2px;
+                                background: i == 0 ? #e9e4ff : i == 1 ? #60a5fa : #fb923c;
+                            }
+                        }
+
+                        ot := Text {
+                            text: o;
+                            color: Theme.dim;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            Uni.toggle-origin(i);
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: Uni.status;
+                color: Theme.faint;
+                font-size: 11px;
+            }
+        }
+    }
+
+    // ── справа: выбранный узел ──
+    if Uni.sel >= 0: Glass {
+        x: root.width - self.width - 16px;
+        y: 16px;
+        width: 330px;
+        height: root.height - 32px;
+        clip: true;
+        VerticalLayout {
+            padding: 18px;
+            spacing: 12px;
+            HorizontalLayout {
+                spacing: 10px;
+                Rectangle {
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 7px;
+                    background: Uni.sel-color;
+                    drop-shadow-blur: 10px;
+                    drop-shadow-color: Uni.sel-color;
+                }
+
+                Text {
+                    text: Uni.sel-kind;
+                    color: Theme.faint;
+                    font-size: 12px;
+                    font-weight: 700;
+                    horizontal-stretch: 1;
+                }
+
+                IconBtn {
+                    icon: Icons.close;
+                    size: 28px;
+                    clicked => {
+                        Uni.blank();
+                    }
+                }
+            }
+
+            Text {
+                text: Uni.sel-name;
+                color: Theme.text;
+                font-size: 22px;
+                font-weight: 800;
+                wrap: word-wrap;
+            }
+
+            if Uni.sel-sub != "": Text {
+                text: Uni.sel-sub;
+                color: Theme.dim;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                if Uni.sel-play: Pill {
+                    text: @tr("Играть");
+                    icon: Icons.play;
+                    clicked => {
+                        Uni.play(Uni.sel);
+                    }
+                }
+                if Uni.sel-dna: Pill {
+                    text: "Music DNA";
+                    primary: false;
+                    clicked => {
+                        Uni.dna(Uni.sel);
+                    }
+                }
+            }
+
+            if Uni.in-room: HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                if Uni.sel-track: Pill {
+                    text: @tr("В комнату");
+                    icon: Icons.plus;
+                    primary: false;
+                    height: 34px;
+                    clicked => {
+                        Uni.to-room(Uni.sel);
+                    }
+                }
+                Pill {
+                    text: @tr("Показать всем");
+                    primary: false;
+                    height: 34px;
+                    clicked => {
+                        Uni.show-all(Uni.sel);
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                Pill {
+                    text: @tr("Мост отсюда");
+                    primary: false;
+                    height: 34px;
+                    clicked => {
+                        Uni.bridge-from(Uni.sel);
+                    }
+                }
+
+                Pill {
+                    text: @tr("Мост сюда");
+                    primary: false;
+                    height: 34px;
+                    clicked => {
+                        Uni.bridge-to(Uni.sel);
+                    }
+                }
+            }
+
+            Text {
+                text: Uni.rels.length > 0 ? @tr("Связи · {}", Uni.rels.length) : @tr("Связей пока нет");
+                color: Theme.text;
+                font-size: 14px;
+                font-weight: 700;
+            }
+
+            rf := Flickable {
+                vertical-stretch: 1;
+                content-height: rlist.preferred-height;
+                rlist := VerticalLayout {
+                    width: rf.width;
+                    alignment: start;
+                    for r in Uni.rels: UniRelRow {
+                        r: r;
+                    }
+                }
+            }
+        }
+    }
+
+    // ── слева: мосты ──
+    if Uni.br-open: Glass {
+        x: 16px;
+        y: 130px;
+        width: 380px;
+        height: min(root.height - 146px - 70px, brl.preferred-height + 30px);
+        clip: true;
+        brl := VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+            HorizontalLayout {
+                Text {
+                    text: @tr("Музыкальные мосты");
+                    color: Theme.text;
+                    font-size: 17px;
+                    font-weight: 800;
+                    horizontal-stretch: 1;
+                }
+
+                IconBtn {
+                    icon: Icons.close;
+                    size: 28px;
+                    clicked => {
+                        Uni.br-open = false;
+                    }
+                }
+            }
+
+            Text {
+                text: @tr("Выбери на карте два узла: «Мост отсюда» и «Мост сюда». Я найду цепочку связей между ними и объясню каждый шаг.");
+                color: Theme.dim;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+
+            for side[i] in [Uni.br-a, Uni.br-b]: HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    width: 30px;
+                    text: i == 0 ? @tr("От") : @tr("До");
+                    color: Theme.faint;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: side != "" ? side : "—";
+                    color: side != "" ? Theme.text : Theme.faint;
+                    font-size: 14px;
+                    font-weight: 700;
+                    overflow: elide;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: @tr("Шагов до {}", round(2 + Uni.br-depth * 6));
+                    color: Theme.dim;
+                    font-size: 12px;
+                    width: 90px;
+                    vertical-alignment: center;
+                }
+
+                Slider {
+                    value: Uni.br-depth;
+                    changed(v) => {
+                        Uni.br-depth = v;
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                for t[i] in [@tr("Факты"), @tr("YouTube"), @tr("Звук"), @tr("Плейлисты")]: Chip {
+                    text: t;
+                    active: Uni.br-rels[i];
+                    height: 30px;
+                    accent: i == 0 ? #e9e4ff : i == 1 ? #60a5fa : #fb923c;
+                    clicked => {
+                        Uni.bridge-rel(i);
+                    }
+                }
+            }
+
+            Pill {
+                text: @tr("Найти мост");
+                enabled: Uni.br-a != "" && Uni.br-b != "";
+                clicked => {
+                    Uni.bridge-run();
+                }
+            }
+
+            if Uni.br-status != "": Text {
+                text: Uni.br-status;
+                color: Theme.dim;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+
+            brf := Flickable {
+                height: min(360px, brlist.preferred-height);
+                content-height: brlist.preferred-height;
+                brlist := VerticalLayout {
+                    width: brf.width;
+                    spacing: 10px;
+                    for b[bi] in Uni.bridges: Rectangle {
+                        height: bcol.preferred-height + 20px;
+                        border-radius: 14px;
+                        background: Uni.br-shown == bi ? Theme.c1.transparentize(0.82) : #ffffff08;
+                        border-width: 1px;
+                        border-color: Uni.br-shown == bi ? Theme.c1.transparentize(0.4) : #ffffff10;
+                        bcol := VerticalLayout {
+                            padding: 10px;
+                            spacing: 4px;
+                            Text {
+                                text: @tr("{} шагов · фактов {}", b.steps.length - 1, b.facts);
+                                color: Theme.faint;
+                                font-size: 11px;
+                                font-weight: 700;
+                            }
+
+                            for s[si] in b.steps: VerticalLayout {
+                                spacing: 3px;
+                                if si > 0: HorizontalLayout {
+                                    padding-left: 4px;
+                                    spacing: 8px;
+                                    Rectangle {
+                                        width: 2px;
+                                        background: s.origin == 0 ? #e9e4ff66 : s.origin == 1 ? #60a5fa99 : #fb923c99;
+                                    }
+
+                                    VerticalLayout {
+                                        padding-top: 2px;
+                                        padding-bottom: 2px;
+                                        spacing: 3px;
+                                        Text {
+                                            text: s.rel + (s.note != "" ? " · " + s.note : "");
+                                            color: Theme.dim;
+                                            font-size: 11px;
+                                            wrap: word-wrap;
+                                        }
+
+                                        UniTag {
+                                            origin: s.origin;
+                                            src: s.src;
+                                        }
+                                    }
+                                }
+                                Text {
+                                    text: s.name;
+                                    color: Theme.text;
+                                    font-size: 14px;
+                                    font-weight: 700;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                Uni.bridge-show(bi);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Music DNA ──
+    if Uni.dna-open: Rectangle {
+        background: #05040acc;
+        TouchArea {
+            clicked => {
+                Uni.dna-close();
+            }
+            scroll-event(e) => {
+                accept
+            }
+        }
+
+        Glass {
+            width: min(root.width - 60px, 860px);
+            height: min(root.height - 50px, 640px);
+            clip: true;
+            TouchArea { }
+
+            HorizontalLayout {
+                padding: 22px;
+                spacing: 22px;
+                VerticalLayout {
+                    width: 270px;
+                    spacing: 10px;
+                    Text {
+                        text: "Music DNA";
+                        color: Theme.soft1;
+                        font-size: 12px;
+                        font-weight: 800;
+                    }
+
+                    Text {
+                        text: Uni.dna-title;
+                        color: Theme.text;
+                        font-size: 20px;
+                        font-weight: 800;
+                        wrap: word-wrap;
+                    }
+
+                    Text {
+                        text: Uni.dna-sub;
+                        color: Theme.dim;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+
+                    Radar {
+                        polys: Uni.dna-radar;
+                        axes: Uni.dna-axes;
+                    }
+
+                    if Uni.dna-cmp != "": HorizontalLayout {
+                        spacing: 8px;
+                        Rectangle {
+                            width: 12px;
+                            height: 12px;
+                            border-radius: 6px;
+                            background: #22d3ee;
+                        }
+
+                        Text {
+                            text: @tr("Сравнение: {}", Uni.dna-cmp);
+                            color: Theme.text;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    Pill {
+                        text: Uni.dna-cmp-pick ? @tr("Выбери второй на карте…") : @tr("Сравнить с…");
+                        primary: false;
+                        height: 36px;
+                        clicked => {
+                            Uni.dna-compare();
+                        }
+                    }
+
+                    Text {
+                        text: Uni.dna-note;
+                        color: Theme.faint;
+                        font-size: 11px;
+                        wrap: word-wrap;
+                    }
+                }
+
+                df := Flickable {
+                    horizontal-stretch: 1;
+                    content-height: dcol.preferred-height;
+                    dcol := VerticalLayout {
+                        width: df.width;
+                        spacing: 4px;
+                        alignment: start;
+                        HorizontalLayout {
+                            Rectangle {
+                                horizontal-stretch: 1;
+                            }
+
+                            IconBtn {
+                                icon: Icons.close;
+                                size: 30px;
+                                clicked => {
+                                    Uni.dna-close();
+                                }
+                            }
+                        }
+
+                        for r in Uni.dna-rows: DnaBar {
+                            item: r;
+                        }
+
+                        if Uni.dna-sim.length > 0: Text {
+                            text: @tr("Сходство");
+                            color: Theme.text;
+                            font-size: 15px;
+                            font-weight: 800;
+                        }
+                        for r in Uni.dna-sim: DnaBar {
+                            item: r;
+                            tint: #22d3ee;
+                        }
+
+                        if Uni.dna-similar.length > 0: Text {
+                            text: @tr("Звучит похоже");
+                            color: Theme.text;
+                            font-size: 15px;
+                            font-weight: 800;
+                        }
+                        for p in Uni.dna-similar: DnaPickRow {
+                            p: p;
+                        }
+
+                        if Uni.dna-far.length > 0: Text {
+                            text: @tr("Совсем не как обычно");
+                            color: Theme.text;
+                            font-size: 15px;
+                            font-weight: 800;
+                        }
+                        for p in Uni.dna-far: DnaPickRow {
+                            p: p;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+// ── Комнаты: совместное прослушивание (src/rooms.rs, src/roomsync.rs) ──
+export struct RoomMember {
+    uid: string,
+    name: string,
+    owner: bool,
+    me: bool,
+    online: bool,
+    status: string,
+}
+
+export struct RoomQ {
+    id: string,
+    title: string,
+    artist: string,
+    by: string,
+    votes: int,
+    mine: bool,
+    next: bool,
+    removable: bool,
+}
+
+export struct RoomMsg {
+    name: string,
+    text: string,
+    emoji: string,
+    me: bool,
+    about-now: bool,
+    focus: bool, // «смотрите во Вселенной»: text — что показать
+}
+
+export global Rooms {
+    in property <bool> inside;
+    in property <bool> busy;
+    in property <string> error;
+    in property <string> code;
+    in property <string> name;
+    in property <bool> owner;
+    in property <bool> can-control;
+    in property <bool> can-queue;
+    in property <bool> public;
+    in property <bool> queue-all;
+    in property <bool> control-all;
+    in property <[RoomMember]> members;
+    in property <[RoomQ]> queue;
+    in property <[RoomMsg]> chat;
+    in property <[RoomMember]> publics; // uid — код, name — название, status — владелец
+    in property <string> now-title;
+    in property <string> now-artist;
+    in property <int> drift; // мс: мы минус комната
+    in property <bool> available: true; // есть ли база
+    in-out property <string> new-name;
+    in-out property <bool> new-public;
+    in-out property <bool> new-queue-all: true;
+    in-out property <bool> new-control-all;
+    in-out property <string> join-code;
+    in-out property <string> msg;
+    callback opened();
+    callback create();
+    callback join(string);
+    callback leave();
+    callback copy-code();
+    callback add-current();
+    callback vote(string, bool);
+    callback remove(string);
+    callback move(string, int);
+    callback say(string);
+    callback react(string);
+    callback settings(bool, bool, bool);
+    callback share-taste();
+    callback focus(string);
+    callback kick(string);
+}
+
+component Toggle inherits HorizontalLayout {
+    in property <string> text;
+    in property <string> sub;
+    in-out property <bool> on;
+    callback toggled(bool);
+    spacing: 10px;
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        if root.sub != "": Text {
+            text: root.sub;
+            color: Theme.faint;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+    Rectangle {
+        width: 42px;
+        height: 24px;
+        border-radius: 12px;
+        background: root.on ? Theme.c1 : #ffffff1f;
+        animate background { duration: 150ms; }
+        Rectangle {
+            x: root.on ? parent.width - self.width - 3px : 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            background: white;
+            animate x { duration: 150ms; easing: ease-out; }
+        }
+
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                root.on = !root.on;
+                root.toggled(root.on);
+            }
+        }
+    }
+    }
+}
+
+component RoomsPage inherits Rectangle {
+    // ── не в комнате ──
+    if !Rooms.inside: Flickable {
+        content-height: out-col.preferred-height;
+        out-col := VerticalLayout {
+            width: parent.width;
+            padding: 26px;
+            spacing: 16px;
+            alignment: start;
+            Text {
+                text: @tr("Комнаты");
+                color: Theme.text;
+                font-size: 28px;
+                font-weight: 800;
+            }
+
+            Text {
+                text: @tr("Слушайте вместе, даже если вы в разных странах: один трек, одна позиция, общая очередь с голосованием, реакции и сообщения. Звук у каждого свой — через YouTube Music и SoundCloud, плеер сам держит всех в такт.");
+                color: Theme.dim;
+                font-size: 13px;
+                wrap: word-wrap;
+            }
+
+            if Rooms.error != "": Text {
+                text: Rooms.error;
+                color: #ff8a9a;
+                font-size: 13px;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+                alignment: start;
+                Glass {
+                    width: 360px;
+                    height: cr.preferred-height + 32px;
+                    cr := VerticalLayout {
+                        padding: 16px;
+                        spacing: 12px;
+                        Text {
+                            text: @tr("Новая комната");
+                            color: Theme.text;
+                            font-size: 16px;
+                            font-weight: 800;
+                        }
+
+                        Field {
+                            height: 42px;
+                            placeholder: @tr("Название, например «Пятничный вечер»");
+                            text <=> Rooms.new-name;
+                        }
+
+                        Toggle {
+                            text: @tr("Открытая");
+                            sub: @tr("Видна всем в списке ниже. Закрытая — только по коду");
+                            on <=> Rooms.new-public;
+                        }
+
+                        Toggle {
+                            text: @tr("Очередь пополняют все");
+                            on <=> Rooms.new-queue-all;
+                        }
+
+                        Toggle {
+                            text: @tr("Плеером управляют все");
+                            sub: @tr("Иначе пауза, перемотка и переключение — только у тебя");
+                            on <=> Rooms.new-control-all;
+                        }
+
+                        Pill {
+                            text: Rooms.busy ? @tr("Создаю…") : @tr("Создать");
+                            enabled: !Rooms.busy && Rooms.available;
+                            clicked => {
+                                Rooms.create();
+                            }
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 16px;
+                    Glass {
+                        width: 340px;
+                        height: jn.preferred-height + 32px;
+                        jn := VerticalLayout {
+                            padding: 16px;
+                            spacing: 12px;
+                            Text {
+                                text: @tr("Войти по коду");
+                                color: Theme.text;
+                                font-size: 16px;
+                                font-weight: 800;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Field {
+                                    height: 42px;
+                                    placeholder: "ABC234";
+                                    text <=> Rooms.join-code;
+                                    accepted(t) => {
+                                        Rooms.join(t);
+                                    }
+                                }
+
+                                Pill {
+                                    text: @tr("Войти");
+                                    enabled: !Rooms.busy && Rooms.join-code != "";
+                                    clicked => {
+                                        Rooms.join(Rooms.join-code);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Glass {
+                        width: 340px;
+                        height: pb.preferred-height + 32px;
+                        pb := VerticalLayout {
+                            padding: 16px;
+                            spacing: 8px;
+                            Text {
+                                text: @tr("Открытые комнаты");
+                                color: Theme.text;
+                                font-size: 16px;
+                                font-weight: 800;
+                            }
+
+                            if Rooms.publics.length == 0: Text {
+                                text: @tr("Сейчас открытых комнат нет");
+                                color: Theme.faint;
+                                font-size: 12px;
+                            }
+                            for p in Rooms.publics: Rectangle {
+                                height: 44px;
+                                border-radius: 10px;
+                                background: pta.has-hover ? #ffffff0d : transparent;
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    spacing: 8px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text {
+                                            text: p.name;
+                                            color: Theme.text;
+                                            font-size: 13px;
+                                            font-weight: 700;
+                                            overflow: elide;
+                                        }
+
+                                        Text {
+                                            text: p.status + " · " + p.uid;
+                                            color: Theme.faint;
+                                            font-size: 11px;
+                                        }
+                                    }
+                                }
+
+                                pta := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        Rooms.join(p.uid);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── в комнате ──
+    if Rooms.inside: HorizontalLayout {
+        padding: 22px;
+        spacing: 16px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 14px;
+            HorizontalLayout {
+                spacing: 12px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    Text {
+                        text: Rooms.name != "" ? Rooms.name : @tr("Комната");
+                        color: Theme.text;
+                        font-size: 26px;
+                        font-weight: 800;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        text: @tr("Код {} · {} в комнате", Rooms.code, Rooms.members.length);
+                        color: Theme.dim;
+                        font-size: 13px;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Pill {
+                        text: @tr("Скопировать код");
+                        primary: false;
+                        clicked => {
+                            Rooms.copy-code();
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    Pill {
+                        text: Rooms.owner ? @tr("Закрыть комнату") : @tr("Выйти");
+                        danger: true;
+                        clicked => {
+                            Rooms.leave();
+                        }
+                    }
+                }
+            }
+
+            // что играет у всех
+            Glass {
+                height: 86px;
+                HorizontalLayout {
+                    padding: 16px;
+                    spacing: 14px;
+                    Rectangle {
+                        width: 54px;
+                        height: 54px;
+                        border-radius: 14px;
+                        background: Theme.accent;
+                        Icon {
+                            d: Icons.note;
+                            width: 26px;
+                            height: 26px;
+                            fill: white;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: Rooms.now-title != "" ? Rooms.now-title : @tr("Пока тихо — включи что-нибудь");
+                            color: Theme.text;
+                            font-size: 16px;
+                            font-weight: 800;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: Rooms.now-artist;
+                            color: Theme.dim;
+                            font-size: 13px;
+                            overflow: elide;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: Rooms.can-control ? @tr("ты управляешь") : abs(Rooms.drift) < 200 ? @tr("в такт с комнатой") : @tr("догоняю: {} мс", Rooms.drift);
+                            color: Rooms.can-control || abs(Rooms.drift) < 200 ? Theme.soft2 : Theme.dim;
+                            font-size: 12px;
+                            font-weight: 700;
+                        }
+                    }
+                }
+            }
+
+            // общая очередь
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: @tr("Очередь комнаты");
+                    color: Theme.text;
+                    font-size: 17px;
+                    font-weight: 800;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+
+                if Rooms.can-queue: Pill {
+                    text: @tr("Добавить играющий");
+                    icon: Icons.plus;
+                    primary: false;
+                    height: 36px;
+                    clicked => {
+                        Rooms.add-current();
+                    }
+                }
+            }
+
+            Text {
+                text: @tr("Следующим играет трек с большим числом голосов. Добавлять можно и из «Вселенной».");
+                color: Theme.faint;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+
+            qf := Flickable {
+                vertical-stretch: 1;
+                content-height: ql.preferred-height;
+                ql := VerticalLayout {
+                    width: qf.width;
+                    alignment: start;
+                    spacing: 2px;
+                    if Rooms.queue.length == 0: Text {
+                        text: @tr("Очередь пуста");
+                        color: Theme.faint;
+                        font-size: 12px;
+                    }
+                    for q[i] in Rooms.queue: Rectangle {
+                        height: 50px;
+                        border-radius: 12px;
+                        background: q.next ? Theme.c1.transparentize(0.85) : #ffffff06;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 8px;
+                            spacing: 8px;
+                            VerticalLayout {
+                                alignment: center;
+                                horizontal-stretch: 1;
+                                Text {
+                                    text: q.title;
+                                    color: Theme.text;
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                    overflow: elide;
+                                }
+
+                                Text {
+                                    text: q.artist + " · " + @tr("добавил(а) {}", q.by) + (q.next ? " · " + @tr("следующий") : "");
+                                    color: Theme.faint;
+                                    font-size: 11px;
+                                    overflow: elide;
+                                }
+                            }
+
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: vt.preferred-width + 30px;
+                                    height: 30px;
+                                    border-radius: 15px;
+                                    background: q.mine ? Theme.c1.transparentize(0.6) : #ffffff10;
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        spacing: 4px;
+                                        Icon {
+                                            d: q.mine ? Icons.heart : Icons.heart-o;
+                                            width: 14px;
+                                            height: 14px;
+                                            fill: q.mine ? white : Theme.dim;
+                                        }
+
+                                        vt := Text {
+                                            text: q.votes;
+                                            color: Theme.text;
+                                            font-size: 12px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            Rooms.vote(q.id, !q.mine);
+                                        }
+                                    }
+                                }
+                            }
+
+                            if Rooms.owner: VerticalLayout {
+                                alignment: center;
+                                IconBtn {
+                                    icon: Icons.up;
+                                    size: 28px;
+                                    tip: @tr("Выше");
+                                    clicked => {
+                                        Rooms.move(q.id, i - 1);
+                                    }
+                                }
+                            }
+                            if Rooms.owner: VerticalLayout {
+                                alignment: center;
+                                IconBtn {
+                                    icon: Icons.down;
+                                    size: 28px;
+                                    tip: @tr("Ниже");
+                                    clicked => {
+                                        Rooms.move(q.id, i + 1);
+                                    }
+                                }
+                            }
+                            if q.removable: VerticalLayout {
+                                alignment: center;
+                                IconBtn {
+                                    icon: Icons.close;
+                                    size: 28px;
+                                    danger: true;
+                                    clicked => {
+                                        Rooms.remove(q.id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // справа: кто в комнате и разговор
+        VerticalLayout {
+            width: 330px;
+            spacing: 12px;
+            Glass {
+                height: min(260px, ml.preferred-height + 24px);
+                clip: true;
+                ml := VerticalLayout {
+                    padding: 14px;
+                    spacing: 6px;
+                    Text {
+                        text: @tr("В комнате");
+                        color: Theme.text;
+                        font-size: 15px;
+                        font-weight: 800;
+                    }
+
+                    for m in Rooms.members: HorizontalLayout {
+                        spacing: 8px;
+                        height: 34px;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 4px;
+                                background: m.online ? #4ade80 : #6b7280;
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: m.name + (m.owner ? " · " + @tr("владелец") : "") + (m.me ? " · " + @tr("ты") : "");
+                                color: Theme.text;
+                                font-size: 13px;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+
+                            Text {
+                                text: m.status;
+                                color: Theme.faint;
+                                font-size: 11px;
+                            }
+                        }
+
+                        if Rooms.owner && !m.me: VerticalLayout {
+                            alignment: center;
+                            IconBtn {
+                                icon: Icons.close;
+                                size: 24px;
+                                tip: @tr("Убрать из комнаты");
+                                clicked => {
+                                    Rooms.kick(m.uid);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if Rooms.owner: Glass {
+                height: st.preferred-height + 24px;
+                st := VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+                    Toggle {
+                        text: @tr("Открытая");
+                        on: Rooms.public;
+                        toggled(v) => {
+                            Rooms.settings(v, Rooms.queue-all, Rooms.control-all);
+                        }
+                    }
+
+                    Toggle {
+                        text: @tr("Очередь пополняют все");
+                        on: Rooms.queue-all;
+                        toggled(v) => {
+                            Rooms.settings(Rooms.public, v, Rooms.control-all);
+                        }
+                    }
+
+                    Toggle {
+                        text: @tr("Плеером управляют все");
+                        on: Rooms.control-all;
+                        toggled(v) => {
+                            Rooms.settings(Rooms.public, Rooms.queue-all, v);
+                        }
+                    }
+                }
+            }
+
+            Glass {
+                vertical-stretch: 1;
+                clip: true;
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+                    HorizontalLayout {
+                        Text {
+                            text: @tr("Разговор");
+                            color: Theme.text;
+                            font-size: 15px;
+                            font-weight: 800;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            text: @tr("поделиться вкусом");
+                            color: Theme.soft1;
+                            font-size: 12px;
+                            font-weight: 700;
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    Rooms.share-taste();
+                                }
+                            }
+                        }
+                    }
+
+                    cf := Flickable {
+                        vertical-stretch: 1;
+                        content-height: cl.preferred-height;
+                        content-y: min(0px, self.height - cl.preferred-height);
+                        cl := VerticalLayout {
+                            width: cf.width;
+                            spacing: 6px;
+                            alignment: end;
+                            for m in Rooms.chat: Rectangle {
+                                height: mt.preferred-height + 14px;
+                                border-radius: 12px;
+                                background: m.me ? Theme.c1.transparentize(0.8) : #ffffff0a;
+                                mt := VerticalLayout {
+                                    padding: 7px;
+                                    padding-left: 10px;
+                                    spacing: 2px;
+                                    Text {
+                                        text: m.name + (m.about-now ? " · " + @tr("про этот трек") : "");
+                                        color: Theme.faint;
+                                        font-size: 10px;
+                                        font-weight: 700;
+                                    }
+
+                                    Text {
+                                        text: m.emoji != "" && m.text == "" ? m.emoji : (m.emoji != "" ? m.emoji + " " : "") + m.text;
+                                        color: Theme.text;
+                                        font-size: m.text == "" ? 22px : 13px;
+                                        wrap: word-wrap;
+                                    }
+
+                                    if m.focus: Text {
+                                        text: @tr("показать во Вселенной →");
+                                        color: Theme.soft1;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => {
+                                                Rooms.focus(m.text);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 4px;
+                        for e in ["🔥", "❤️", "😂", "😮", "👏", "🎧"]: Rectangle {
+                            width: 34px;
+                            height: 30px;
+                            border-radius: 15px;
+                            background: eta.has-hover ? #ffffff1a : #ffffff0a;
+                            Text {
+                                text: e;
+                                font-size: 15px;
+                            }
+
+                            eta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    Rooms.react(e);
+                                }
+                            }
+                        }
+                    }
+
+                    Field {
+                        height: 40px;
+                        placeholder: @tr("Написать…");
+                        text <=> Rooms.msg;
+                        accepted(t) => {
+                            Rooms.say(t);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Мой вкус: Taste Fingerprint (src/taste.rs, src/tview.rs) ──
+export struct TasteBar {
+    label: string,
+    value: string,
+    frac: float,
+    sub: string,
+    frac2: float, // для сравнения: доля у друга
+}
+
+export struct TasteCombo {
+    title: string,
+    why: string,
+    strength: float,
+}
+
+export struct TasteCluster {
+    name: string,
+    artists: string,
+    frac: float,
+    c: color,
+}
+
+export global Taste {
+    in-out property <int> period: 0; // 0 всё время, 1 год, 2 полгода, 3 три месяца, 4 месяц
+    in property <bool> busy;
+    in property <bool> empty;
+    in property <string> summary;
+    in property <string> coverage;
+    in property <[UNode]> nodes; // созвездие: координаты 0..1000
+    in property <[string]> paths: ["", ""]; // связи жанров, необычные сочетания
+    in property <[TasteBar]> genres;
+    in property <[TasteCombo]> combos;
+    in property <[TasteCluster]> clusters;
+    in property <[string]> radar;
+    in property <[RadarLabel]> axes;
+    in property <[TasteBar]> sound;
+    in property <[TasteBar]> habits;
+    in property <[float]> hours;
+    in property <[TasteBar]> rising;
+    in property <[TasteBar]> falling;
+    in property <string> fresh;
+    in property <string> stable;
+    in property <string> discovered;
+    in property <[float]> diversity;
+    in property <string> note;
+    // публичный профиль и сравнение
+    in property <string> my-code;
+    in property <bool> published;
+    in property <[bool]> share: [true, true, true, true, true];
+    in-out property <string> friend-code;
+    in property <bool> cmp-shown;
+    in property <string> cmp-name;
+    in property <string> cmp-error;
+    in property <string> cmp-numbers;
+    in property <[TasteBar]> cmp-shared;
+    in property <string> cmp-only-me;
+    in property <string> cmp-only-them;
+    in property <string> cmp-artists;
+    in property <string> cmp-surprises;
+    in property <[TasteBar]> cmp-sound;
+    in property <[DnaPick]> cmp-discover;
+    callback opened();
+    callback set-period(int);
+    callback publish();
+    callback unpublish();
+    callback toggle-share(int);
+    callback compare(string);
+    callback show-universe();
+    callback copy-code();
+}
+
+component TasteCard inherits Glass {
+    in property <string> title;
+    in property <string> sub;
+    height: tc.preferred-height + 28px;
+    tc := VerticalLayout {
+        padding: 14px;
+        padding-left: 16px;
+        spacing: 8px;
+        Text {
+            text: root.title;
+            color: Theme.text;
+            font-size: 16px;
+            font-weight: 800;
+        }
+
+        if root.sub != "": Text {
+            text: root.sub;
+            color: Theme.faint;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+        @children
+    }
+}
+
+component TasteBarRow inherits HorizontalLayout {
+    in property <TasteBar> b;
+    in property <bool> two;
+    spacing: 10px;
+    height: root.two ? 30px : 24px;
+    VerticalLayout {
+        width: 150px;
+        alignment: center;
+        Text {
+            text: root.b.label;
+            color: Theme.text;
+            font-size: 12px;
+            overflow: elide;
+        }
+
+        if root.b.sub != "": Text {
+            text: root.b.sub;
+            color: Theme.faint;
+            font-size: 10px;
+            overflow: elide;
+        }
+    }
+
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        spacing: 3px;
+        Rectangle {
+            height: 6px;
+            border-radius: 3px;
+            background: #ffffff10;
+            Rectangle {
+                x: 0;
+                width: parent.width * max(0.02, min(1, root.b.frac));
+                border-radius: 3px;
+                background: Theme.accent;
+            }
+        }
+
+        if root.two: Rectangle {
+            height: 6px;
+            border-radius: 3px;
+            background: #ffffff10;
+            Rectangle {
+                x: 0;
+                width: parent.width * max(0.02, min(1, root.b.frac2));
+                border-radius: 3px;
+                background: #22d3ee;
+            }
+        }
+    }
+
+    Text {
+        width: 70px;
+        text: root.b.value;
+        color: Theme.dim;
+        font-size: 12px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+}
+
+component TastePage inherits Rectangle {
+    tf := Flickable {
+        content-height: tl.preferred-height;
+        tl := VerticalLayout {
+            width: tf.width;
+            padding: 26px;
+            spacing: 16px;
+            alignment: start;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: @tr("Мой вкус");
+                    color: Theme.text;
+                    font-size: 28px;
+                    font-weight: 800;
+                    horizontal-stretch: 1;
+                }
+
+                for p[i] in [@tr("Всё время"), @tr("Год"), @tr("Полгода"), @tr("3 месяца"), @tr("Месяц")]: VerticalLayout {
+                    alignment: center;
+                    Chip {
+                        text: p;
+                        active: Taste.period == i;
+                        clicked => {
+                            Taste.set-period(i);
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: Taste.summary;
+                color: Theme.dim;
+                font-size: 14px;
+                wrap: word-wrap;
+            }
+
+            if Taste.empty: Text {
+                text: @tr("Пока не из чего собрать отпечаток — послушай музыку, и он появится.");
+                color: Theme.faint;
+                font-size: 13px;
+            }
+
+            if !Taste.empty: HorizontalLayout {
+                spacing: 16px;
+                // созвездие вкуса
+                Glass {
+                    width: 460px;
+                    height: 460px;
+                    clip: true;
+                    property <length> s: min(self.width, self.height);
+                    for p[i] in Taste.paths: Path {
+                        width: parent.s;
+                        height: parent.s;
+                        viewbox-width: 1000;
+                        viewbox-height: 1000;
+                        commands: p;
+                        fill: transparent;
+                        stroke: i == 0 ? #ffffff1f : Theme.soft2;
+                        stroke-width: i == 0 ? 1px : 2px;
+                    }
+
+                    for n in Taste.nodes: Rectangle {
+                        property <length> rr: n.r * 1px;
+                        x: n.x / 1000 * parent.s - self.rr;
+                        y: n.y / 1000 * parent.s - self.rr;
+                        width: self.rr * 2;
+                        height: self.rr * 2;
+                        border-radius: self.rr;
+                        background: n.kind == 3 ? n.c.transparentize(0.6) : n.c;
+                        border-width: n.kind == 3 ? 1.5px : 0px;
+                        border-color: n.c;
+                        drop-shadow-blur: n.kind == 3 ? 16px : 0px;
+                        drop-shadow-color: n.c;
+                    }
+
+                    for n in Taste.nodes: Text {
+                        visible: n.lab;
+                        x: n.x / 1000 * parent.s - self.width / 2;
+                        y: n.kind == 3 ? n.y / 1000 * parent.s - self.height / 2 : n.y / 1000 * parent.s + n.r * 1px + 2px;
+                        text: n.label;
+                        color: n.kind == 3 ? #ffffff : #ece8f6cc;
+                        font-size: n.kind == 3 ? 12px : 10px;
+                        font-weight: n.kind == 3 ? 800 : 500;
+                        width: min(130px, self.preferred-width);
+                        overflow: elide;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        x: 14px;
+                        y: parent.height - self.height - 12px;
+                        text: @tr("жанры — крупно, артисты — вокруг них, светлые линии — твои необычные сочетания");
+                        color: Theme.faint;
+                        font-size: 10px;
+                        width: parent.width - 28px;
+                        wrap: word-wrap;
+                    }
+                }
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 16px;
+                    TasteCard {
+                        title: @tr("Необычные сочетания");
+                        sub: @tr("Жанры, которые ты слушаешь оба, хотя у твоих же артистов они почти не встречаются вместе");
+                        if Taste.combos.length == 0: Text {
+                            text: Taste.note;
+                            color: Theme.faint;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+                        for c in Taste.combos: VerticalLayout {
+                            spacing: 2px;
+                            Text {
+                                text: c.title;
+                                color: Theme.soft2;
+                                font-size: 15px;
+                                font-weight: 800;
+                                wrap: word-wrap;
+                            }
+
+                            Text {
+                                text: c.why;
+                                color: Theme.dim;
+                                font-size: 11px;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    TasteCard {
+                        title: @tr("Твои миры");
+                        sub: @tr("Кластеры артистов, которые держатся вместе в твоём графе связей");
+                        for c in Taste.clusters: HorizontalLayout {
+                            spacing: 10px;
+                            Rectangle {
+                                width: 10px;
+                                height: 10px;
+                                border-radius: 5px;
+                                background: c.c;
+                            }
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                Text {
+                                    text: c.name + " · " + round(c.frac * 100) + "%";
+                                    color: Theme.text;
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                }
+
+                                Text {
+                                    text: c.artists;
+                                    color: Theme.faint;
+                                    font-size: 11px;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                    }
+
+                    Pill {
+                        text: @tr("Показать во Вселенной");
+                        primary: false;
+                        clicked => {
+                            Taste.show-universe();
+                        }
+                    }
+                }
+            }
+
+            if !Taste.empty: HorizontalLayout {
+                spacing: 16px;
+                TasteCard {
+                    horizontal-stretch: 1;
+                    title: @tr("Жанры");
+                    sub: Taste.coverage;
+                    for b in Taste.genres: TasteBarRow {
+                        b: b;
+                    }
+                }
+
+                TasteCard {
+                    width: 340px;
+                    title: @tr("Звучание");
+                    sub: @tr("По Music DNA треков, взвешенно временем прослушивания");
+                    Radar {
+                        polys: Taste.radar;
+                        axes: Taste.axes;
+                    }
+
+                    for b in Taste.sound: TasteBarRow {
+                        b: b;
+                    }
+                }
+            }
+
+            if !Taste.empty: HorizontalLayout {
+                spacing: 16px;
+                TasteCard {
+                    horizontal-stretch: 1;
+                    title: @tr("Как ты слушаешь");
+                    for b in Taste.habits: TasteBarRow {
+                        b: b;
+                    }
+                    if Taste.hours.length == 24: VerticalLayout {
+                        spacing: 4px;
+                        Text {
+                            text: @tr("По часам суток");
+                            color: Theme.faint;
+                            font-size: 11px;
+                        }
+
+                        HorizontalLayout {
+                            height: 60px;
+                            spacing: 2px;
+                            for h[i] in Taste.hours: Rectangle {
+                                Rectangle {
+                                    y: parent.height - self.height;
+                                    height: max(2px, parent.height * h / max(0.01, 0.16));
+                                    border-radius: 2px;
+                                    background: Theme.c1.mix(Theme.c2, i / 23);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                TasteCard {
+                    horizontal-stretch: 1;
+                    title: @tr("Как меняется вкус");
+                    sub: @tr("Последние три месяца периода против трёх перед ними");
+                    for b in Taste.rising: TasteBarRow {
+                        b: b;
+                    }
+                    for b in Taste.falling: TasteBarRow {
+                        b: b;
+                    }
+                    if Taste.fresh != "": Text {
+                        text: @tr("Новые в твоей жизни: {}", Taste.fresh);
+                        color: Theme.dim;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    if Taste.stable != "": Text {
+                        text: @tr("С тобой всегда: {}", Taste.stable);
+                        color: Theme.dim;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    if Taste.discovered != "": Text {
+                        text: @tr("Открыл(а) направления: {}", Taste.discovered);
+                        color: Theme.dim;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    if Taste.diversity.length > 1: VerticalLayout {
+                        spacing: 4px;
+                        Text {
+                            text: @tr("Разнообразие по месяцам");
+                            color: Theme.faint;
+                            font-size: 11px;
+                        }
+
+                        HorizontalLayout {
+                            height: 44px;
+                            spacing: 3px;
+                            for d in Taste.diversity: Rectangle {
+                                Rectangle {
+                                    y: parent.height - self.height;
+                                    height: max(2px, parent.height * d);
+                                    border-radius: 2px;
+                                    background: Theme.soft1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // публичный профиль и сравнение с другом
+            if !Taste.empty: HorizontalLayout {
+                spacing: 16px;
+                TasteCard {
+                    width: 380px;
+                    title: @tr("Музыкальная идентичность");
+                    sub: @tr("Публичная карточка вкуса. Друг вводит твой код и видит только то, что ты отметил(а).");
+                    for s[i] in [@tr("Жанры"), @tr("Артисты"), @tr("Необычные сочетания"), @tr("Звучание"), @tr("Динамика")]: Toggle {
+                        text: s;
+                        on: Taste.share[i];
+                        toggled => {
+                            Taste.toggle-share(i);
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        Pill {
+                            text: Taste.published ? @tr("Обновить") : @tr("Опубликовать");
+                            clicked => {
+                                Taste.publish();
+                            }
+                        }
+
+                        if Taste.published: Pill {
+                            text: @tr("Скрыть");
+                            primary: false;
+                            clicked => {
+                                Taste.unpublish();
+                            }
+                        }
+                    }
+
+                    if Taste.published: HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: @tr("Твой код: {}", Taste.my-code);
+                            color: Theme.soft2;
+                            font-size: 15px;
+                            font-weight: 800;
+                            vertical-alignment: center;
+                        }
+
+                        IconBtn {
+                            icon: Icons.link;
+                            tip: @tr("Скопировать");
+                            clicked => {
+                                Taste.copy-code();
+                            }
+                        }
+                    }
+                }
+
+                TasteCard {
+                    horizontal-stretch: 1;
+                    title: @tr("Совместимость вкусов");
+                    sub: @tr("Не один процент, а из чего он складывается: общее, разное и неожиданное");
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Field {
+                            height: 42px;
+                            placeholder: @tr("Код друга");
+                            text <=> Taste.friend-code;
+                            accepted(t) => {
+                                Taste.compare(t);
+                            }
+                        }
+
+                        Pill {
+                            text: @tr("Сравнить");
+                            enabled: Taste.friend-code != "";
+                            clicked => {
+                                Taste.compare(Taste.friend-code);
+                            }
+                        }
+                    }
+
+                    if Taste.cmp-error != "": Text {
+                        text: Taste.cmp-error;
+                        color: #ff8a9a;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    if Taste.cmp-shown: VerticalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: @tr("Ты и {}", Taste.cmp-name);
+                            color: Theme.text;
+                            font-size: 15px;
+                            font-weight: 800;
+                        }
+
+                        Text {
+                            text: Taste.cmp-numbers;
+                            color: Theme.dim;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+
+                        for b in Taste.cmp-shared: TasteBarRow {
+                            b: b;
+                            two: true;
+                        }
+                        for t[i] in [Taste.cmp-only-me, Taste.cmp-only-them, Taste.cmp-artists, Taste.cmp-surprises]: Text {
+                            visible: t != "";
+                            text: t;
+                            color: i == 3 ? Theme.soft2 : Theme.dim;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                        }
+                        for b in Taste.cmp-sound: TasteBarRow {
+                            b: b;
+                        }
+                        if Taste.cmp-discover.length > 0: Text {
+                            text: @tr("Может понравиться вам обоим");
+                            color: Theme.text;
+                            font-size: 13px;
+                            font-weight: 800;
+                        }
+                        for p in Taste.cmp-discover: DnaPickRow {
+                            p: p;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 component Page inherits Rectangle {
     in property <bool> shown;
     opacity: root.shown ? 1 : 0;
@@ -2243,6 +4661,37 @@ export component AppWindow inherits Window {
                             active: root.page == "stats";
                             clicked => {
                                 root.open-stats();
+                            }
+                        }
+
+                        NavItem {
+                            icon: Icons.orbit;
+                            text: @tr("Вселенная");
+                            active: root.page == "universe";
+                            clicked => {
+                                root.page = "universe";
+                                Uni.opened();
+                            }
+                        }
+
+                        NavItem {
+                            icon: Icons.finger;
+                            text: @tr("Мой вкус");
+                            active: root.page == "taste";
+                            clicked => {
+                                root.page = "taste";
+                                Taste.opened();
+                            }
+                        }
+
+                        NavItem {
+                            icon: Icons.people;
+                            text: @tr("Комнаты");
+                            trailing: Rooms.inside ? "●" : "";
+                            active: root.page == "rooms";
+                            clicked => {
+                                root.page = "rooms";
+                                Rooms.opened();
                             }
                         }
 
@@ -3210,6 +5659,33 @@ export component AppWindow inherits Window {
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    // мой вкус: отпечаток
+                    Page {
+                        shown: root.page == "taste";
+                        TastePage {
+                            width: 100%;
+                            height: 100%;
+                        }
+                    }
+
+                    // комнаты совместного прослушивания
+                    Page {
+                        shown: root.page == "rooms";
+                        RoomsPage {
+                            width: 100%;
+                            height: 100%;
+                        }
+                    }
+
+                    // вселенная: граф связей библиотеки
+                    Page {
+                        shown: root.page == "universe";
+                        UniversePage {
+                            width: 100%;
+                            height: 100%;
                         }
                     }
 

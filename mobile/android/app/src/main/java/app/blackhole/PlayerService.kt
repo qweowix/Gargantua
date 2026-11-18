@@ -93,8 +93,10 @@ class PlayerService : MediaSessionService() {
     }
 
     private fun tempoParams(): PlaybackParameters {
-        val (speed, keep) = Eq.tempo.value
-        return PlaybackParameters(speed, if (keep) 1f else speed)
+        val (base, keep) = Eq.tempo.value
+        // подстройка под комнату — без смены высоты, на слух незаметна
+        val speed = base * Eq.nudge.value
+        return PlaybackParameters(speed, if (keep) 1f else base)
     }
 
     override fun onCreate() {
@@ -111,6 +113,7 @@ class PlayerService : MediaSessionService() {
         scope.launch { App.smartKick.collect { maybeSmart() } }
         // скорость и тон из экрана эквалайзера
         scope.launch { Eq.tempo.collect { player.playbackParameters = tempoParams(); ghost?.playbackParameters = tempoParams() } }
+        scope.launch { Eq.nudge.collect { player.playbackParameters = tempoParams() } }
         // сердечко и значок перемешки следуют за состоянием
         scope.launch { combine(App.liked, App.shuffleOn) { _, _ -> }.collect { refreshButtons() } }
     }

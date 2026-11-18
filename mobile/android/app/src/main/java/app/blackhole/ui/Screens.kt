@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.horizontalScroll
@@ -412,6 +415,14 @@ fun LibraryScreen(vm: AppState) {
                 }
             }
         }
+        // вселенная, вкус, комнаты — главные входы рядом с плейлистами
+        item(span = { full }) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GlassChip(tr("Вселенная", "Universe", "Всесвіт", "Vesmír"), false) { vm.go(Screen.Universe) }
+                GlassChip(tr("Мой вкус", "My taste", "Мій смак", "Môj vkus"), false) { vm.go(Screen.Taste) }
+                GlassChip(if (vm.eco.inRoom) tr("Комната · ${vm.eco.room?.code}", "Room · ${vm.eco.room?.code}", "Кімната · ${vm.eco.room?.code}", "Miestnosť · ${vm.eco.room?.code}") else tr("Комнаты", "Rooms", "Кімнати", "Miestnosti"), vm.eco.inRoom) { vm.go(Screen.Rooms) }
+            }
+        }
         if (!vm.loaded) {
             item(span = { full }) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -697,6 +708,12 @@ fun AccountScreen(vm: AppState) {
         }
         GlassGroup {
             NavRow(Icons.Rounded.BarChart, Color(0xFFFF375F), tr("Статистика", "Stats", "Статистика", "Štatistiky")) { vm.go(Screen.Stats) }
+            GroupDivider(60.dp)
+            NavRow(Icons.Rounded.Public, Color(0xFF5E5CE6), tr("Вселенная", "Universe", "Всесвіт", "Vesmír")) { vm.go(Screen.Universe) }
+            GroupDivider(60.dp)
+            NavRow(Icons.Rounded.Fingerprint, Color(0xFFFF9F0A), tr("Мой вкус", "My taste", "Мій смак", "Môj vkus")) { vm.go(Screen.Taste) }
+            GroupDivider(60.dp)
+            NavRow(Icons.Rounded.Groups, Color(0xFF30D158), if (vm.eco.inRoom) tr("Комната · ${vm.eco.room?.code}", "Room · ${vm.eco.room?.code}", "Кімната · ${vm.eco.room?.code}", "Miestnosť · ${vm.eco.room?.code}") else tr("Комнаты", "Rooms", "Кімнати", "Miestnosti")) { vm.go(Screen.Rooms) }
             GroupDivider(62.dp)
             NavRow(Icons.Rounded.Settings, Color(0xFF8E8E93), tr("Настройки", "Settings", "Налаштування", "Nastavenia")) { vm.go(Screen.Settings) }
         }

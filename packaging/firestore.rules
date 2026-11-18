@@ -18,5 +18,18 @@ service cloud.firestore {
         && request.resource.data.owner == request.auth.uid;
       allow delete: if request.auth != null && resource.data.owner == request.auth.uid;
     }
+    // Публичные карточки вкуса (Taste Fingerprint): читает любой вошедший по коду, пишет только автор
+    match /profiles/{code} {
+      allow read: if request.auth != null && request.auth.token.email_verified == true;
+      allow create: if request.auth != null
+        && request.auth.token.email_verified == true
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.fp.size() < 200000;
+      allow update: if request.auth != null
+        && resource.data.owner == request.auth.uid
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.fp.size() < 200000;
+      allow delete: if request.auth != null && resource.data.owner == request.auth.uid;
+    }
   }
 }

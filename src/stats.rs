@@ -59,7 +59,7 @@ fn local_tm(secs: i64) -> libc::tm {
 }
 
 /// Номер дня от 1970-01-01 по дате (алгоритм Хиннанта, days_from_civil)
-fn days(y: i64, m: u32, d: u32) -> i64 {
+pub fn days(y: i64, m: u32, d: u32) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;

@@ -38,6 +38,12 @@ fn is_playlist(p: &std::path::Path) -> bool {
     std::fs::File::open(p).and_then(|mut f| f.read_exact(&mut head)).is_ok() && &head == b"#EXTM3U"
 }
 
+/// Путь к звуку в кэше, не трогая время файла (для анализа, а не для игры)
+pub fn path_of(key: &str) -> Option<PathBuf> {
+    let p = path(key);
+    (p.metadata().ok()?.len() > 0 && !is_playlist(&p)).then_some(p)
+}
+
 pub fn has(key: &str) -> bool {
     path(key).is_file()
 }

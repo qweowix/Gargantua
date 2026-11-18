@@ -242,6 +242,82 @@ fn ui() {
     ui.set_music_dirs(Rc::new(VecModel::from(vec![slint::SharedString::from("/home/x/Музыка")])).into());
     ui.set_page("local".into());
     snap(&win, "13-local");
+
+    // ── вселенная, мосты, DNA, вкус, комната — на синтетической библиотеке ──
+    {
+        use crate::graph::{Graph, Input};
+        use crate::musicbrainz::{Credit, MbArtist, MbRec, Person};
+        let t = |id: &str, title: &str, a: &str| Track { id: id.into(), title: title.into(), artist: a.into(), ..Default::default() };
+        let names = ["Boards of Canada", "Aphex Twin", "Deftones", "Mogwai", "Burial", "Massive Attack", "Radiohead", "Slowdive", "Sigur Rós", "Four Tet"];
+        let genres: [&[&str]; 10] = [&["ambient", "idm"], &["idm", "electronic"], &["metal", "alternative"], &["post-rock"], &["electronic", "dubstep"], &["trip hop"], &["alternative", "rock"], &["shoegaze", "rock"], &["post-rock", "ambient"], &["electronic", "idm"]];
+        let mut tracks = Vec::new();
+        let mut st = crate::stats::Stats::default();
+        let day = crate::stats::days(2026, 11, 1);
+        for (i, a) in names.iter().enumerate() {
+            for k in 0..6 {
+                let tr = t(&format!("{i}-{k}"), &format!("Song {k}"), if k == 5 && i > 0 { "Aphex Twin & Burial" } else { a });
+                st.add(&tr, 600.0 * (10 - i) as f64 + 60.0 * k as f64, day - (i as i64 * 20));
+                tracks.push(tr);
+            }
+        }
+        let mb_artists = names.iter().zip(genres).map(|(n, g)| (n.to_string(), MbArtist { id: n.to_string(), name: n.to_string(), genres: g.iter().map(|x| (x.to_string(), 5)).collect(), ..Default::default() })).collect();
+        let prod = Person { id: "p1".into(), name: "Nigel Godrich".into() };
+        let rec = |p: &Person| MbRec { id: "r".into(), credits: vec![Credit { role: "producer".into(), detail: String::new(), who: p.clone() }], album: Some(("al1".into(), "Hail".into())), album_kind: "Album".into(), ..Default::default() };
+        let mut dna = std::collections::HashMap::new();
+        for (j, tr) in tracks.iter().enumerate().take(24) {
+            let mut d = crate::dna::Dna { v: crate::dna::VERSION, secs: 200.0, bpm: Some(90.0 + (j % 5) as f32 * 12.0), pulse: 0.5, onsets: 3.0, key: Some((j % 12) as u8), minor: j % 3 == 0, key_conf: 0.4, rms_db: -12.0, peak_db: -1.0, dyn_db: 8.0, energy: 0.3 + (j % 4) as f32 * 0.15, centroid: 1500.0 + j as f32 * 60.0, rolloff: 4000.0, flatness: 0.1, bands: [0.4, 0.5, 0.1], ..Default::default() };
+            d.chroma[j % 12] = 0.5;
+            d.mfcc_sd = [1.0; crate::dna::MFCC];
+            d.sections = vec![30.0, 75.0];
+            dna.insert(tr.key(), d);
+        }
+        let inp = Input {
+            tracks: st.tracks.values().map(|s| (s.track.clone(), s.ms, s.plays)).collect(),
+            playlists: vec![tracks[..12].iter().map(|t| t.key()).collect(), tracks[6..18].iter().map(|t| t.key()).collect()],
+            dna,
+            mb_artists,
+            mb_recs: [(tracks[12].key(), rec(&prod)), (tracks[36].key(), rec(&prod))].into(),
+            yt_similar: [("Deftones".to_string(), vec!["Mogwai".to_string(), "Slowdive".to_string()])].into(),
+        };
+        let g = Graph::build(&inp);
+        let fp = crate::taste::build(&st, &g, &[], 0, 0);
+        let mut v = crate::uview::View::default();
+        ui.set_page("universe".into());
+        v.set(&ui, crate::universe::Universe::new(Graph::build(&inp)));
+        snap(&win, "20-universe");
+        let uni_ms = frame_ms(&win);
+        println!("перф: вселенная {uni_ms:.1} мс/кадр");
+        let id = |n: &str| v.find_name(n).unwrap();
+        v.pick(&ui, id("Deftones"));
+        snap(&win, "21-universe-pick");
+        v.bridge_end(&ui, id("Deftones"), true);
+        v.bridge_end(&ui, id("Massive Attack"), false);
+        snap(&win, "22-bridge");
+        v.dna_open(&ui, id("Boards of Canada"));
+        snap(&win, "23-dna");
+        v.dna_close(&ui);
+        crate::tview::fill(&ui, &fp, &g);
+        ui.set_page("taste".into());
+        snap(&win, "24-taste");
+        let r = ui.global::<Rooms>();
+        r.set_inside(true);
+        r.set_name("Пятничный вечер".into());
+        r.set_code("K7PX2M".into());
+        r.set_owner(true);
+        r.set_can_control(true);
+        r.set_can_queue(true);
+        r.set_now_title("Roygbiv".into());
+        r.set_now_artist("Boards of Canada".into());
+        let m = |n: &str, o: bool, s: &str| RoomMember { uid: n.into(), name: n.into(), owner: o, me: o, online: true, status: s.into() };
+        r.set_members(Rc::new(VecModel::from(vec![m("ann", true, "слушает · 1:12"), m("bob", false, "слушает · 1:12")])).into());
+        let q = |t: &str, v: i32, n: bool| RoomQ { id: t.into(), title: t.into(), artist: "Mogwai".into(), by: "bob".into(), votes: v, mine: false, next: n, removable: true };
+        r.set_queue(Rc::new(VecModel::from(vec![q("Auto Rock", 2, true), q("Take Me Somewhere Nice", 0, false)])).into());
+        let c = |n: &str, t: &str, e: &str| RoomMsg { name: n.into(), text: t.into(), emoji: e.into(), me: n == "ann", about_now: true, focus: false };
+        r.set_chat(Rc::new(VecModel::from(vec![c("bob", "этот бас 🤯", ""), c("ann", "", "🔥")])).into());
+        ui.set_page("rooms".into());
+        snap(&win, "25-room");
+        r.set_inside(false);
+    }
     ui.set_sleep_mode(2);
     ui.set_sleep_left("29".into());
     snap(&win, "14-sleep");

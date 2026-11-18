@@ -202,6 +202,9 @@ private fun Root(vm: AppState) {
                         is Screen.Pl -> PlaylistScreen(vm, s.name)
                         is Screen.ArtistPage -> ArtistScreen(vm, s.id, s.name)
                         is Screen.AlbumPage -> AlbumScreen(vm, s.id)
+                        Screen.Universe -> app.blackhole.ui.UniverseScreen(vm)
+                        Screen.Taste -> app.blackhole.ui.TasteScreen(vm)
+                        Screen.Rooms -> app.blackhole.ui.RoomsScreen(vm)
                         is Screen.Tracks -> TrackList(vm, s.title, s.sub, s.cover, s.tracks) {
                             app.blackhole.ui.RoundButton(Icons.Rounded.Add, tr("Сохранить", "Save", "Зберегти", "Uložiť")) { vm.go(Screen.Pl(vm.createPlaylist(s.title, s.tracks))) }
                         }
@@ -214,7 +217,7 @@ private fun Root(vm: AppState) {
         CompositionLocalProvider(LocalBackdrop provides under) {
             // «назад» — над обложкой страниц плейлиста, альбома и артиста
             val s = vm.screen
-            if (vm.stack.size > 1 && (s is Screen.Pl || s is Screen.ArtistPage || s is Screen.AlbumPage || s is Screen.Tracks)) {
+            if (vm.stack.size > 1 && (s is Screen.Pl || s is Screen.ArtistPage || s is Screen.AlbumPage || s is Screen.Tracks || s == Screen.Universe || s == Screen.Taste || s == Screen.Rooms)) {
                 Box(Modifier.statusBarsPadding().padding(12.dp)) {
                     app.blackhole.ui.RoundButton(Icons.AutoMirrored.Rounded.ArrowBack, null, 44.dp) { vm.back() }
                 }

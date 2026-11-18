@@ -1,0 +1,62 @@
+{
+  "rules": {
+    "connect": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid && auth.token.email_verified == true",
+        ".write": "auth != null && auth.uid == $uid && auth.token.email_verified == true"
+      }
+    },
+    "dna": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid && auth.token.email_verified == true",
+        ".write": "auth != null && auth.uid == $uid && auth.token.email_verified == true"
+      }
+    },
+    "rooms": {
+      "$code": {
+        ".read": "auth != null && auth.token.email_verified == true",
+        "meta": {
+          ".write": "auth != null && auth.token.email_verified == true && ((!data.exists() && newData.child('owner').val() == auth.uid) || data.child('owner').val() == auth.uid)",
+          ".validate": "newData.hasChildren(['owner', 'name', 'public', 'queue', 'control'])",
+          "name": { ".validate": "newData.isString() && newData.val().length <= 60" },
+          "public": { ".validate": "newData.isBoolean()" },
+          "queue": { ".validate": "newData.val() == 'all' || newData.val() == 'owner'" },
+          "control": { ".validate": "newData.val() == 'all' || newData.val() == 'owner'" }
+        },
+        "members": {
+          "$uid": {
+            ".write": "auth != null && auth.token.email_verified == true && (auth.uid == $uid || root.child('rooms').child($code).child('meta/owner').val() == auth.uid)",
+            "name": { ".validate": "newData.isString() && newData.val().length <= 60" }
+          }
+        },
+        "state": {
+          ".write": "auth != null && root.child('rooms').child($code).child('members').child(auth.uid).exists() && (root.child('rooms').child($code).child('meta/owner').val() == auth.uid || root.child('rooms').child($code).child('meta/control').val() == 'all')"
+        },
+        "queue": {
+          "$id": {
+            ".write": "auth != null && root.child('rooms').child($code).child('members').child(auth.uid).exists() && (root.child('rooms').child($code).child('meta/owner').val() == auth.uid || root.child('rooms').child($code).child('meta/queue').val() == 'all' || (!data.exists() && newData.child('by').val() == auth.uid))"
+          }
+        },
+        "votes": {
+          "$id": {
+            "$uid": {
+              ".write": "auth != null && auth.uid == $uid && root.child('rooms').child($code).child('members').child(auth.uid).exists()"
+            }
+          }
+        },
+        "chat": {
+          "$id": {
+            ".write": "auth != null && root.child('rooms').child($code).child('members').child(auth.uid).exists() && ((!data.exists() && newData.child('uid').val() == auth.uid) || root.child('rooms').child($code).child('meta/owner').val() == auth.uid)",
+            "text": { ".validate": "newData.isString() && newData.val().length <= 300" }
+          }
+        }
+      }
+    },
+    "public_rooms": {
+      ".read": "auth != null && auth.token.email_verified == true",
+      "$code": {
+        ".write": "auth != null && (root.child('rooms').child($code).child('meta/owner').val() == auth.uid || newData.child('owner').val() == auth.uid && !data.exists())"
+      }
+    }
+  }
+}

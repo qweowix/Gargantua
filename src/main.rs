@@ -6,7 +6,9 @@ mod cloud;
 mod connect;
 mod covers;
 mod discord;
+mod dna;
 mod download;
+mod graph;
 mod fx;
 mod home;
 mod journal;
@@ -14,6 +16,7 @@ mod local;
 mod lyrics;
 mod media;
 mod model;
+mod musicbrainz;
 mod player;
 mod qr;
 #[cfg(test)]
@@ -59,6 +62,13 @@ macro_rules! tr {
 }
 
 mod remote;
+mod rooms;
+mod roomsync;
+mod taste;
+mod tview;
+mod explore;
+mod universe;
+mod uview;
 
 fn deps_text() -> String {
     let ok = |n: &str| match (util::find_bin(n).is_some(), LANG.load(Ordering::Relaxed)) {
@@ -279,6 +289,22 @@ struct App {
     home_similar_model: Rc<VecModel<Card>>,
     home_quick_model: Rc<VecModel<TrackItem>>,
     save_timer: Timer,
+    /// раз в 15 минут — разобрать Music DNA у треков, звук которых уже лёг на диск
+    dna_timer: Timer,
+    /// экран «Вселенная»
+    uni: uview::View,
+    /// граф устарел, пока строился новый — перестроить ещё раз
+    uni_dirty: bool,
+    uni_timer: Timer,
+    /// показать узел, как только вселенная построится (пришло из комнаты)
+    uni_focus: Option<String>,
+    /// комната совместного прослушивания
+    room: roomsync::RoomLink,
+    room_timer: Timer,
+    room_pause_after_load: bool,
+    /// отпечаток вкуса и граф, из которого он посчитан
+    fp: Option<(taste::Fingerprint, graph::Graph)>,
+    fp_busy: bool,
     cloud_timer: Timer,
     push_timer: Timer,
     syncing: bool,
@@ -819,6 +845,7 @@ impl App {
         ui.set_has_artist_photo(false);
         let top: Vec<TrackItem> = ar.top.iter().map(|t| self.item(t)).collect();
         self.art_top_model.set_vec(top);
+        universe::remember_similar(&ar.name, ar.similar.iter().map(|c| c.title.clone()).collect());
         for (m, cards) in [(&self.art_albums_model, &ar.albums), (&self.art_singles_model, &ar.singles), (&self.art_similar_model, &ar.similar)] {
             m.set_vec(cards.iter().map(|c| self.card(c)).collect::<Vec<_>>());
         }
@@ -1601,6 +1628,179 @@ impl App {
         });
     }
 
+    /// Треки библиотеки и статистики, звук которых уже на диске (кэш, скачанное, локальные файлы) —
+    /// в очередь анализа Music DNA. Ради анализа ничего не качаем
+    fn dna_scan(&self) {
+        let mut seen = HashSet::new();
+        let dir = self.dl_dir();
+        let tracks = self.stats.tracks.values().map(|s| &s.track).chain(self.store.playlists.iter().flat_map(|p| p.tracks.iter()));
+        let mut jobs = Vec::new();
+        for t in tracks {
+            let k = key(t);
+            if !seen.insert(k.clone()) || dna::get(&k).is_some() {
+                continue;
+            }
+            let file = if t.src == Src::Lc {
+                Some(std::path::PathBuf::from(&t.url)).filter(|p| p.is_file())
+            } else {
+                Some(dir.join(download::file_name(t))).filter(|p| p.is_file()).or_else(|| cache::path_of(&k))
+            };
+            if let Some(f) = file {
+                jobs.push((k, f));
+            }
+        }
+        if !jobs.is_empty() {
+            crate::logln!("Music DNA: в очереди {} треков", jobs.len());
+            dna::analyze_files(jobs, |_| {});
+        }
+    }
+
+    // ── Вселенная ──
+
+    /// Всё, из чего строится граф: треки из статистики и плейлистов, DNA, MusicBrainz, «похожие» YouTube
+    fn uni_input(&self) -> graph::Input {
+        let mut seen = HashSet::new();
+        let mut tracks = Vec::new();
+        for s in self.stats.tracks.values() {
+            if seen.insert(key(&s.track)) {
+                tracks.push((s.track.clone(), s.ms, s.plays));
+            }
+        }
+        for p in &self.store.playlists {
+            for t in &p.tracks {
+                if seen.insert(key(t)) {
+                    tracks.push((t.clone(), 0, 0));
+                }
+            }
+        }
+        let playlists = self.store.playlists.iter().map(|p| p.tracks.iter().map(key).collect()).collect();
+        let (mb_artists, mb_recs) = musicbrainz::snapshot();
+        graph::Input { tracks, playlists, dna: dna::all(), mb_artists, mb_recs, yt_similar: universe::similar_cache() }
+    }
+
+    /// Граф и раскладка — в фоне: на тысячах треков это доли секунды, но UI ждать не должен
+    fn uni_build(&mut self) {
+        if self.uni.building {
+            self.uni_dirty = true;
+            return;
+        }
+        self.uni.building = true;
+        self.ui.global::<Uni>().set_busy(true);
+        let inp = self.uni_input();
+        std::thread::spawn(move || {
+            let t = std::time::Instant::now();
+            let u = universe::Universe::new(graph::Graph::build(&inp));
+            crate::logln!("вселенная: {} узлов, {} связей за {} мс", u.g.nodes.len(), u.g.edges.len(), t.elapsed().as_millis());
+            post(move |a| {
+                a.uni.building = false;
+                a.ui.global::<Uni>().set_busy(false);
+                a.uni.set(&a.ui, u);
+                if let Some(id) = a.uni_focus.take().and_then(|n| a.uni.find_name(&n)) {
+                    fn tick() {
+                        with(|a| a.uni.tick(&a.ui));
+                    }
+                    a.uni.fly(&a.ui, id, tick);
+                }
+                if std::mem::take(&mut a.uni_dirty) {
+                    a.uni_build();
+                }
+            });
+        });
+    }
+
+    /// Пришли новые связи — перестроим не чаще раза в 6 с
+    fn uni_soon(&mut self) {
+        if self.uni_timer.running() {
+            return;
+        }
+        self.uni_timer.start(TimerMode::SingleShot, Duration::from_secs(6), || {
+            with(|a| {
+                if a.ui.get_page() == "universe" {
+                    a.uni_build();
+                }
+            });
+        });
+    }
+
+    /// «Подтянуть связи»: «похожие» из YouTube Music для главных артистов, потом MusicBrainz —
+    /// артисты (жанры, участники) и записи (продюсеры, музыканты, альбом, лейбл)
+    fn uni_fetch(&mut self) {
+        let Some(u) = &self.uni.u else { return };
+        let mut arts: Vec<(u64, String)> = u.g.nodes.iter().filter(|n| n.kind == graph::Kind::Artist).map(|n| (n.listened, n.name.clone())).collect();
+        arts.sort_by(|a, b| b.0.cmp(&a.0));
+        let artists: Vec<String> = arts.into_iter().take(80).map(|a| a.1).collect();
+        let mut recs: Vec<(u64, Track)> = u.g.nodes.iter().filter_map(|n| Some((n.listened, n.track.clone()?))).filter(|(_, t)| t.src != Src::Lc || !t.title.is_empty()).collect();
+        recs.sort_by(|a, b| b.0.cmp(&a.0));
+        let recs: Vec<Track> = recs.into_iter().take(400).map(|r| r.1).collect();
+        self.ui.global::<Uni>().set_mb_busy(true);
+        self.toast(&tr!(
+            "Спрашиваю YouTube Music и MusicBrainz про {} артистов и {} треков — уходят только имена и названия. Это небыстро: MusicBrainz разрешает запрос в секунду",
+            "Asking YouTube Music and MusicBrainz about {} artists and {} tracks — only names and titles are sent. It takes a while: MusicBrainz allows one request a second",
+            "Питаю YouTube Music і MusicBrainz про {} артистів і {} треків — ідуть лише імена й назви. Це неквапливо: MusicBrainz дозволяє запит на секунду",
+            "Pýtam sa YouTube Music a MusicBrainz na {} interpretov a {} skladieb — odchádzajú len mená a názvy. Chvíľu to potrvá: MusicBrainz dovolí jednu požiadavku za sekundu",
+            artists.len(),
+            recs.len()
+        ));
+        std::thread::spawn(move || {
+            let done = || post(|a| a.uni_soon());
+            universe::fetch_similar(&artists[..artists.len().min(25)], &done);
+            musicbrainz::fetch_blocking(&artists, &recs, &done);
+            post(|a| {
+                a.ui.global::<Uni>().set_mb_busy(false);
+                a.uni_build();
+            });
+        });
+    }
+
+    // ── Мой вкус ──
+
+    /// Отпечаток за выбранный период — в фоне (граф + расчёт)
+    fn taste_build(&mut self) {
+        if self.fp_busy {
+            return;
+        }
+        self.fp_busy = true;
+        let t = self.ui.global::<Taste>();
+        t.set_busy(true);
+        let (from, to) = taste::period(t.get_period());
+        let inp = self.uni_input();
+        let st = self.stats.clone();
+        std::thread::spawn(move || {
+            let g = graph::Graph::build(&inp);
+            let fp = taste::build(&st, &g, &journal::history(3000), from, to);
+            post(move |a| {
+                a.fp_busy = false;
+                a.ui.global::<Taste>().set_busy(false);
+                tview::fill(&a.ui, &fp, &g);
+                let (arts, genres) = taste::regions(&fp);
+                a.uni.set_taste(&a.ui, &arts, &genres);
+                a.fp = Some((fp, g));
+            });
+        });
+    }
+
+    fn taste_publish(&mut self) {
+        let Some((fp, _)) = &self.fp else { return };
+        let shows = taste::shows();
+        let acc = cloud::account();
+        let name = acc.email.split('@').next().unwrap_or("?").to_string();
+        let p = taste::public(fp, taste::top_tracks(&self.stats, 40), shows, &name);
+        let code = taste::my_code(&acc.uid);
+        std::thread::spawn(move || {
+            let r = cloud::cfg().ok_or_else(|| anyhow::anyhow!("облако не настроено")).and_then(|c| cloud::put_profile(&c, &code, &serde_json::to_string(&p)?));
+            post(move |a| match r {
+                Ok(()) => {
+                    taste::set_published(true);
+                    let t = a.ui.global::<Taste>();
+                    t.set_published(true);
+                    t.set_my_code(code.as_str().into());
+                    a.toast(&tr!("Карточка вкуса опубликована: код {}", "Taste card published: code {}", "Картку смаку опубліковано: код {}", "Karta vkusu zverejnená: kód {}", code));
+                }
+                Err(e) => a.toast(&tr!("Не вышло опубликовать: {}", "Couldn't publish: {}", "Не вийшло опублікувати: {}", "Nepodarilo sa zverejniť: {}", format!("{e:#}"))),
+            });
+        });
+    }
+
     fn download(&mut self, tracks: Vec<Track>) {
         let fresh: Vec<Track> = tracks.into_iter().filter(|t| self.dl_of(t) == 0).collect();
         if fresh.is_empty() {
@@ -2189,6 +2389,12 @@ impl App {
     }
 
     fn play_now(&mut self, t: Track) {
+        // ушёл с трека в первые 30 с и раньше трети — пропуск (для отпечатка вкуса)
+        if let Some(c) = &self.current {
+            if !self.restored && self.mirror.is_none() && !self.ui.get_loading() && self.pos > 0.5 {
+                taste::track_left(&key(c), self.pos < 30.0 && (self.dur <= 0.0 || self.pos < self.dur / 3.0));
+            }
+        }
         self.end_xfade();
         self.current = Some(t);
         self.refresh_notes();
@@ -2331,6 +2537,9 @@ impl App {
 
     fn advance(&mut self) {
         if self.conn_cmd("next", serde_json::Value::Null) {
+            return;
+        }
+        if self.room_next() {
             return;
         }
         if self.upnext.is_empty() && self.repeat > 0 && !self.source.is_empty() {
@@ -2665,6 +2874,8 @@ impl App {
                 self.maybe_xfade();
             }
             // таймер сна «после этого трека»: следующий встаёт в плеер на паузе
+            // в комнате следующий трек даёт общая очередь
+            Ev::Ended(tok) if tok == cur && self.room_ended() => {}
             Ev::Ended(tok) if tok == cur && self.sleep_mode == 4 => {
                 self.set_sleep(0);
                 self.advance_paused();
@@ -4327,6 +4538,16 @@ fn main() -> Result<(), slint::PlatformError> {
         home_similar_model: home_similar_model.clone(),
         home_quick_model: home_quick_model.clone(),
         save_timer: Timer::default(),
+        dna_timer: Timer::default(),
+        uni: uview::View::default(),
+        uni_dirty: false,
+        uni_timer: Timer::default(),
+        uni_focus: None,
+        room: Default::default(),
+        room_timer: Timer::default(),
+        room_pause_after_load: false,
+        fp: None,
+        fp_busy: false,
         cloud_timer: Timer::default(),
         push_timer: Timer::default(),
         syncing: false,
@@ -4766,7 +4987,299 @@ fn main() -> Result<(), slint::PlatformError> {
             a.save();
         });
     });
+    // ── Вселенная ──
+    {
+        fn tick() {
+            with(|a| a.uni.tick(&a.ui));
+        }
+        let uni = ui.global::<Uni>();
+        uni.on_opened(|| {
+            with(|a| a.uni_build());
+        });
+        uni.on_wheel(|dy, x, y, w, h| {
+            with(|a| a.uni.wheel(&a.ui, dy, x, y, w, h));
+        });
+        uni.on_panned(|| {});
+        uni.on_pick(|id| {
+            with(|a| a.uni.pick(&a.ui, id));
+        });
+        uni.on_blank(|| {
+            with(|a| a.uni.blank(&a.ui));
+        });
+        uni.on_fly(|id| {
+            with(|a| a.uni.fly(&a.ui, id, tick));
+        });
+        uni.on_drag(|id, dx, dy| {
+            with(|a| a.uni.drag(&a.ui, id, dx, dy));
+        });
+        uni.on_search(|q| {
+            with(|a| a.uni.search(&a.ui, &q));
+        });
+        uni.on_toggle_kind(|k| {
+            with(|a| a.uni.toggle_kind(&a.ui, k));
+        });
+        uni.on_toggle_origin(|k| {
+            with(|a| a.uni.toggle_origin(&a.ui, k));
+        });
+        uni.on_play(|id| {
+            with(|a| {
+                let q = a.uni.tracks_of(id as usize);
+                if !q.is_empty() {
+                    a.play_queue(q, 0);
+                }
+            });
+        });
+        uni.on_dna(|id| {
+            with(|a| a.uni.dna_open(&a.ui, id));
+        });
+        uni.on_dna_compare(|| {
+            with(|a| a.uni.dna_compare(&a.ui));
+        });
+        uni.on_dna_close(|| {
+            with(|a| a.uni.dna_close(&a.ui));
+        });
+        uni.on_bridge_from(|id| {
+            with(|a| a.uni.bridge_end(&a.ui, id, true));
+        });
+        uni.on_bridge_to(|id| {
+            with(|a| a.uni.bridge_end(&a.ui, id, false));
+        });
+        uni.on_bridge_run(|| {
+            with(|a| a.uni.bridge_run(&a.ui));
+        });
+        uni.on_bridge_rel(|i| {
+            with(|a| a.uni.bridge_rel(&a.ui, i));
+        });
+        uni.on_bridge_show(|i| {
+            with(|a| a.uni.bridge_show(&a.ui, i));
+        });
+        uni.on_fetch(|| {
+            with(|a| a.uni_fetch());
+        });
+        uni.on_fit(|| {
+            with(|a| a.uni.fit_anim(&a.ui, tick));
+        });
+    }
+    // ── Мой вкус ──
+    {
+        let t = ui.global::<Taste>();
+        t.set_share(std::rc::Rc::new(VecModel::from(taste::shows().to_vec())).into());
+        t.set_published(taste::published());
+        t.set_my_code(taste::my_code(&cloud::account().uid).as_str().into());
+        t.on_opened(|| {
+            with(|a| a.taste_build());
+        });
+        t.on_set_period(|i| {
+            with(|a| {
+                a.ui.global::<Taste>().set_period(i);
+                a.taste_build();
+            });
+        });
+        t.on_toggle_share(|i| {
+            with(|a| {
+                let mut s = taste::shows();
+                if let Some(x) = s.get_mut(i as usize) {
+                    *x = !*x;
+                }
+                taste::set_shows(s);
+                a.ui.global::<Taste>().set_share(std::rc::Rc::new(VecModel::from(s.to_vec())).into());
+            });
+        });
+        t.on_publish(|| {
+            with(|a| a.taste_publish());
+        });
+        t.on_unpublish(|| {
+            with(|a| {
+                let code = taste::my_code(&cloud::account().uid);
+                taste::set_published(false);
+                a.ui.global::<Taste>().set_published(false);
+                std::thread::spawn(move || {
+                    if let Some(c) = cloud::cfg() {
+                        if let Err(e) = cloud::delete_profile(&c, &code) {
+                            crate::logln!("профиль: {e:#}");
+                        }
+                    }
+                });
+            });
+        });
+        t.on_copy_code(|| {
+            with(|a| {
+                a.ui.invoke_copy_text(taste::my_code(&cloud::account().uid).into());
+                a.toast(&tr!("Код скопирован", "Code copied", "Код скопійовано", "Kód skopírovaný"));
+            });
+        });
+        t.on_compare(|code| {
+            let code = code.trim().to_uppercase();
+            std::thread::spawn(move || {
+                let r = cloud::cfg().ok_or_else(|| anyhow::anyhow!("облако не настроено")).and_then(|c| cloud::get_profile(&c, &code));
+                post(move |a| {
+                    let t = a.ui.global::<Taste>();
+                    match r.map(|s| serde_json::from_str::<taste::Public>(&s)) {
+                        Ok(Ok(p)) => match &a.fp {
+                            Some((fp, g)) => {
+                                let lib: HashSet<String> = a.stats.tracks.keys().cloned().chain(a.store.playlists.iter().flat_map(|p| p.tracks.iter().map(key))).collect();
+                                tview::fill_compare(&a.ui, fp, &p, &lib, g);
+                            }
+                            None => t.set_cmp_error(tr!("Сначала дождись своего отпечатка", "Wait for your own fingerprint first", "Спершу дочекайся свого відбитка", "Najprv počkaj na svoj odtlačok").into()),
+                        },
+                        Ok(Err(_)) => t.set_cmp_error(tr!("Карточка повреждена", "The card is broken", "Картка пошкоджена", "Karta je poškodená").into()),
+                        Err(e) if format!("{e:#}").contains("404") => t.set_cmp_error(tr!("Карточки с таким кодом нет — друг её ещё не опубликовал", "No card with this code — your friend hasn't published it yet", "Картки з таким кодом немає — друг її ще не опублікував", "Karta s týmto kódom neexistuje — priateľ ju ešte nezverejnil").into()),
+                        Err(e) => t.set_cmp_error(format!("{e:#}").into()),
+                    }
+                });
+            });
+        });
+        t.on_show_universe(|| {
+            with(|a| {
+                a.ui.set_page("universe".into());
+                if a.uni.u.is_none() {
+                    a.uni_build();
+                }
+                a.uni.toggle_taste(&a.ui, true);
+            });
+        });
+    }
+
+    // ── Комнаты ──
+    {
+        let r = ui.global::<Rooms>();
+        r.set_available(connect::db().is_some() && cloud::cfg().is_some());
+        r.on_opened(|| {
+            with(|a| {
+                if !a.room_on() {
+                    a.room_publics();
+                }
+            });
+        });
+        r.on_create(|| {
+            with(|a| {
+                let r = a.room_rooms();
+                let name = r.get_new_name().to_string();
+                let name = if name.trim().is_empty() { tr!("Комната {}", "{}'s room", "Кімната {}", "Miestnosť {}", cloud::account().email.split('@').next().unwrap_or("?")) } else { name };
+                let (p, q, c) = (r.get_new_public(), r.get_new_queue_all(), r.get_new_control_all());
+                r.set_busy(true);
+                std::thread::spawn(move || {
+                    let res = rooms::create(&name, p, q, c);
+                    post(move |a| {
+                        a.room_rooms().set_busy(false);
+                        match res {
+                            Ok(code) => a.room_enter(code),
+                            Err(e) => a.room_rooms().set_error(roomsync::room_err(&e).into()),
+                        }
+                    });
+                });
+            });
+        });
+        r.on_join(|code| {
+            with(|a| a.room_enter(code.to_string()));
+        });
+        r.on_leave(|| {
+            with(|a| a.room_leave());
+        });
+        r.on_copy_code(|| {
+            with(|a| {
+                let code = a.room_rooms().get_code();
+                a.ui.invoke_copy_text(code);
+                a.toast(&tr!("Код комнаты скопирован — отправь его друзьям", "Room code copied — send it to your friends", "Код кімнати скопійовано — надішли його друзям", "Kód miestnosti skopírovaný — pošli ho priateľom"));
+            });
+        });
+        r.on_add_current(|| {
+            with(|a| {
+                if let Some(t) = a.current.clone() {
+                    a.room_add(t);
+                }
+            });
+        });
+        r.on_vote(|id, on| {
+            with(|a| a.room_bg(move || rooms::vote(&id, on)));
+        });
+        r.on_remove(|id| {
+            with(|a| a.room_bg(move || rooms::unqueue(&id)));
+        });
+        r.on_move(|id, to| {
+            with(|a| a.room_bg(move || rooms::requeue(&id, to.max(0) as usize)));
+        });
+        r.on_say(|text| {
+            with(|a| {
+                a.room_rooms().set_msg(slint::SharedString::new());
+                let k = a.current.as_ref().map(key).unwrap_or_default();
+                a.room_bg(move || rooms::say(&text, "", &k));
+            });
+        });
+        r.on_react(|e| {
+            with(|a| {
+                let k = a.current.as_ref().map(key).unwrap_or_default();
+                a.room_bg(move || rooms::say("", &e, &k));
+            });
+        });
+        r.on_settings(|p, q, c| {
+            with(|a| a.room_bg(move || rooms::set_meta(p, q, c)));
+        });
+        r.on_kick(|uid| {
+            with(|a| a.room_bg(move || rooms::kick(&uid)));
+        });
+        r.on_share_taste(|| {
+            with(|a| match &a.fp {
+                Some((fp, _)) => {
+                    let line = taste::one_liner(fp);
+                    a.room_bg(move || rooms::say(&line, "", ""));
+                }
+                None => {
+                    a.taste_build();
+                    a.toast(&tr!("Считаю твой отпечаток — нажми ещё раз через пару секунд", "Computing your fingerprint — press again in a moment", "Рахую твій відбиток — натисни ще раз за пару секунд", "Počítam tvoj odtlačok — stlač znova o chvíľu"));
+                }
+            });
+        });
+        r.on_focus(|name| {
+            with(|a| {
+                a.ui.set_page("universe".into());
+                if let Some(id) = a.uni.find_name(&name) {
+                    fn tick() {
+                        with(|a| a.uni.tick(&a.ui));
+                    }
+                    a.uni.fly(&a.ui, id, tick);
+                } else {
+                    a.uni_focus = Some(name.to_string());
+                    a.uni_build();
+                }
+            });
+        });
+    }
+    {
+        let uni = ui.global::<Uni>();
+        uni.on_to_room(|id| {
+            with(|a| {
+                if let Some(t) = a.uni.tracks_of(id as usize).into_iter().next() {
+                    a.room_add(t);
+                }
+            });
+        });
+        uni.on_show_all(|id| {
+            with(|a| {
+                if let Some(n) = a.uni.node_name(id) {
+                    a.room_bg(move || rooms::say(&n, "🪐", ""));
+                }
+            });
+        });
+        uni.on_taste(|on| {
+            with(|a| {
+                if on && !a.uni.has_taste() {
+                    a.taste_build();
+                }
+                a.uni.toggle_taste(&a.ui, on);
+            });
+        });
+    }
     ui.set_app_version(update::VERSION.into());
+    // Music DNA: через 45 с после старта (не мешаем запуску), дальше раз в 15 минут
+    Timer::single_shot(Duration::from_secs(45), || {
+        with(|a| {
+            a.dna_scan();
+            a.dna_timer.start(TimerMode::Repeated, Duration::from_secs(900), || {
+                with(|a| a.dna_scan());
+            });
+        });
+    });
     // новая версия: спрашиваем GitHub один раз за запуск, не мешая старту
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_secs(6));
