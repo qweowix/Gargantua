@@ -48,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.IntOffset
 import app.blackhole.ui.LocalBottomPad
+import app.blackhole.ui.CoverPalette
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -60,6 +61,12 @@ import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -112,7 +119,7 @@ class MainActivity : ComponentActivity() {
         }
         shared(intent)
         // OverlayHost — над всем: туда приезжают стеклянные меню и диалоги
-        setContent { BhTheme(vm.theme) { CompositionLocalProvider(LocalLite provides vm.lite) { OverlayHost { Root(vm) } } } }
+        setContent { CoverPalette(vm); BhTheme(vm.theme, vm.coverAccent.takeIf { vm.coverTheme }) { CompositionLocalProvider(LocalLite provides vm.lite) { OverlayHost { Root(vm) } } } }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -175,8 +182,16 @@ private fun Root(vm: AppState) {
         AppBackground(vm.current?.cover ?: "", Modifier.fillMaxSize().glassSource(bg))
         Box(Modifier.fillMaxSize().glassSource(page)) {
             CompositionLocalProvider(LocalBottomPad provides bottomPad, LocalBackdrop provides if (vm.lite) null else bg) {
-                Box(Modifier.fillMaxSize()) {
-                    when (val s = vm.screen) {
+                // переходы как в iOS: вглубь — новый экран въезжает справа, старый уходит чуть влево;
+                // «назад» — наоборот; между вкладками — мягкий сдвиг в сторону вкладки с проявлением
+                androidx.compose.animation.AnimatedContent(
+                    targetState = Nav(vm.screen, vm.stack.size),
+                    contentKey = { it.screen },
+                    transitionSpec = { navTransition(initialState, targetState) },
+                    modifier = Modifier.fillMaxSize(),
+                    label = "screen",
+                ) { nav ->
+                    when (val s = nav.screen) {
                         Screen.Home -> HomeScreen(vm)
                         Screen.Search -> SearchScreen(vm)
                         Screen.Library -> LibraryScreen(vm)
@@ -272,6 +287,28 @@ private fun BottomNav(vm: AppState) {
                     Text(label, color = c, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 }
             }
+        }
+    }
+}
+
+/** Экран и глубина стека в момент перехода — по ним понятно, вглубь мы идём, назад или по вкладкам */
+private data class Nav(val screen: Screen, val depth: Int)
+
+private val TABS = listOf(Screen.Home, Screen.Search, Screen.Library, Screen.Account)
+
+private fun navTransition(from: Nav, to: Nav): androidx.compose.animation.ContentTransform {
+    val slide = androidx.compose.animation.core.spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = 1f, stiffness = 420f)
+    val fade = androidx.compose.animation.core.tween<Float>(220)
+    return when {
+        to.depth > from.depth -> (slideInHorizontally(slide) { it } + fadeIn(fade)) togetherWith
+            (slideOutHorizontally(slide) { -it / 4 } + fadeOut(androidx.compose.animation.core.tween(260)))
+        to.depth < from.depth -> ((slideInHorizontally(slide) { -it / 4 } + fadeIn(fade)) togetherWith
+            (slideOutHorizontally(slide) { it } + fadeOut(androidx.compose.animation.core.tween(260)))).apply { targetContentZIndex = -1f }
+        else -> {
+            val dir = (TABS.indexOf(to.screen) - TABS.indexOf(from.screen)).coerceIn(-1, 1)
+            (slideInHorizontally(slide) { dir * it / 10 } + fadeIn(androidx.compose.animation.core.tween(240, 60)) +
+                scaleIn(androidx.compose.animation.core.tween(280), initialScale = 0.98f)) togetherWith
+                (slideOutHorizontally(slide) { -dir * it / 10 } + fadeOut(androidx.compose.animation.core.tween(160)))
         }
     }
 }

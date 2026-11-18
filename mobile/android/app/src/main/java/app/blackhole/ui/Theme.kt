@@ -5,6 +5,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -33,7 +34,7 @@ object Pal {
     val faint = Color(0xFF6E6784)
 }
 
-val LocalAccent = staticCompositionLocalOf { ACCENTS[0] }
+val LocalAccent = compositionLocalOf { ACCENTS[0] }
 
 /** Полупрозрачная тёмная подложка плавающих панелей (мини-плеер, нижнее меню, круглые кнопки на обложках) */
 val Glass = Color(0xE01C1A24)
@@ -44,8 +45,14 @@ val LocalBottomPad = compositionLocalOf { 16.dp }
 fun Accent.brush() = Brush.linearGradient(listOf(c1, c2))
 
 @Composable
-fun BhTheme(theme: Int, content: @Composable () -> Unit) {
-    val a = ACCENTS.getOrElse(theme) { ACCENTS[0] }
+fun BhTheme(theme: Int, cover: Accent? = null, content: @Composable () -> Unit) {
+    val base = cover ?: ACCENTS.getOrElse(theme) { ACCENTS[0] }
+    // смена трека — цвета перетекают, а не щёлкают
+    val spec = androidx.compose.animation.core.tween<Color>(700)
+    val c1 by androidx.compose.animation.animateColorAsState(base.c1, spec, label = "c1")
+    val c2 by androidx.compose.animation.animateColorAsState(base.c2, spec, label = "c2")
+    val deep by androidx.compose.animation.animateColorAsState(base.deep, spec, label = "deep")
+    val a = Accent(base.name, c1, c2, deep)
     val scheme = darkColorScheme(
         primary = a.c1,
         secondary = a.c2,

@@ -28,3 +28,17 @@ fun AppBackground(cover: String, modifier: Modifier) {
         )
     }
 }
+
+/** Считает тему по обложке играющего трека. Нет обложки — палитру сбрасываем, остаётся выбранная тема */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+fun CoverPalette(vm: app.blackhole.AppState) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val cover = vm.current?.cover.orEmpty()
+    androidx.compose.runtime.LaunchedEffect(cover, vm.coverTheme) {
+        if (!vm.coverTheme) return@LaunchedEffect
+        if (cover.isEmpty()) { vm.coverAccent = null; return@LaunchedEffect }
+        // сбой загрузки — оставляем прошлую палитру, чем мигать обычной темой
+        runCatching { coverPalette(ctx, cover) }.getOrNull()?.let { vm.coverAccent = it }
+    }
+}

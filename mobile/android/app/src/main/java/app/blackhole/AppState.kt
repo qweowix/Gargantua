@@ -85,7 +85,21 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     fun setThemeId(i: Int) {
         theme = i
-        prefs.edit { putInt("theme", i) }
+        // выбрал тему руками — цвета из обложки выключаются, как на ПК
+        coverTheme = false
+        prefs.edit { putInt("theme", i); putBoolean("cover_theme", false) }
+    }
+
+    /** цвета темы берутся из обложки играющего трека (по умолчанию включено) */
+    var coverTheme by mutableStateOf(prefs.getBoolean("cover_theme", true))
+        private set
+
+    /** палитра из обложки текущего трека; null — ещё не посчитана или трека нет */
+    var coverAccent by mutableStateOf<app.blackhole.ui.Accent?>(null)
+
+    fun setCoverThemeOn(on: Boolean) {
+        coverTheme = on
+        prefs.edit { putBoolean("cover_theme", on) }
     }
 
     fun setAutoplayOn(on: Boolean) {

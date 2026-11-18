@@ -1,5 +1,6 @@
 package app.blackhole.ui
 
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.runtime.CompositionLocalProvider
@@ -261,7 +262,7 @@ fun HomeScreen(vm: AppState) {
             item { Section(tr("Твои плейлисты", "Your playlists", "Твої плейлисти", "Tvoje playlisty")) }
             item {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items(vm.playlists, key = { it.name }) { p -> PlaylistTile(p, Modifier.width(150.dp)) { vm.go(Screen.Pl(p.name)) } }
+                    items(vm.playlists, key = { it.name }) { p -> PlaylistTile(p, Modifier.width(150.dp).animateItem()) { vm.go(Screen.Pl(p.name)) } }
                 }
             }
         }
@@ -366,7 +367,7 @@ fun SearchScreen(vm: AppState) {
         val list = vm.shownResults
         if (list.isNotEmpty()) item { Section(tr("Треки", "Tracks", "Треки", "Skladby")) }
         itemsIndexed(list, key = { i, t -> "$i${t.key}" }) { i, t ->
-            TrackRow(vm, t, { vm.play(list, i) })
+            Box(Modifier.animateItem()) { TrackRow(vm, t, { vm.play(list, i) }) }
             // поиск по строчке: под треком — сама найденная строка
             if (vm.filter == 4) vm.lyrHits.getOrNull(i)?.let { Dim("«${it.line}»", Modifier.padding(start = 56.dp)) }
         }
@@ -472,7 +473,7 @@ fun TrackList(vm: AppState, title: String, sub: String, cover: String, tracks: L
                 )
             }
             items(shown, key = { (i, t) -> "$i${t.key}" }) { (i, t) ->
-                TrackRow(vm, t, { vm.play(tracks, i) }, inPlaylist = playlist, number = if (numbered) i + 1 else null)
+                Box(Modifier.animateItem()) { TrackRow(vm, t, { vm.play(tracks, i) }, inPlaylist = playlist, number = if (numbered) i + 1 else null) }
             }
         }
         FastScroll(list)
@@ -551,15 +552,36 @@ fun AlbumScreen(vm: AppState, id: String) {
         album = vm.loadAlbum(id)
         failed = album == null
     }
-    val al = album
-    when {
-        al != null -> TrackList(vm, al.title, al.sub, al.cover, al.tracks, numbered = true) {
+    Loaded(album, failed, tr("Не загрузилось", "Couldn't load", "Не завантажилося", "Nenačítalo sa")) { al ->
+        TrackList(vm, al.title, al.sub, al.cover, al.tracks, numbered = true) {
             RoundButton(Icons.Rounded.Add, tr("Сохранить как плейлист", "Save as playlist", "Зберегти як плейлист", "Uložiť ako playlist")) { vm.go(Screen.Pl(vm.createPlaylist(al.title, al.tracks))) }
         }
-        failed -> Dim(tr("Не загрузилось", "Couldn't load", "Не завантажилося", "Nenačítalo sa"), Modifier.statusBarsPadding())
-        else -> Loading()
     }
 }
+
+/** Загрузка → содержимое: крутилка гаснет, экран мягко проявляется и чуть поднимается, а не выскакивает */
+@Composable
+fun <T : Any> Loaded(value: T?, failed: Boolean, failText: String, content: @Composable (T) -> Unit) {
+    androidx.compose.animation.AnimatedContent(
+        targetState = value ?: if (failed) FAILED else LOADING,
+        transitionSpec = {
+            (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(320, 40)) +
+                androidx.compose.animation.slideInVertically(androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 300f)) { it / 24 }) togetherWith
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140))
+        },
+        contentKey = { if (it === LOADING || it === FAILED) it else 0 },
+        label = "loaded",
+    ) { v ->
+        when {
+            v === LOADING -> Loading()
+            v === FAILED -> Dim(failText, Modifier.statusBarsPadding())
+            else -> @Suppress("UNCHECKED_CAST") content(v as T)
+        }
+    }
+}
+
+private val LOADING = Any()
+private val FAILED = Any()
 
 @Composable
 fun Loading() {
@@ -575,7 +597,12 @@ fun ArtistScreen(vm: AppState, id: String, name: String) {
         artist = vm.loadArtist(id, name)
         failed = artist == null
     }
-    val ar = artist ?: return if (failed) Dim(tr("Артист не нашёлся", "Artist not found", "Артиста не знайдено", "Interpret sa nenašiel"), Modifier.statusBarsPadding()) else Loading()
+    Loaded(artist, failed, tr("Артист не нашёлся", "Artist not found", "Артиста не знайдено", "Interpret sa nenašiel")) { ar -> ArtistBody(vm, ar) }
+}
+
+@UnstableApi
+@Composable
+private fun ArtistBody(vm: AppState, ar: Artist) {
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = LocalBottomPad.current)) {
             item {
@@ -809,14 +836,19 @@ fun SettingsScreen(vm: AppState) {
                     ACCENTS.forEachIndexed { i, ac ->
                         Column(Modifier.width(56.dp).pressable { vm.setThemeId(i) }, horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(
-                                Modifier.size(46.dp).then(if (vm.theme == i) Modifier.border(2.dp, Color.White, CircleShape) else Modifier).padding(4.dp)
+                                Modifier.size(46.dp).then(if (vm.theme == i && !vm.coverTheme) Modifier.border(2.dp, Color.White, CircleShape) else Modifier).padding(4.dp)
                                     .shadow(8.dp, CircleShape).clip(CircleShape).background(ac.brush()),
                             )
-                            Text(ac.name(), color = if (vm.theme == i) Color.White else Pal.dim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 5.dp))
+                            Text(ac.name(), color = if (vm.theme == i && !vm.coverTheme) Color.White else Pal.dim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 5.dp))
                         }
                     }
                 }
             }
+            GroupDivider()
+            GroupRow(
+                tr("Цвета из обложки", "Colours from the cover", "Кольори з обкладинки", "Farby z obalu"),
+                tr("Тема подстраивается под обложку того, что играет. Выберешь тему выше — выключится.", "The theme follows the cover of what's playing. Picking a theme above turns it off.", "Тема підлаштовується під обкладинку того, що грає. Обереш тему вище — вимкнеться.", "Téma sa prispôsobí obalu toho, čo hrá. Keď vyberieš tému vyššie, vypne sa."),
+            ) { Switch(vm.coverTheme, { vm.setCoverThemeOn(it) }, colors = sw) }
             GroupDivider()
             GroupRow(
                 tr("Лайт-режим", "Lite mode", "Лайт-режим", "Lite režim"),

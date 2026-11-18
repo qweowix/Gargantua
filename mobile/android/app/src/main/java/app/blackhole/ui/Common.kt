@@ -482,7 +482,8 @@ fun bigCover(url: String): String = url
 @Composable
 fun LikedArt(modifier: Modifier) {
     BoxWithConstraints(
-        modifier.background(Brush.linearGradient(listOf(Color(0xFF3B1D8F), Color(0xFF7C3AED), Color(0xFFDB2777)))),
+        // как на ПК: градиент темы — меняется вместе с темой и с цветами из обложки
+        modifier.background(LocalAccent.current.let { Brush.linearGradient(listOf(it.deep, it.c1, it.c2)) }),
         contentAlignment = Alignment.Center,
     ) {
         Icon(Icons.Rounded.Favorite, null, tint = Color.White, modifier = Modifier.size(min(maxWidth, maxHeight) * 0.42f))

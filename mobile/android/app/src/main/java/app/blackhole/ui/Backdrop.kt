@@ -12,7 +12,11 @@ import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.graphics.Color
+import kotlin.math.atan2
 import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.pow
@@ -107,4 +111,66 @@ suspend fun backdrop(ctx: Context, url: String): Backdrop? = withContext(Dispatc
     }
     val gain = bg.gain()
     Backdrop(bg.lift(gain).bitmap(), blob.lift(gain).bitmap())
+}
+
+private fun hsv(h: Float, s: Float, v: Float) = Color.hsv(((h % 360f) + 360f) % 360f, s, v)
+
+private val MONO = Accent({ "" }, Color(0xFFA1A1AA), Color(0xFFE4E4E7), Color(0xFF1F1F23))
+
+/** Тема по обложке — тот же алгоритм, что covers::palette на ПК: самый весомый насыщенный оттенок
+ *  и второй, далёкий от него. Чёрно-белая обложка — серая тема, как «Моно» */
+fun palette(img: Bitmap): Accent {
+    val bm = Bitmap.createScaledBitmap(img, 48, 48, true)
+    val a = IntArray(48 * 48)
+    bm.getPixels(a, 0, 48, 0, 0, 48, 48)
+    val bins = 36
+    val w = FloatArray(bins)
+    val hx = FloatArray(bins)
+    val hy = FloatArray(bins)
+    for (c in a) {
+        val r = (c shr 16 and 0xFF) / 255f
+        val g = (c shr 8 and 0xFF) / 255f
+        val b = (c and 0xFF) / 255f
+        val mx = maxOf(r, g, b)
+        val mn = minOf(r, g, b)
+        val s = if (mx > 0) (mx - mn) / mx else 0f
+        if (s < 0.2f || mx < 0.15f) continue
+        val d = mx - mn
+        val h = 60f * when (mx) {
+            r -> (((g - b) / d) % 6f + 6f) % 6f
+            g -> (b - r) / d + 2f
+            else -> (r - g) / d + 4f
+        }
+        val k = (h / 360f * bins).toInt().coerceIn(0, bins - 1)
+        val wt = s * mx
+        w[k] += wt
+        hx[k] += wt * cos(Math.toRadians(h.toDouble())).toFloat()
+        hy[k] += wt * sin(Math.toRadians(h.toDouble())).toFloat()
+    }
+    if (w.sum() / a.size < 0.04f) return MONO
+    val sm = FloatArray(bins) { w[(it + bins - 1) % bins] * 0.5f + w[it] + w[(it + 1) % bins] * 0.5f }
+    fun hue(i: Int): Float {
+        var x = 0f
+        var y = 0f
+        for (d in -1..1) {
+            val k = ((i + d) % bins + bins) % bins
+            x += hx[k]; y += hy[k]
+        }
+        return ((Math.toDegrees(atan2(y, x).toDouble()).toFloat()) + 360f) % 360f
+    }
+    val best = sm.indices.maxBy { sm[it] }
+    val h1 = hue(best)
+    fun far(i: Int) = minOf(((i - best) % bins + bins) % bins, ((best - i) % bins + bins) % bins) >= 4
+    val h2 = sm.indices.filter { far(it) && sm[it] > sm[best] * 0.05f }.maxByOrNull { sm[it] }?.let { hue(it) } ?: (h1 + 35f)
+    return Accent({ "" }, hsv(h1, 0.65f, 0.97f), hsv(h2, 0.75f, 1f), hsv(h1, 0.68f, 0.28f))
+}
+
+/** Палитра обложки по ссылке (картинка уже обычно в кэше Coil) */
+suspend fun coverPalette(ctx: Context, url: String): Accent? = withContext(Dispatchers.Default) {
+    val req = ImageRequest.Builder(ctx).data(url).size(96).allowHardware(false).build()
+    val img = (0..2).firstNotNullOfOrNull { n ->
+        if (n > 0) delay(1500L * n)
+        (SingletonImageLoader.get(ctx).execute(req) as? SuccessResult)?.image?.toBitmap()
+    } ?: return@withContext null
+    palette(img)
 }
