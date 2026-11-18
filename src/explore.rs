@@ -55,22 +55,6 @@ pub fn dna_of(g: &Graph, i: usize) -> Option<(Dna, usize)> {
     }
 }
 
-/// Связи узла: сначала факты, потом чужие алгоритмы, потом вычисленное; внутри — не-треки и сильные первыми
-pub fn relations(g: &Graph, s: usize, limit: usize) -> Vec<usize> {
-    let mut es: Vec<usize> = g.adj[s].clone();
-    let rank = |o: Origin| match o {
-        Origin::Confirmed => 0,
-        Origin::External => 1,
-        Origin::Derived => 2,
-    };
-    es.sort_by(|&a, &b| {
-        let (x, y) = (&g.edges[a], &g.edges[b]);
-        (rank(x.rel.origin()), g.nodes[g.other(a, s)].kind == Kind::Track).cmp(&(rank(y.rel.origin()), g.nodes[g.other(b, s)].kind == Kind::Track)).then(y.w.total_cmp(&x.w))
-    });
-    es.truncate(limit);
-    es
-}
-
 /// Восемь осей отпечатка 0..1 (нормировка настоящих признаков для рисования):
 /// энергия, бит, темп, яркость, шум, динамика, атаки, низ
 pub fn radar(d: &Dna) -> [f32; 8] {
@@ -137,7 +121,7 @@ pub fn bridge_rels(groups: [bool; 4]) -> HashSet<Rel> {
         .filter(|r| match r {
             Rel::YtSimilar => groups[1],
             Rel::Sound => groups[2],
-            Rel::CoPlaylist => groups[3],
+            Rel::CoPlaylist | Rel::Session => groups[3],
             _ => groups[0],
         })
         .collect()

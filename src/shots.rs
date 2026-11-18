@@ -278,6 +278,7 @@ fn ui() {
             mb_artists,
             mb_recs: [(tracks[12].key(), rec(&prod)), (tracks[36].key(), rec(&prod))].into(),
             yt_similar: [("Deftones".to_string(), vec!["Mogwai".to_string(), "Slowdive".to_string()])].into(),
+            history: Vec::new(),
         };
         let g = Graph::build(&inp);
         let fp = crate::taste::build(&st, &g, &[], 0, 0);
@@ -287,13 +288,13 @@ fn ui() {
         snap(&win, "20-universe");
         let uni_ms = frame_ms(&win);
         println!("перф: вселенная {uni_ms:.1} мс/кадр");
-        let id = |n: &str| v.find_name(n).unwrap();
-        v.pick(&ui, id("Deftones"));
+        let (deftones, massive, boc) = (v.find_name("Deftones").unwrap(), v.find_name("Massive Attack").unwrap(), v.find_name("Boards of Canada").unwrap());
+        v.select_node(&ui, deftones);
         snap(&win, "21-universe-pick");
-        v.bridge_end(&ui, id("Deftones"), true);
-        v.bridge_end(&ui, id("Massive Attack"), false);
+        v.bridge_end(&ui, deftones, true);
+        v.bridge_end(&ui, massive, false);
         snap(&win, "22-bridge");
-        v.dna_open(&ui, id("Boards of Canada"));
+        v.dna_open(&ui, boc);
         snap(&win, "23-dna");
         v.dna_close(&ui);
         crate::tview::fill(&ui, &fp, &g);
@@ -310,7 +311,7 @@ fn ui() {
         r.set_now_artist("Boards of Canada".into());
         let m = |n: &str, o: bool, s: &str| RoomMember { uid: n.into(), name: n.into(), owner: o, me: o, online: true, status: s.into() };
         r.set_members(Rc::new(VecModel::from(vec![m("ann", true, "слушает · 1:12"), m("bob", false, "слушает · 1:12")])).into());
-        let q = |t: &str, v: i32, n: bool| RoomQ { id: t.into(), title: t.into(), artist: "Mogwai".into(), by: "bob".into(), votes: v, mine: false, next: n, removable: true };
+        let q = |t: &str, v: i32, n: bool| RoomQ { id: t.into(), title: t.into(), artist: "Mogwai".into(), by: "bob".into(), votes: v, mine: false, next: n, removable: true, ..Default::default() };
         r.set_queue(Rc::new(VecModel::from(vec![q("Auto Rock", 2, true), q("Take Me Somewhere Nice", 0, false)])).into());
         let c = |n: &str, t: &str, e: &str| RoomMsg { name: n.into(), text: t.into(), emoji: e.into(), me: n == "ann", about_now: true, focus: false };
         r.set_chat(Rc::new(VecModel::from(vec![c("bob", "этот бас 🤯", ""), c("ann", "", "🔥")])).into());
@@ -830,4 +831,46 @@ fn exit_letters() {
             assert!(moved <= 12, "уход {exit}: буквы в первом кадре распада уже не на своих местах ({moved} столбцов)");
         }
     }
+}
+
+/// Вселенная на настоящих данных этого компьютера (статистика, история, DNA, MusicBrainz, похожие) —
+/// посмотреть, как она выглядит у живого человека. Плейлисты живут в облаке, тут их нет.
+/// Запуск: cargo test --release shots::universe_real -- --ignored --nocapture
+#[test]
+#[ignore]
+fn universe_real() {
+    use crate::graph::{Graph, Input};
+    let win = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    slint::platform::set_platform(Box::new(Offscreen(win.clone()))).unwrap();
+    win.set_size(slint::PhysicalSize::new(W, H));
+    let ui = AppWindow::new().unwrap();
+    ui.show().unwrap();
+    ui.set_intro_t(100_000.0);
+    ui.set_intro_gone(true);
+    slint::select_bundled_translation("").unwrap();
+    let st = crate::stats::Stats::load();
+    let (mb_artists, mb_recs) = crate::musicbrainz::snapshot();
+    let inp = Input {
+        tracks: st.tracks.values().map(|s| (s.track.clone(), s.ms, s.plays)).collect(),
+        playlists: Vec::new(),
+        dna: crate::dna::all(),
+        mb_artists,
+        mb_recs,
+        yt_similar: crate::universe::similar_cache(),
+        history: crate::journal::history(3000),
+    };
+    let t = std::time::Instant::now();
+    let u = crate::universe::Universe::new(Graph::build(&inp));
+    let lonely = u.ladj.iter().filter(|l| l.is_empty()).count();
+    println!("небо: {} звёзд, {} связей, {} туманностей, без связей {} — за {} мс", u.stars.len(), u.links.len(), u.nebulas.len(), lonely, t.elapsed().as_millis());
+    let mut v = crate::uview::View::default();
+    ui.set_page("universe".into());
+    v.set(&ui, u);
+    snap(&win, "30-real-sky");
+    println!("перф: вселенная (живые данные) {:.1} мс/кадр", frame_ms(&win));
+    v.pick(&ui, 0);
+    snap(&win, "31-real-top");
+    println!("перф: вселенная с выбором {:.1} мс/кадр", frame_ms(&win));
+    v.pick(&ui, 7);
+    snap(&win, "32-real-8th");
 }

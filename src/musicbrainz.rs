@@ -93,8 +93,18 @@ fn fresh(at: i64, empty: bool) -> bool {
     now() - at < if empty { FRESH_EMPTY } else { FRESH }
 }
 
-/// Не чаще запроса в 1.1 с на весь процесс
+/// Не чаще запроса в 1.1 с на весь процесс. «Помедленнее» (503) — ждём и пробуем ещё, до трёх раз
 fn get(path: &str, query: &[(&str, &str)]) -> Result<Value> {
+    for attempt in 0..3u64 {
+        match get_once(path, query) {
+            Err(e) if format!("{e}").contains("помедленнее") => std::thread::sleep(Duration::from_secs(3 + attempt * 4)),
+            r => return r,
+        }
+    }
+    bail!("MusicBrainz просит помедленнее")
+}
+
+fn get_once(path: &str, query: &[(&str, &str)]) -> Result<Value> {
     static LAST: Mutex<Option<Instant>> = Mutex::new(None);
     {
         let mut l = LAST.lock().unwrap();

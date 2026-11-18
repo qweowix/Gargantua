@@ -52,6 +52,8 @@ pub enum Rel {
     CoPlaylist,
     /// похожи по звуку (Music DNA)
     Sound,
+    /// слушаешь подряд: из истории прослушиваний
+    Session,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
@@ -68,24 +70,14 @@ impl Rel {
     pub fn origin(self) -> Origin {
         match self {
             Rel::YtSimilar => Origin::External,
-            Rel::CoPlaylist | Rel::Sound => Origin::Derived,
+            Rel::CoPlaylist | Rel::Sound | Rel::Session => Origin::Derived,
             _ => Origin::Confirmed,
         }
     }
 
-    pub fn source(self) -> &'static str {
-        match self {
-            Rel::Performs | Rel::Feat => "метаданные трека",
-            Rel::YtSimilar => "YouTube Music",
-            Rel::CoPlaylist => "твои плейлисты",
-            Rel::Sound => "Music DNA",
-            _ => "MusicBrainz",
-        }
-    }
-
-    pub fn all() -> [Rel; 14] {
+    pub fn all() -> [Rel; 15] {
         use Rel::*;
-        [Performs, OnAlbum, AlbumBy, Feat, Member, Collab, Producer, Engineer, Musician, Label, Genre, YtSimilar, CoPlaylist, Sound]
+        [Performs, OnAlbum, AlbumBy, Feat, Member, Collab, Producer, Engineer, Musician, Label, Genre, YtSimilar, CoPlaylist, Sound, Session]
     }
 }
 
@@ -135,6 +127,8 @@ pub struct Input {
     pub mb_recs: HashMap<String, MbRec>,
     /// артист → «Поклонникам нравится» (имена) из кэша страниц артистов
     pub yt_similar: HashMap<String, Vec<String>>,
+    /// история прослушиваний (мс от эпохи, трек) — для связи «слушаешь подряд»
+    pub history: Vec<(i64, Track)>,
 }
 
 pub fn norm(s: &str) -> String {
@@ -299,33 +293,93 @@ impl Graph {
             }
         }
 
-        // общие плейлисты: мера Жаккара по наборам плейлистов, где артист встречается
-        let mut in_pl: HashMap<usize, HashSet<usize>> = HashMap::new();
-        for (p, keys) in inp.playlists.iter().enumerate() {
-            for k in keys {
-                let Some(ti) = g.find(&format!("t:{k}")) else { continue };
-                for &e in &g.adj[ti] {
-                    if g.edges[e].rel == Rel::Performs {
-                        in_pl.entry(g.other(e, ti)).or_default().insert(p);
+        // общие плейлисты. Плейлистов обычно немного, и наивная мера склеивала всех со всеми (две трети пар
+        // «в тех же двух плейлистах»). Поэтому: огромные списки («Любимые» на сотни треков) не в счёт,
+        // плейлистов должно быть хотя бы 4, пара — вместе минимум в двух и Жаккар ≥ 0.5, у артиста —
+        // не больше трёх таких соседей
+        let lists: Vec<&Vec<String>> = inp.playlists.iter().filter(|p| p.len() >= 2 && p.len() <= 150).collect();
+        if lists.len() >= 4 {
+            let mut in_pl: HashMap<usize, HashSet<usize>> = HashMap::new();
+            for (p, keys) in lists.iter().enumerate() {
+                for k in keys.iter() {
+                    let Some(ti) = g.find(&format!("t:{k}")) else { continue };
+                    for &e in &g.adj[ti] {
+                        if g.edges[e].rel == Rel::Performs {
+                            in_pl.entry(g.other(e, ti)).or_default().insert(p);
+                        }
                     }
                 }
             }
-        }
-        let arts: Vec<(&usize, &HashSet<usize>)> = in_pl.iter().filter(|(_, s)| s.len() >= 2).collect();
-        let mut co = Vec::new();
-        for i in 0..arts.len() {
-            for j in i + 1..arts.len() {
-                let both = arts[i].1.intersection(arts[j].1).count();
-                if both >= 2 {
+            let mut arts: Vec<(usize, &HashSet<usize>)> = in_pl.iter().filter(|(_, s)| s.len() >= 2 && s.len() < lists.len()).map(|(a, s)| (*a, s)).collect();
+            arts.sort_by_key(|a| a.0);
+            let mut best: HashMap<usize, Vec<(f32, usize, usize)>> = HashMap::new();
+            for i in 0..arts.len() {
+                for j in i + 1..arts.len() {
+                    let both = arts[i].1.intersection(arts[j].1).count();
+                    if both < 2 {
+                        continue;
+                    }
                     let jac = both as f32 / arts[i].1.union(arts[j].1).count() as f32;
-                    if jac >= 0.3 {
-                        co.push((*arts[i].0, *arts[j].0, jac, both));
+                    if jac >= 0.5 {
+                        best.entry(arts[i].0).or_default().push((jac, arts[j].0, both));
+                        best.entry(arts[j].0).or_default().push((jac, arts[i].0, both));
                     }
                 }
             }
+            let mut co = Vec::new();
+            for (a, mut v) in best {
+                v.sort_by(|x, y| y.0.total_cmp(&x.0).then(x.1.cmp(&y.1)));
+                for (w, b, n) in v.into_iter().take(3) {
+                    co.push((a.min(b), a.max(b), w, n));
+                }
+            }
+            co.sort_by_key(|x| (x.0, x.1));
+            co.dedup_by_key(|x| (x.0, x.1));
+            for (a, b, w, n) in co {
+                g.link(a, b, Rel::CoPlaylist, w, format!("вместе в {n} плейлистах"));
+            }
         }
-        for (a, b, w, n) in co {
-            g.link(a, b, Rel::CoPlaylist, w, format!("вместе в {n} плейлистах"));
+
+        // слушаешь подряд: соседние прослушивания разных артистов в пределах 20 минут.
+        // Сила — сколько раз подряд относительно того, как часто звучат оба (как косинус), у артиста — до 4 соседей
+        let mut hist: Vec<&(i64, Track)> = inp.history.iter().collect();
+        hist.sort_by_key(|h| h.0);
+        let main_of = |t: &Track| track_artists(t).into_iter().next().and_then(|a| g.find(&Graph::artist_id(&a)));
+        let mut plays: HashMap<usize, u32> = HashMap::new();
+        let mut pairs: HashMap<(usize, usize), u32> = HashMap::new();
+        let mut prev: Option<(i64, usize)> = None;
+        for (at, t) in hist {
+            let Some(a) = main_of(t) else { continue };
+            *plays.entry(a).or_default() += 1;
+            if let Some((pt, pa)) = prev {
+                if pa != a && at - pt <= 20 * 60_000 {
+                    *pairs.entry((pa.min(a), pa.max(a))).or_default() += 1;
+                }
+            }
+            prev = Some((*at, a));
+        }
+        let mut near: HashMap<usize, Vec<(f32, usize, u32)>> = HashMap::new();
+        for (&(a, b), &n) in &pairs {
+            if n < 2 {
+                continue;
+            }
+            let w = n as f32 / ((plays[&a] * plays[&b]) as f32).sqrt();
+            if w >= 0.12 {
+                near.entry(a).or_default().push((w, b, n));
+                near.entry(b).or_default().push((w, a, n));
+            }
+        }
+        let mut sess = Vec::new();
+        for (a, mut v) in near {
+            v.sort_by(|x, y| y.0.total_cmp(&x.0).then(x.1.cmp(&y.1)));
+            for (w, b, n) in v.into_iter().take(4) {
+                sess.push((a.min(b), a.max(b), (w * 1.5).min(1.0), n));
+            }
+        }
+        sess.sort_by_key(|x| (x.0, x.1));
+        sess.dedup_by_key(|x| (x.0, x.1));
+        for (a, b, w, n) in sess {
+            g.link(a, b, Rel::Session, w, format!("подряд {n} раз"));
         }
 
         // звук: каждому треку — до трёх самых похожих по DNA (если похожи всерьёз)
@@ -351,39 +405,6 @@ impl Graph {
             g.link(a, b, Rel::Sound, w, n);
         }
         g
-    }
-
-    /// Окружение узла: связи до depth шагов, только разрешённых типов. Возвращает узлы и рёбра
-    pub fn around(&self, from: usize, depth: usize, allow: &HashSet<Rel>, limit: usize) -> (Vec<usize>, Vec<usize>) {
-        let mut seen = HashSet::from([from]);
-        let mut nodes = vec![from];
-        let mut edges = Vec::new();
-        let mut front = vec![from];
-        for _ in 0..depth {
-            let mut next = Vec::new();
-            for &n in &front {
-                // сильные связи первыми — при обрезке по limit остаются они
-                let mut es: Vec<usize> = self.adj[n].iter().copied().filter(|&e| allow.contains(&self.edges[e].rel)).collect();
-                es.sort_by(|&x, &y| self.edges[y].w.total_cmp(&self.edges[x].w));
-                for e in es {
-                    let o = self.other(e, n);
-                    if seen.insert(o) {
-                        if nodes.len() >= limit {
-                            continue;
-                        }
-                        nodes.push(o);
-                        next.push(o);
-                    }
-                    if seen.contains(&o) && nodes.contains(&o) {
-                        edges.push(e);
-                    }
-                }
-            }
-            front = next;
-        }
-        edges.sort_unstable();
-        edges.dedup();
-        (nodes, edges)
     }
 
     /// Мост между двумя узлами: самая «сильная» цепочка не длиннее max_depth шагов.
@@ -523,13 +544,36 @@ mod tests {
         let k = |i: usize| tr[i].key();
         let inp = Input {
             tracks: tr.iter().map(|t| (t.clone(), 0, 0)).collect(),
-            // A и B вместе в трёх плейлистах, C с ними только в одном, D один
-            playlists: vec![vec![k(0), k(1)], vec![k(0), k(1), k(2)], vec![k(0), k(1)], vec![k(3)], vec![k(2)], vec![k(2)]],
+            // A и B вместе в трёх плейлистах, C с ними только в одном, D — в одном с C
+            playlists: vec![vec![k(0), k(1)], vec![k(0), k(1), k(2)], vec![k(0), k(1)], vec![k(2), k(3)]],
             ..Default::default()
         };
         let g = Graph::build(&inp);
         let co: Vec<(String, String)> = g.edges.iter().filter(|e| e.rel == Rel::CoPlaylist).map(|e| (g.nodes[e.a].name.clone(), g.nodes[e.b].name.clone())).collect();
         assert_eq!(co.len(), 1, "{co:?}");
         assert!(co[0] == ("A".into(), "B".into()) || co[0] == ("B".into(), "A".into()));
+    }
+
+    /// Все артисты во всех плейлистах — это не связь, а шум: раньше так выходили десятки тысяч рёбер
+    #[test]
+    fn coplaylist_no_hairball() {
+        let tr: Vec<Track> = (0..20).map(|i| t(&i.to_string(), "x", &format!("A{i}"))).collect();
+        let all: Vec<String> = tr.iter().map(|t| t.key()).collect();
+        let inp = Input { tracks: tr.iter().map(|t| (t.clone(), 0, 0)).collect(), playlists: vec![all.clone(), all.clone(), all.clone(), all], ..Default::default() };
+        let g = Graph::build(&inp);
+        assert_eq!(g.edges.iter().filter(|e| e.rel == Rel::CoPlaylist).count(), 0);
+    }
+
+    /// Слушаешь подряд: A→B три раза в пределах 20 минут — связь есть; C только через час — нет
+    #[test]
+    fn session_links() {
+        let (a, b, c) = (t("a", "x", "A"), t("b", "y", "B"), t("c", "z", "C"));
+        let min = 60_000;
+        let history = vec![(0, a.clone()), (3 * min, b.clone()), (100 * min, a.clone()), (104 * min, b.clone()), (200 * min, a.clone()), (205 * min, b.clone()), (300 * min, c.clone())];
+        let inp = Input { tracks: vec![(a, 0, 0), (b, 0, 0), (c, 0, 0)], history, ..Default::default() };
+        let g = Graph::build(&inp);
+        let s: Vec<(String, String)> = g.edges.iter().filter(|e| e.rel == Rel::Session).map(|e| (g.nodes[e.a].name.clone(), g.nodes[e.b].name.clone())).collect();
+        assert_eq!(s.len(), 1, "{s:?}");
+        assert!(s[0].0 != "C" && s[0].1 != "C");
     }
 }

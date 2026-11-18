@@ -1,5 +1,5 @@
-//! Экран «Вселенная» на ПК: что видно, что выбрано, полёт камеры, мосты и панель Music DNA.
-//! Раскладка и граф — в universe.rs и graph.rs, тут только состояние экрана и модели для Slint.
+//! Экран «Вселенная» на ПК: небо артистов (universe.rs), выбранная звезда и её панель, перелёт камеры,
+//! мосты и Music DNA. Номера: звёзды — индексы в Universe::stars, всё остальное — узлы графа.
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -12,18 +12,7 @@ use crate::dna::{self, Dna};
 use crate::graph::{Kind, Origin, Rel};
 use crate::model::Track;
 use crate::universe::Universe;
-use crate::{AppWindow, DnaPick, DnaRow, RadarLabel, UBridge, UNode, URel, UStep, Uni, LANG};
-
-pub fn kind_of(i: i32) -> Kind {
-    match i {
-        1 => Kind::Artist,
-        2 => Kind::Album,
-        3 => Kind::Genre,
-        4 => Kind::Person,
-        5 => Kind::Label,
-        _ => Kind::Track,
-    }
-}
+use crate::{AppWindow, DnaPick, DnaRow, RadarLabel, UBridge, UNeb, UNode, URel, UStep, Uni, LANG};
 
 fn kind_num(k: Kind) -> i32 {
     match k {
@@ -63,6 +52,7 @@ pub fn rel_name(r: Rel) -> String {
         Rel::YtSimilar => tr!("похожие артисты", "similar artists", "схожі артисти", "podobní interpreti"),
         Rel::CoPlaylist => tr!("вместе в твоих плейлистах", "together in your playlists", "разом у твоїх плейлистах", "spolu v tvojich playlistoch"),
         Rel::Sound => tr!("похожи по звуку", "sound alike", "схожі за звуком", "znejú podobne"),
+        Rel::Session => tr!("слушаешь подряд", "played back to back", "слухаєш поспіль", "počúvaš za sebou"),
     }
 }
 
@@ -72,6 +62,7 @@ pub fn rel_src(r: Rel) -> String {
         Rel::YtSimilar => "YouTube Music".into(),
         Rel::CoPlaylist => tr!("твои плейлисты", "your playlists", "твої плейлисти", "tvoje playlisty"),
         Rel::Sound => "Music DNA".into(),
+        Rel::Session => tr!("твоя история", "your history", "твоя історія", "tvoja história"),
         _ => "MusicBrainz".into(),
     }
 }
@@ -113,12 +104,14 @@ fn bucket(z: f32) -> u8 {
 
 pub struct View {
     pub u: Option<Universe>,
-    pub sel: Option<usize>,
-    kinds: HashSet<Kind>,
+    /// выбранная звезда
+    sel: Option<usize>,
     origins: HashSet<Origin>,
     vis: Vec<usize>,
     nodes: Rc<VecModel<UNode>>,
     row_of: HashMap<usize, usize>,
+    /// треки в панели выбранной звезды (кнопка у строки играет с неё)
+    panel_tracks: Vec<Track>,
     br_a: Option<usize>,
     br_b: Option<usize>,
     br_rels: [bool; 4],
@@ -131,9 +124,34 @@ pub struct View {
     fly: ((f32, f32, f32), (f32, f32, f32), f32),
     pub building: bool,
     first: bool,
-    /// «Мой вкус»: артисты и жанры из отпечатка (по id узлов, чтобы пережить перестройку графа)
+    /// «Мой вкус»: id узлов артистов и жанров из отпечатка (переживают перестройку графа)
     taste_ids: Vec<String>,
     taste_on: bool,
+    /// фон: таймер 15 кадров/с, пока страница на экране
+    bg: Timer,
+    bg_t: f32,
+}
+
+/// Звёздная пыль: кружки с периодом 2000 по обеим осям (повторены сеткой 4×4, чтобы перенос был без шва)
+fn dust() -> String {
+    use std::fmt::Write;
+    let mut seed = 0x2545F491u32;
+    let mut rnd = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        seed as f32 / u32::MAX as f32
+    };
+    let dots: Vec<(f32, f32, f32)> = (0..140).map(|_| (rnd() * 2000.0, rnd() * 2000.0, 0.6 + rnd() * 1.1)).collect();
+    let mut s = String::new();
+    for ox in [-2000.0f32, 0.0, 2000.0, 4000.0] {
+        for oy in [-2000.0f32, 0.0, 2000.0, 4000.0] {
+            for &(x, y, r) in &dots {
+                let _ = write!(s, "M{:.0} {:.0}m-{r:.1} 0a{r:.1} {r:.1} 0 1 0 {:.1} 0a{r:.1} {r:.1} 0 1 0 -{:.1} 0", x + ox, y + oy, r * 2.0, r * 2.0);
+            }
+        }
+    }
+    s
 }
 
 impl Default for View {
@@ -141,11 +159,11 @@ impl Default for View {
         View {
             u: None,
             sel: None,
-            kinds: [Kind::Track, Kind::Artist, Kind::Album, Kind::Genre, Kind::Person, Kind::Label].into(),
             origins: [Origin::Confirmed, Origin::External, Origin::Derived].into(),
             vis: Vec::new(),
             nodes: Rc::new(VecModel::default()),
             row_of: HashMap::new(),
+            panel_tracks: Vec::new(),
             br_a: None,
             br_b: None,
             br_rels: [true; 4],
@@ -160,25 +178,39 @@ impl Default for View {
             first: true,
             taste_ids: Vec::new(),
             taste_on: false,
+            bg: Timer::default(),
+            bg_t: 0.0,
         }
     }
 }
 
+/// Сколько сильнейших линий рисовать у каждой звезды
+const PER_STAR: usize = 3;
+
 impl View {
-    /// Новый граф: выбор и мосты переносим по id узлов (номера в новом графе другие)
+    fn uni<'a>(&self, ui: &'a AppWindow) -> Uni<'a> {
+        ui.global::<Uni>()
+    }
+
+    /// Новое небо: выбор, мосты и DNA переносим по id узлов (номера в новом графе другие)
     pub fn set(&mut self, ui: &AppWindow, u: Universe) {
-        let keep = |old: &Option<Universe>, i: Option<usize>| -> Option<usize> { u.g.find(&old.as_ref()?.g.nodes.get(i?)?.id) };
-        self.sel = keep(&self.u, self.sel);
-        self.br_a = keep(&self.u, self.br_a);
-        self.br_b = keep(&self.u, self.br_b);
-        self.dna_node = keep(&self.u, self.dna_node);
-        self.dna_cmp = keep(&self.u, self.dna_cmp);
+        let node_id = |i: Option<usize>| -> Option<String> { Some(self.u.as_ref()?.g.nodes.get(i?)?.id.clone()) };
+        let sel_id = self.sel.and_then(|s| node_id(self.u.as_ref().and_then(|u| u.stars.get(s).copied())));
+        let (a, b, d, c) = (node_id(self.br_a), node_id(self.br_b), node_id(self.dna_node), node_id(self.dna_cmp));
+        self.sel = sel_id.and_then(|id| u.star_of.get(&u.g.find(&id)?).copied());
+        self.br_a = a.and_then(|id| u.g.find(&id));
+        self.br_b = b.and_then(|id| u.g.find(&id));
+        self.dna_node = d.and_then(|id| u.g.find(&id));
+        self.dna_cmp = c.and_then(|id| u.g.find(&id));
         self.bridges.clear();
         self.br_shown = None;
-        self.u = Some(u);
-        let uni = ui.global::<Uni>();
+        let uni = self.uni(ui);
+        let nebs: Vec<UNeb> = u.nebulas.iter().map(|n| UNeb { x: n.x, y: n.y, r: n.r, c: color(n.color), label: n.name.as_str().into() }).collect();
+        uni.set_nebulas(model(nebs));
         uni.set_nodes(self.nodes.clone().into());
         uni.set_bridges(model(Vec::new()));
+        uni.set_br_shown(-1);
+        self.u = Some(u);
         if self.first {
             self.first = false;
             self.fit(ui);
@@ -188,38 +220,77 @@ impl View {
         self.bridge_names(ui);
     }
 
-    fn uni<'a>(&self, ui: &'a AppWindow) -> Uni<'a> {
-        ui.global::<Uni>()
+    /// Фон плывёт, пока страница открыта (в лайт-режиме — стоит)
+    pub fn start_bg(&mut self, ui: &AppWindow, tick: fn()) {
+        let uni = self.uni(ui);
+        if uni.get_dust().is_empty() {
+            uni.set_dust(dust().into());
+        }
+        if !ui.get_lite() && !self.bg.running() {
+            self.bg.start(TimerMode::Repeated, Duration::from_millis(66), tick);
+        }
     }
 
-    /// Соседи выбранного и узлы показанного моста — их видно при любом приближении
+    pub fn bg_tick(&mut self, ui: &AppWindow) {
+        if ui.get_page() != "universe" || ui.get_lite() {
+            self.bg.stop();
+            return;
+        }
+        self.bg_t += 0.066;
+        self.uni(ui).set_bg_t(self.bg_t);
+    }
+
+    /// Номер звезды из UI — только если такая есть
+    fn star(&self, id: i32) -> Option<usize> {
+        let n = self.u.as_ref()?.stars.len();
+        (id >= 0 && (id as usize) < n).then_some(id as usize)
+    }
+
+    /// Узел графа из UI — только если такой есть (у строк без узла id = -1)
+    fn node(&self, id: i32) -> Option<usize> {
+        let n = self.u.as_ref()?.g.nodes.len();
+        (id >= 0 && (id as usize) < n).then_some(id as usize)
+    }
+
+    /// Что подсвечено: звёзды показанного моста; иначе выбранная и её связи; иначе «мой вкус».
+    /// Возвращает звёзды и номера связей для подсветки
     fn focus(&self) -> (HashSet<usize>, HashSet<usize>) {
-        let mut nodes = HashSet::new();
-        let mut edges = HashSet::new();
-        let Some(u) = &self.u else { return (nodes, edges) };
+        let mut stars = HashSet::new();
+        let mut links = HashSet::new();
+        let Some(u) = &self.u else { return (stars, links) };
         if let Some(b) = self.br_shown.and_then(|i| self.bridges.get(i)) {
             let mut cur = self.br_a.unwrap_or(0);
-            nodes.insert(cur);
+            let mut prev: Option<usize> = cur.lt(&u.g.nodes.len()).then(|| u.star_for(cur)).flatten();
+            if let Some(p) = prev {
+                stars.insert(p);
+            }
             for &e in b {
                 cur = u.g.other(e, cur);
-                nodes.insert(cur);
-                edges.insert(e);
-            }
-        } else if self.taste_on && self.sel.is_none() {
-            for id in &self.taste_ids {
-                if let Some(i) = u.g.find(id) {
-                    nodes.insert(i);
+                if let Some(s) = u.star_for(cur) {
+                    stars.insert(s);
+                    if let Some(p) = prev.filter(|&p| p != s) {
+                        if let Some(&li) = u.ladj[p].iter().find(|&&li| u.links[li].a == s || u.links[li].b == s) {
+                            links.insert(li);
+                        }
+                    }
+                    prev = Some(s);
                 }
             }
         } else if let Some(s) = self.sel {
-            // окружение: у «одинокого» узла — на два шага, чтобы было что исследовать
-            let allow: HashSet<Rel> = Rel::all().into_iter().filter(|r| self.origins.contains(&r.origin())).collect();
-            let depth = if u.g.adj[s].len() < 12 { 2 } else { 1 };
-            let (ns, es) = u.g.around(s, depth, &allow, 160);
-            nodes.extend(ns);
-            edges.extend(es);
+            stars.insert(s);
+            for &li in u.ladj[s].iter().filter(|&&li| self.origins.contains(&u.links[li].origin)).take(60) {
+                let l = &u.links[li];
+                stars.insert(if l.a == s { l.b } else { l.a });
+                links.insert(li);
+            }
+        } else if self.taste_on {
+            for id in &self.taste_ids {
+                if let Some(s) = u.g.find(id).and_then(|n| u.star_of.get(&n)) {
+                    stars.insert(*s);
+                }
+            }
         }
-        (nodes, edges)
+        (stars, links)
     }
 
     pub fn refresh(&mut self, ui: &AppWindow) {
@@ -228,129 +299,168 @@ impl View {
             uni.set_empty(true);
             return;
         };
-        uni.set_empty(u.g.nodes.is_empty());
+        uni.set_empty(u.stars.is_empty());
         let (focus, hi) = self.focus();
-        let mut vis = u.visible(uni.get_zoom(), &self.kinds, &focus);
-        let shown: HashSet<usize> = vis.iter().copied().collect();
-        vis.extend(focus.iter().filter(|i| !shown.contains(i)));
+        let zoom = uni.get_zoom();
+        let vis = u.visible(zoom, &focus);
         let dimming = !focus.is_empty();
+        // подписи: самые крупные на этом приближении (до 40) и всё, что в фокусе
+        let label_cap = match zoom {
+            z if z < 0.4 => 25,
+            z if z < 0.9 => 45,
+            _ => 90,
+        };
         let rows: Vec<UNode> = vis
             .iter()
-            .map(|&i| {
-                let n = &u.g.nodes[i];
-                UNode {
-                    x: u.pos[i].0,
-                    y: u.pos[i].1,
-                    r: u.radius[i],
-                    c: color(u.color[i]),
-                    label: n.name.as_str().into(),
-                    kind: kind_num(n.kind),
-                    sel: Some(i) == self.sel,
-                    dim: dimming && !focus.contains(&i),
-                    lab: focus.contains(&i) || n.kind == Kind::Genre,
-                    id: i as i32,
-                }
+            .map(|&s| UNode {
+                x: u.pos[s].0,
+                y: u.pos[s].1,
+                r: u.radius[s],
+                c: color(u.color[s]),
+                label: u.g.nodes[u.stars[s]].name.as_str().into(),
+                kind: 1,
+                sel: Some(s) == self.sel,
+                dim: dimming && !focus.contains(&s),
+                lab: if dimming { focus.contains(&s) } else { s < label_cap },
+                id: s as i32,
             })
             .collect();
-        self.row_of = vis.iter().enumerate().map(|(r, &i)| (i, r)).collect();
-        self.nodes.set_vec(rows);
-        let p = u.paths(&vis, &self.origins, &hi);
+        // те же звёзды — меняем только изменившиеся строки: пересоздание сотен элементов и давало лаг при выделении
+        if vis == self.vis && self.nodes.row_count() == rows.len() {
+            for (i, r) in rows.into_iter().enumerate() {
+                if self.nodes.row_data(i).as_ref() != Some(&r) {
+                    self.nodes.set_row_data(i, r);
+                }
+            }
+        } else {
+            self.row_of = vis.iter().enumerate().map(|(r, &s)| (s, r)).collect();
+            self.nodes.set_vec(rows);
+        }
+        let p = u.paths(&vis, if dimming { 0 } else { PER_STAR }, &self.origins, &hi);
         uni.set_paths(model(p.into_iter().map(SharedString::from).collect()));
-        let dna_n = u.g.nodes.iter().filter(|n| n.kind == Kind::Track && n.track.as_ref().is_some_and(|t| dna::get(&t.key()).is_some())).count();
-        let mb = u.g.edges.iter().filter(|e| e.rel.source() == "MusicBrainz").count();
+        let dna_n = u.g.nodes.iter().filter(|n| n.track.as_ref().is_some_and(|t| dna::get(&t.key()).is_some())).count();
+        let genres = u.g.nodes.iter().filter(|n| n.kind == Kind::Genre).count();
         uni.set_status(
             tr!(
-                "{} узлов · {} связей · Music DNA: {} треков · из MusicBrainz: {} связей",
-                "{} nodes · {} links · Music DNA: {} tracks · from MusicBrainz: {} links",
-                "{} вузлів · {} зв'язків · Music DNA: {} треків · з MusicBrainz: {} зв'язків",
-                "{} uzlov · {} väzieb · Music DNA: {} skladieb · z MusicBrainz: {} väzieb",
-                u.g.nodes.len(),
-                u.g.edges.len(),
-                dna_n,
-                mb
+                "{} артистов · {} связей · жанров {} · Music DNA: {} треков",
+                "{} artists · {} links · {} genres · Music DNA: {} tracks",
+                "{} артистів · {} зв'язків · жанрів {} · Music DNA: {} треків",
+                "{} interpretov · {} väzieb · žánrov {} · Music DNA: {} skladieb",
+                u.stars.len(),
+                u.links.len(),
+                genres,
+                dna_n
             )
             .into(),
         );
+        // связей мало — подсказываем, откуда взять ещё
+        let lonely = u.ladj.iter().filter(|l| l.is_empty()).count();
+        uni.set_sparse(u.stars.len() >= 8 && (lonely * 2 > u.stars.len() || genres == 0));
         self.vis = vis;
     }
 
-    /// Панель справа: что выбрано и все его связи
-    fn panel(&self, ui: &AppWindow) {
+    /// Панель справа: выбранный артист — связи (все причины в одной строке), треки, жанры, альбомы, люди
+    fn panel(&mut self, ui: &AppWindow) {
         let uni = self.uni(ui);
         let (Some(u), Some(s)) = (&self.u, self.sel) else {
             uni.set_sel(-1);
+            self.panel_tracks.clear();
             return;
         };
-        let n = &u.g.nodes[s];
+        let a = u.stars[s];
+        let n = &u.g.nodes[a];
+        let g = &u.g;
         uni.set_sel(s as i32);
+        uni.set_sel_node(a as i32);
         uni.set_sel_name(n.name.as_str().into());
-        uni.set_sel_kind(kind_name(n.kind).into());
+        uni.set_sel_kind(kind_name(Kind::Artist).into());
         uni.set_sel_color(color(u.color[s]));
+        let tracks = crate::explore::tracks_of(g, a);
         let mut sub = Vec::new();
-        if let Some(t) = &n.track {
-            sub.push(t.artist.clone());
-        }
         if n.listened > 0 {
             sub.push(tr!("слушал {}", "listened {}", "слухав {}", "počúval si {}", dur(n.listened)));
         }
         if n.plays > 0 {
             sub.push(tr!("{} раз", "{} plays", "{} разів", "{}×", n.plays));
         }
-        if let Some((d, k)) = self.dna_of(s) {
+        if let Some((d, k)) = crate::explore::dna_of(g, a) {
             let mut bits = Vec::new();
             if let Some(b) = d.bpm {
-                bits.push(format!("{:.0} BPM", b));
+                bits.push(format!("~{:.0} BPM", b));
             }
-            if let Some(kn) = d.key_name() {
-                bits.push(kn);
-            }
-            if k > 1 {
-                bits.push(tr!("DNA по {} трекам", "DNA from {} tracks", "DNA за {} треками", "DNA z {} skladieb", k));
-            }
-            if !bits.is_empty() {
-                sub.push(bits.join(" · "));
-            }
+            bits.push(tr!("DNA по {} трекам", "DNA from {} tracks", "DNA за {} треками", "DNA z {} skladieb", k));
+            sub.push(bits.join(" · "));
         }
         uni.set_sel_sub(sub.join(" · ").into());
-        uni.set_sel_play(!self.tracks_of(s).is_empty());
-        uni.set_sel_track(n.track.as_ref().is_some_and(crate::rooms::shareable));
-        uni.set_sel_dna(self.dna_of(s).is_some());
-        let es = crate::explore::relations(&u.g, s, 300);
-        let rels: Vec<URel> = es
+        uni.set_sel_play(!tracks.is_empty());
+        uni.set_sel_dna(crate::explore::dna_of(g, a).is_some());
+        uni.set_sel_track(tracks.first().is_some_and(crate::rooms::shareable));
+        // связанные артисты: одна строка на пару, причины через точку
+        let rels: Vec<URel> = u.ladj[s]
             .iter()
-            .map(|&e| {
-                let ed = &u.g.edges[e];
-                let o = u.g.other(e, s);
-                URel {
-                    name: u.g.nodes[o].name.as_str().into(),
-                    rel: rel_name(ed.rel).into(),
-                    note: ed.note.as_str().into(),
-                    origin: origin_num(ed.rel.origin()),
-                    src: rel_src(ed.rel).into(),
-                    id: o as i32,
-                }
+            .take(80)
+            .map(|&li| {
+                let l = &u.links[li];
+                let o = if l.a == s { l.b } else { l.a };
+                let why: Vec<String> = l.why.iter().map(|r| if r.note.is_empty() || matches!(r.rel, Rel::Feat) { rel_name(r.rel) } else { format!("{}: {}", rel_name(r.rel), r.note) }).collect();
+                let mut srcs: Vec<String> = l.why.iter().map(|r| rel_src(r.rel)).collect();
+                srcs.dedup();
+                URel { name: g.nodes[u.stars[o]].name.as_str().into(), rel: why.join(" · ").into(), note: SharedString::new(), origin: origin_num(l.origin), src: srcs.join(", ").into(), id: o as i32 }
             })
             .collect();
         uni.set_rels(model(rels));
-    }
-
-    /// Номер узла из UI — только если такой есть (у строк без узла id = -1)
-    fn valid(&self, id: i32) -> Option<usize> {
-        let n = self.u.as_ref()?.g.nodes.len();
-        (id >= 0 && (id as usize) < n).then_some(id as usize)
+        let trows: Vec<URel> = tracks
+            .iter()
+            .take(12)
+            .enumerate()
+            .map(|(i, t)| {
+                let ms = g.find(&format!("t:{}", t.key())).map_or(0, |ti| g.nodes[ti].listened);
+                URel { name: t.title.as_str().into(), rel: SharedString::new(), note: if ms > 0 { dur(ms).into() } else { SharedString::new() }, origin: 0, src: SharedString::new(), id: i as i32 }
+            })
+            .collect();
+        uni.set_tracks(model(trows));
+        uni.set_tracks_total(tracks.len() as i32);
+        self.panel_tracks = tracks;
+        // жанры, альбомы, люди за записями
+        let near = |rel: Rel, from: usize| -> Vec<usize> { g.adj[from].iter().filter(|&&e| g.edges[e].rel == rel).map(|&e| g.other(e, from)).collect() };
+        let genres: Vec<String> = near(Rel::Genre, a).into_iter().map(|x| g.nodes[x].name.clone()).collect();
+        let albums: Vec<String> = near(Rel::AlbumBy, a).into_iter().map(|x| g.nodes[x].name.clone()).collect();
+        let mut people: Vec<String> = Vec::new();
+        for t in near(Rel::Performs, a) {
+            for &e in &g.adj[t] {
+                if matches!(g.edges[e].rel, Rel::Producer | Rel::Engineer | Rel::Musician) {
+                    let p = g.nodes[g.other(e, t)].name.clone();
+                    if p != n.name && !people.contains(&p) {
+                        people.push(p);
+                    }
+                }
+            }
+        }
+        let mut facts = Vec::new();
+        if !genres.is_empty() {
+            facts.push(tr!("Жанры: {}", "Genres: {}", "Жанри: {}", "Žánre: {}", genres.join(", ")));
+        }
+        if !albums.is_empty() {
+            facts.push(tr!("Альбомы: {}", "Albums: {}", "Альбоми: {}", "Albumy: {}", albums.join(", ")));
+        }
+        if !people.is_empty() {
+            facts.push(tr!("Люди за записями: {}", "People behind the records: {}", "Люди за записами: {}", "Ľudia za nahrávkami: {}", people.into_iter().take(12).collect::<Vec<_>>().join(", ")));
+        }
+        uni.set_sel_facts(facts.join("\n").into());
     }
 
     pub fn pick(&mut self, ui: &AppWindow, id: i32) {
-        let Some(i) = self.valid(id) else { return };
+        let Some(s) = self.star(id) else { return };
         if self.cmp_pick {
             self.cmp_pick = false;
-            if self.dna_of(i).is_some() {
-                self.dna_cmp = Some(i);
+            let a = self.u.as_ref().map(|u| u.stars[s]);
+            if a.is_some_and(|a| self.dna_of(a).is_some()) {
+                self.dna_cmp = a;
             }
             self.show_dna(ui);
             return;
         }
-        self.sel = Some(i);
+        self.sel = Some(s);
         self.br_shown = None;
         self.uni(ui).set_br_shown(-1);
         self.panel(ui);
@@ -381,7 +491,7 @@ impl View {
     pub fn wheel(&mut self, ui: &AppWindow, dy: f32, mx: f32, my: f32, w: f32, h: f32) {
         let uni = self.uni(ui);
         let z = uni.get_zoom();
-        let nz = (z * (dy * 0.0022).exp().clamp(0.6, 1.6)).clamp(0.08, 8.0);
+        let nz = (z * (dy * 0.0022).exp().clamp(0.6, 1.6)).clamp(0.08, 6.0);
         let (wx, wy) = (uni.get_cam_x() + (mx - w / 2.0) / z, uni.get_cam_y() + (my - h / 2.0) / z);
         uni.set_cam_x(wx - (mx - w / 2.0) / nz);
         uni.set_cam_y(wy - (my - h / 2.0) / nz);
@@ -412,63 +522,78 @@ impl View {
         }
     }
 
+    /// Выбрать звезду узла графа без перелёта (артист, его трек или альбом)
+    pub fn select_node(&mut self, ui: &AppWindow, node: i32) {
+        if let Some(s) = self.node(node).and_then(|n| self.u.as_ref()?.star_for(n)) {
+            self.pick(ui, s as i32);
+        }
+    }
+
+    /// К звезде: выбрать и долететь
     pub fn fly(&mut self, ui: &AppWindow, id: i32, tick: fn()) {
-        let Some(i) = self.valid(id) else { return };
-        let Some(u) = &self.u else { return };
-        let Some(&(x, y)) = u.pos.get(i) else { return };
-        let z = match u.g.nodes[i].kind {
-            Kind::Track => 2.2,
-            Kind::Genre => 0.6,
-            _ => 1.3,
-        };
-        let z = if u.g.nodes[i].kind == Kind::Genre { z } else { self.uni(ui).get_zoom().max(z) };
+        let Some(s) = self.star(id) else { return };
+        let Some(&(x, y)) = self.u.as_ref().and_then(|u| u.pos.get(s)) else { return };
+        let z = self.uni(ui).get_zoom().max(1.1);
         self.pick(ui, id);
         self.fly_to(ui, x, y, z, tick);
     }
 
-    /// Вся вселенная в окне
+    /// К узлу графа (из поиска, DNA, комнаты): артист, трек и альбом — к звезде артиста, жанр — к туманности
+    pub fn goto(&mut self, ui: &AppWindow, node: i32, tick: fn()) {
+        let Some(n) = self.node(node) else { return };
+        let Some(u) = &self.u else { return };
+        if u.g.nodes[n].kind == Kind::Genre {
+            let name = u.g.nodes[n].name.clone();
+            if let Some(nb) = u.nebulas.iter().find(|x| x.name == name) {
+                let (x, y, r) = (nb.x, nb.y, nb.r);
+                self.sel = None;
+                self.panel(ui);
+                self.fly_to(ui, x, y, (350.0 / r).clamp(0.3, 2.0), tick);
+                self.refresh(ui);
+            }
+            return;
+        }
+        if let Some(s) = u.star_for(n) {
+            self.fly(ui, s as i32, tick);
+        }
+    }
+
+    /// Всё небо в окне
     pub fn fit(&mut self, ui: &AppWindow) {
         let Some(u) = &self.u else { return };
         let (cx, cy, w, h) = u.bounds();
         let uni = self.uni(ui);
         uni.set_cam_x(cx);
         uni.set_cam_y(cy);
-        let z = (1100.0 / w).min(700.0 / h).clamp(0.08, 2.0);
-        self.set_zoom(ui, z);
+        self.set_zoom(ui, (1000.0 / w).min(640.0 / h).clamp(0.1, 2.0));
     }
 
     pub fn fit_anim(&mut self, ui: &AppWindow, tick: fn()) {
         let Some(u) = &self.u else { return };
         let (cx, cy, w, h) = u.bounds();
-        self.fly_to(ui, cx, cy, (1100.0 / w).min(700.0 / h).clamp(0.08, 2.0), tick);
+        self.sel = None;
+        self.br_shown = None;
+        self.panel(ui);
+        self.refresh(ui);
+        self.fly_to(ui, cx, cy, (1000.0 / w).min(640.0 / h).clamp(0.1, 2.0), tick);
     }
 
-    /// Перетащили узел: двигаем его (и его треки вместе с ним) и перерисовываем связи
+    /// Перетащили звезду: двигаем её и перерисовываем линии
     pub fn drag(&mut self, ui: &AppWindow, id: i32, dx: f32, dy: f32) {
-        let Some(i) = self.valid(id) else { return };
+        let Some(s) = self.star(id) else { return };
         let (_, hi) = self.focus();
+        let dimming = !hi.is_empty() || self.sel.is_some();
         let Some(u) = &mut self.u else { return };
-        let mut moved = vec![i];
-        if u.g.nodes[i].kind != Kind::Track {
-            for &e in &u.g.adj[i] {
-                let o = u.g.other(e, i);
-                if u.g.nodes[o].kind == Kind::Track && matches!(u.g.edges[e].rel, Rel::Performs | Rel::OnAlbum) && u.g.edges[e].w >= 1.0 {
-                    moved.push(o);
-                }
+        u.pos[s].0 += dx;
+        u.pos[s].1 += dy;
+        if let Some(&r) = self.row_of.get(&s) {
+            if let Some(mut row) = self.nodes.row_data(r) {
+                row.x = u.pos[s].0;
+                row.y = u.pos[s].1;
+                self.nodes.set_row_data(r, row);
             }
         }
-        for &m in &moved {
-            u.pos[m].0 += dx;
-            u.pos[m].1 += dy;
-            if let Some(&r) = self.row_of.get(&m) {
-                if let Some(mut row) = self.nodes.row_data(r) {
-                    row.x = u.pos[m].0;
-                    row.y = u.pos[m].1;
-                    self.nodes.set_row_data(r, row);
-                }
-            }
-        }
-        let p = u.paths(&self.vis, &self.origins, &hi);
+        let p = u.paths(&self.vis, if dimming { 0 } else { PER_STAR }, &self.origins, &hi);
         ui.global::<Uni>().set_paths(model(p.into_iter().map(SharedString::from).collect()));
     }
 
@@ -492,16 +617,6 @@ impl View {
         self.uni(ui).set_found(model(rows));
     }
 
-    pub fn toggle_kind(&mut self, ui: &AppWindow, k: i32) {
-        let k = kind_of(k);
-        if !self.kinds.remove(&k) {
-            self.kinds.insert(k);
-        }
-        let flags: Vec<bool> = (0..6).map(|i| self.kinds.contains(&kind_of(i))).collect();
-        self.uni(ui).set_kinds(model(flags));
-        self.refresh(ui);
-    }
-
     pub fn toggle_origin(&mut self, ui: &AppWindow, i: i32) {
         let o = [Origin::Confirmed, Origin::External, Origin::Derived][i.clamp(0, 2) as usize];
         if !self.origins.remove(&o) {
@@ -512,13 +627,18 @@ impl View {
         self.refresh(ui);
     }
 
-    /// Треки за узлом (см. explore::tracks_of)
-    pub fn tracks_of(&self, i: usize) -> Vec<Track> {
-        self.u.as_ref().map(|u| crate::explore::tracks_of(&u.g, i)).unwrap_or_default()
+    /// Треки за узлом графа (см. explore::tracks_of)
+    pub fn tracks_of(&self, node: usize) -> Vec<Track> {
+        self.u.as_ref().map(|u| crate::explore::tracks_of(&u.g, node)).unwrap_or_default()
     }
 
-    fn dna_of(&self, i: usize) -> Option<(Dna, usize)> {
-        crate::explore::dna_of(&self.u.as_ref()?.g, i)
+    /// Треки выбранной звезды с i-го (строка в панели)
+    pub fn panel_from(&self, i: usize) -> (Vec<Track>, usize) {
+        (self.panel_tracks.clone(), i.min(self.panel_tracks.len().saturating_sub(1)))
+    }
+
+    fn dna_of(&self, node: usize) -> Option<(Dna, usize)> {
+        crate::explore::dna_of(&self.u.as_ref()?.g, node)
     }
 
     /// Области вкуса из отпечатка: главные артисты кластеров и жанры
@@ -544,14 +664,13 @@ impl View {
         !self.taste_ids.is_empty()
     }
 
-    /// Найти узел по имени (для «показать во Вселенной» из комнаты)
+    /// Узел по имени (из комнаты: «смотрите во Вселенной»)
     pub fn find_name(&self, name: &str) -> Option<i32> {
-        let u = self.u.as_ref()?;
-        u.search(name, 1).first().map(|&i| i as i32)
+        self.u.as_ref()?.search(name, 1).first().map(|&i| i as i32)
     }
 
-    pub fn node_name(&self, id: i32) -> Option<String> {
-        Some(self.u.as_ref()?.g.nodes.get(self.valid(id)?)?.name.clone())
+    pub fn node_name(&self, node: i32) -> Option<String> {
+        Some(self.u.as_ref()?.g.nodes.get(self.node(node)?)?.name.clone())
     }
 
     // ── мосты ──
@@ -565,7 +684,7 @@ impl View {
     }
 
     pub fn bridge_end(&mut self, ui: &AppWindow, id: i32, from: bool) {
-        let Some(i) = self.valid(id) else { return };
+        let Some(i) = self.node(id) else { return };
         if from {
             self.br_a = Some(i);
         } else {
@@ -644,7 +763,7 @@ impl View {
     // ── Music DNA ──
 
     pub fn dna_open(&mut self, ui: &AppWindow, id: i32) {
-        let Some(i) = self.valid(id) else { return };
+        let Some(i) = self.node(id) else { return };
         self.dna_node = Some(i);
         self.dna_cmp = None;
         self.cmp_pick = false;

@@ -1477,3 +1477,63 @@ msgstr "You and {}"
 
 msgid "Может понравиться вам обоим"
 msgstr "You might both like"
+
+msgid "Собираю вселенную…"
+msgstr "Building the universe…"
+
+msgid "Артист, трек или жанр…"
+msgstr "Artist, track or genre…"
+
+msgid "Всё небо"
+msgstr "Whole sky"
+
+msgid "Похожие YouTube"
+msgstr "YouTube similar"
+
+msgid "Связей пока мало. MusicBrainz добавит жанры, продюсеров, участников и лейблы, YouTube — похожих:"
+msgstr "Few links so far. MusicBrainz adds genres, producers, members and labels, YouTube adds similar artists:"
+
+msgid "Колесо — масштаб, перетаскивание — сдвиг, двойной клик — к звезде."
+msgstr "Wheel zooms, drag pans, double-click flies to a star."
+
+msgid "подтягиваю…"
+msgstr "fetching…"
+
+msgid "подтянуть связи"
+msgstr "fetch links"
+
+msgid "Связанные артисты · {}"
+msgstr "Related artists · {}"
+
+msgid "Треки · {}"
+msgstr "Tracks · {}"
+
+msgid "и ещё {} — «Играть» включит все"
+msgstr "and {} more — “Play” plays them all"
+
+msgid "Выбери артиста и нажми «Мост отсюда», потом другого — «Мост сюда». Я найду цепочку связей и объясню каждый шаг."
+msgstr "Pick an artist and press “Bridge from here”, then another — “Bridge to here”. I'll find a chain of links and explain every step."
+
+msgid "Твоё"
+msgstr "Yours"
+
+msgid "Выбери второго артиста для сравнения звучания"
+msgstr "Pick a second artist to compare the sound"
+
+msgid "Дальше играет"
+msgstr "Up next"
+
+msgid "Очередь того, кто управляет. Она у всех одна и грузится заранее — следующий трек включается сразу."
+msgstr "The queue of whoever is in control. It's the same for everyone and preloads, so the next track starts instantly."
+
+msgid "Предложения"
+msgstr "Suggestions"
+
+msgid "Предложить играющий"
+msgstr "Suggest what's playing"
+
+msgid "Голосуй за предложения: самое популярное встанет следующим за полминуты до конца трека. Предлагать можно и из «Вселенной»."
+msgstr "Vote for suggestions: the most popular one is queued next 30 s before the track ends. You can suggest from the Universe too."
+
+msgid "Предложений пока нет"
+msgstr "No suggestions yet"

@@ -39,9 +39,9 @@ BLACKHOLE_FIREBASE_KEY=AIza... BLACKHOLE_FIREBASE_PROJECT=blackhole-xxxx cargo b
 
 ## Realtime Database: Connect и Listening Rooms
 
-Connect (одна сессия на все устройства) и комнаты совместного прослушивания живут в **Realtime Database**.
+Connect (одна сессия на все устройства), обмен Music DNA между устройствами и комнаты совместного прослушивания живут в **Realtime Database**.
 **Build → Realtime Database → Rules**: вставить [`packaging/database.rules.json`](../packaging/database.rules.json) → **Publish**.
-Если там уже есть свои правила для `connect`, оставь их: из файла достаточно добавить ветки `rooms` и `public_rooms`.
+Если там уже есть свои правила для `connect`, оставь их: из файла достаточно добавить ветки `dna`, `rooms` и `public_rooms`.
 
 Что разрешают правила комнат:
 - комнату по коду видит любой вошедший с подтверждённой почтой: код и есть приглашение;

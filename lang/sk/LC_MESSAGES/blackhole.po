@@ -1477,3 +1477,63 @@ msgstr "Ty a {}"
 
 msgid "Может понравиться вам обоим"
 msgstr "Mohlo by sa páčiť vám obom"
+
+msgid "Собираю вселенную…"
+msgstr "Zostavujem vesmír…"
+
+msgid "Артист, трек или жанр…"
+msgstr "Interpret, skladba alebo žáner…"
+
+msgid "Всё небо"
+msgstr "Celá obloha"
+
+msgid "Похожие YouTube"
+msgstr "Podobní z YouTube"
+
+msgid "Связей пока мало. MusicBrainz добавит жанры, продюсеров, участников и лейблы, YouTube — похожих:"
+msgstr "Zatiaľ málo väzieb. MusicBrainz pridá žánre, producentov, členov a vydavateľstvá, YouTube podobných:"
+
+msgid "Колесо — масштаб, перетаскивание — сдвиг, двойной клик — к звезде."
+msgstr "Koliesko priblíži, ťahanie posúva, dvojklik letí ku hviezde."
+
+msgid "подтягиваю…"
+msgstr "doťahujem…"
+
+msgid "подтянуть связи"
+msgstr "doplniť väzby"
+
+msgid "Связанные артисты · {}"
+msgstr "Súvisiaci interpreti · {}"
+
+msgid "Треки · {}"
+msgstr "Skladby · {}"
+
+msgid "и ещё {} — «Играть» включит все"
+msgstr "a ďalších {} — „Hrať“ pustí všetky"
+
+msgid "Выбери артиста и нажми «Мост отсюда», потом другого — «Мост сюда». Я найду цепочку связей и объясню каждый шаг."
+msgstr "Vyber interpreta a stlač „Most odtiaľto“, potom iného — „Most sem“. Nájdem reťaz väzieb a vysvetlím každý krok."
+
+msgid "Твоё"
+msgstr "Tvoje"
+
+msgid "Выбери второго артиста для сравнения звучания"
+msgstr "Vyber druhého interpreta na porovnanie zvuku"
+
+msgid "Дальше играет"
+msgstr "Ďalej hrá"
+
+msgid "Очередь того, кто управляет. Она у всех одна и грузится заранее — следующий трек включается сразу."
+msgstr "Front toho, kto ovláda. Je pre všetkých rovnaký a načítava sa vopred — ďalšia skladba hneď začne."
+
+msgid "Предложения"
+msgstr "Návrhy"
+
+msgid "Предложить играющий"
+msgstr "Navrhnúť hrajúcu"
+
+msgid "Голосуй за предложения: самое популярное встанет следующим за полминуты до конца трека. Предлагать можно и из «Вселенной»."
+msgstr "Hlasuj za návrhy: najobľúbenejší pôjde ako ďalší 30 s pred koncom skladby. Navrhovať môžeš aj z Vesmíru."
+
+msgid "Предложений пока нет"
+msgstr "Zatiaľ žiadne návrhy"

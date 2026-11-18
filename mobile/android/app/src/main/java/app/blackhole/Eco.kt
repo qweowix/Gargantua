@@ -26,28 +26,41 @@ import java.nio.ByteOrder
 // ── то, что отдаёт ядро (mobile/core/src/eco.rs) — те же структуры, что на ПК ──
 
 @Serializable
-data class UNode(val i: Int = 0, val n: String = "", val k: Int = 0, val x: Float = 0f, val y: Float = 0f, val r: Float = 3f, val c: List<Int> = listOf(160, 140, 250), val l: Long = 0)
+data class UStar(val i: Int = 0, val node: Int = 0, val n: String = "", val x: Float = 0f, val y: Float = 0f, val r: Float = 4f, val c: List<Int> = listOf(196, 181, 253), val l: Long = 0, val top: List<Int> = emptyList())
 
 @Serializable
-data class UniData(val nodes: List<UNode> = emptyList(), val edges: List<List<Double>> = emptyList(), val bounds: List<Float> = listOf(0f, 0f, 100f, 100f), val dna: Int = 0)
+data class UNeb(val n: String = "", val x: Float = 0f, val y: Float = 0f, val r: Float = 60f, val c: List<Int> = listOf(200, 200, 200))
 
 @Serializable
-data class URel(val id: Int = 0, val name: String = "", val kind: Int = 0, val rel: String = "", val note: String = "", val origin: String = "Confirmed")
+data class UniData(
+    val stars: List<UStar> = emptyList(), val links: List<List<Double>> = emptyList(), val nebulas: List<UNeb> = emptyList(),
+    val bounds: List<Float> = listOf(0f, 0f, 400f, 400f), val dna: Int = 0, val sparse: Boolean = false,
+)
+
+@Serializable
+data class Reason(val rel: String = "", val note: String = "")
+
+@Serializable
+data class ULink(val star: Int = 0, val name: String = "", val origin: String = "Derived", val w: Float = 0f, val why: List<Reason> = emptyList())
 
 @Serializable
 data class UDnaBrief(val bpm: Float? = null, val key: String? = null, val n: Int = 0)
 
 @Serializable
-data class UNodeInfo(
-    val name: String = "", val kind: Int = 0, val listened: Long = 0, val plays: Int = 0, val track: Track? = null,
-    val dna: UDnaBrief? = null, val rels: List<URel> = emptyList(), val tracks: List<Track> = emptyList(),
+data class UStarInfo(
+    val node: Int = 0, val name: String = "", val listened: Long = 0, val plays: Int = 0, val dna: UDnaBrief? = null,
+    val links: List<ULink> = emptyList(), val tracks: List<Track> = emptyList(),
+    val genres: List<String> = emptyList(), val albums: List<String> = emptyList(), val people: List<String> = emptyList(),
 )
+
+@Serializable
+data class UFound(val node: Int = 0, val name: String = "", val kind: Int = 0, val sub: String? = null, val star: Int? = null, val nebula: Int? = null)
 
 @Serializable
 data class UStep(val node: Int = 0, val name: String = "", val kind: String = "", val rel: String? = null, val note: String = "", val origin: String? = null)
 
 @Serializable
-data class UBridge(val steps: List<UStep> = emptyList(), val facts: Int = 0, val edges: List<Int> = emptyList())
+data class UBridge(val steps: List<UStep> = emptyList(), val facts: Int = 0, val stars: List<Int> = emptyList())
 
 @Serializable
 data class Sim(val rhythm: Float = 0f, val harmony: Float = 0f, val timbre: Float = 0f, val energy: Float = 0f, val spectrum: Float = 0f, val total: Float = 0f)
@@ -125,7 +138,7 @@ data class RMeta(val owner: String = "", val owner_name: String = "", val name: 
 data class RMember(val uid: String = "", val name: String = "", val role: String = "", val seen: Long = 0, val pos: Double = 0.0, val playing: Boolean = false, val key: String = "")
 
 @Serializable
-data class RState(val track: Track? = null, val pos: Double = 0.0, val at: Long = 0, val playing: Boolean = false, val by: String = "", val seq: Long = 0)
+data class RState(val track: Track? = null, val pos: Double = 0.0, val at: Long = 0, val playing: Boolean = false, val by: String = "", val seq: Long = 0, val upnext: List<Track> = emptyList())
 
 @Serializable
 data class RQ(val id: String = "", val track: Track = Track(), val by: String = "", val by_name: String = "", val ord: Double = 0.0, val votes: Int = 0, val mine: Boolean = false)
@@ -220,13 +233,13 @@ object EcoText {
 /** Вселенная, вкус, комнаты и Music DNA на телефоне. Состояние экранов + синхронизация плеера с комнатой */
 @UnstableApi
 class EcoState(private val vm: AppState) {
-    // ── вселенная ──
+    // ── вселенная: звёзды — артисты, номера звёзд; мосты и DNA — узлы графа ──
     var uni by mutableStateOf<UniData?>(null)
     var uniBusy by mutableStateOf(false)
     var fetching by mutableStateOf(false)
     var sel by mutableStateOf<Int?>(null)
-    var info by mutableStateOf<UNodeInfo?>(null)
-    var found by mutableStateOf<List<Int>>(emptyList())
+    var info by mutableStateOf<UStarInfo?>(null)
+    var found by mutableStateOf<List<UFound>>(emptyList())
     var brA by mutableStateOf<Int?>(null)
     var brB by mutableStateOf<Int?>(null)
     var bridges by mutableStateOf<List<UBridge>>(emptyList())
@@ -235,8 +248,9 @@ class EcoState(private val vm: AppState) {
     var dna by mutableStateOf<DnaInfo?>(null)
     var dnaNode by mutableStateOf<Int?>(null)
     var cmpPick by mutableStateOf(false)
-    /** узел, к которому камере лететь (экран забирает и обнуляет) */
+    /** куда лететь камере: звезда или туманность (экран забирает и обнуляет) */
     var flyTo by mutableStateOf<Int?>(null)
+    var flyNeb by mutableStateOf<Int?>(null)
 
     private fun pls() = json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(Playlist.serializer()), vm.playlists.toList())
 
@@ -246,23 +260,36 @@ class EcoState(private val vm: AppState) {
         runCatching { core("dna_sync") }
         val r = runCatching { core("uni_build") { put("playlists", pls()) }.to<UniData>() }
         uniBusy = false
-        r.onSuccess { uni = it; sel?.let { s -> if (s >= it.nodes.size) sel = null } }.onFailure { vm.toast(EcoText.err(it)) }
+        r.onSuccess { uni = it; sel?.let { s -> if (s >= it.stars.size) { sel = null; info = null } else pick(s) } }.onFailure { vm.toast(EcoText.err(it)) }
         scanDna()
     }
 
-    fun pick(i: Int) = vm.viewModelScope.launch {
+    fun pick(star: Int) = vm.viewModelScope.launch {
+        val node = uni?.stars?.getOrNull(star)?.node ?: return@launch
         if (cmpPick) {
             cmpPick = false
-            dnaNode?.let { openDna(it, i) }
+            dnaNode?.let { openDna(it, node) }
             return@launch
         }
-        sel = i
+        sel = star
         brShown = null
-        info = runCatching { core("uni_node") { put("i", JsonPrimitive(i)) }.to<UNodeInfo>() }.getOrNull()
+        info = runCatching { core("uni_star") { put("i", JsonPrimitive(star)) }.to<UStarInfo>() }.getOrNull()
     }
 
+    fun clear() { sel = null; info = null; brShown = null }
+
     fun search(q: String) = vm.viewModelScope.launch {
-        found = if (q.isBlank()) emptyList() else runCatching { core("uni_search") { put("q", JsonPrimitive(q)) }.to<List<Int>>() }.getOrDefault(emptyList())
+        found = if (q.isBlank()) emptyList() else runCatching { core("uni_search") { put("q", JsonPrimitive(q)) }.to<List<UFound>>() }.getOrDefault(emptyList())
+    }
+
+    /** Найденное: артист, трек — к звезде; жанр — к туманности */
+    fun go(f: UFound) {
+        f.star?.let { flyTo = it } ?: f.nebula?.let { flyNeb = it }
+    }
+
+    /** Узел графа (из DNA) → его звезда */
+    fun goNode(node: Int) = vm.viewModelScope.launch {
+        runCatching { core("uni_star_of") { put("node", JsonPrimitive(node)) }.to<Int?>() }.getOrNull()?.let { flyTo = it }
     }
 
     fun fetch() = vm.viewModelScope.launch {
@@ -277,11 +304,11 @@ class EcoState(private val vm: AppState) {
     /** Узел по имени (из комнаты: «смотрите во Вселенной») — камера летит к нему */
     fun focusName(name: String) = vm.viewModelScope.launch {
         if (uni == null) buildUniverse().join()
-        runCatching { core("uni_search") { put("q", JsonPrimitive(name)) }.to<List<Int>>() }.getOrNull()?.firstOrNull()?.let { flyTo = it }
+        runCatching { core("uni_search") { put("q", JsonPrimitive(name)) }.to<List<UFound>>() }.getOrNull()?.firstOrNull()?.let { go(it) }
     }
 
-    fun bridgeEnd(i: Int, from: Boolean) {
-        if (from) brA = i else brB = i
+    fun bridgeEnd(node: Int, from: Boolean) {
+        if (from) brA = node else brB = node
         if (brA != null && brB != null) runBridge(5, listOf(true, true, true, true))
     }
 
@@ -298,10 +325,10 @@ class EcoState(private val vm: AppState) {
         brShown = if (bridges.isEmpty()) null else 0
     }
 
-    fun openDna(i: Int, cmp: Int? = null) = vm.viewModelScope.launch {
-        dnaNode = i
-        dna = runCatching { core("uni_dna") { put("i", JsonPrimitive(i)); if (cmp != null) put("cmp", JsonPrimitive(cmp)) }.to<DnaInfo>() }
-            .onFailure { vm.toast(tr("У этого узла ещё нет Music DNA", "No Music DNA for this node yet", "У цього вузла ще немає Music DNA", "Tento uzol ešte nemá Music DNA")) }.getOrNull()
+    fun openDna(node: Int, cmp: Int? = null) = vm.viewModelScope.launch {
+        dnaNode = node
+        dna = runCatching { core("uni_dna") { put("i", JsonPrimitive(node)); if (cmp != null) put("cmp", JsonPrimitive(cmp)) }.to<DnaInfo>() }
+            .onFailure { vm.toast(tr("Тут ещё нет Music DNA", "No Music DNA here yet", "Тут ще немає Music DNA", "Tu ešte nie je Music DNA")) }.getOrNull()
     }
 
     // ── Music DNA на телефоне: скачанные файлы (офлайн) раскодируются и разбираются по одному в фоне ──
@@ -383,6 +410,8 @@ class EcoState(private val vm: AppState) {
     private var beatAt = 0L
     private var pendingSeek: Double? = null
     private var pendingPause = false
+    /** предложения, которые уже поставили в очередь */
+    private val taken = HashSet<String>()
 
     private fun now() = System.currentTimeMillis()
     private fun serverNow() = now() + serverOffset
@@ -455,19 +484,36 @@ class EcoState(private val vm: AppState) {
     private fun localPos(): Double = (vm.controller?.currentPosition ?: 0L) / 1000.0
 
     /** Подстроиться под комнату, если состояние записал не я */
+    /** Очередь в плеере после текущего трека */
+    private fun upcoming(): List<Track> {
+        val c = vm.controller ?: return emptyList()
+        return (c.currentMediaItemIndex + 1 until c.mediaItemCount).mapNotNull { c.getMediaItemAt(it).track() }
+    }
+
+    private fun qsig(q: List<Track>) = q.take(30).joinToString(",") { it.key }
+
+    /** Подстроиться под комнату, если состояние записал не я. Очередь управляющего встаёт в плеер целиком:
+     *  ExoPlayer заранее грузит следующий трек и сам включает его, когда текущий кончится — без ожидания */
     private fun follow(r: Room) {
         val st = r.state ?: return
         if (st.by == me || vm.remote != null) return
         val t = st.track ?: return
         val target = if (st.playing) st.pos + (serverNow() - st.at).coerceAtLeast(0) / 1000.0 else st.pos
-        pubSig = "${t.key}|${st.playing}"; pubPos = target; pubAt = now(); seq = maxOf(seq, st.seq)
+        pubSig = "${t.key}|${qsig(st.upnext)}|${st.playing}"; pubPos = target; pubAt = now(); seq = maxOf(seq, st.seq)
         quietUntil = now() + 2500
         val c = vm.controller ?: return
         if (vm.current?.key != t.key) {
-            vm.play(listOf(t), 0)
-            pendingSeek = target.takeIf { it > 1.0 }
-            pendingPause = !st.playing
+            val items = (listOf(t) + st.upnext.filter { it.src != "lc" }).map { it.item() }
+            c.setMediaItems(items, 0, (target * 1000).toLong().coerceAtLeast(0))
+            c.prepare()
+            if (st.playing) c.play() else c.pause()
             return
+        }
+        // тот же трек: подменяем только то, что после него, если очередь управляющего изменилась
+        if (qsig(upcoming()) != qsig(st.upnext)) {
+            val from = c.currentMediaItemIndex + 1
+            if (from < c.mediaItemCount) c.removeMediaItems(from, c.mediaItemCount)
+            c.addMediaItems(st.upnext.filter { it.src != "lc" }.map { it.item() })
         }
         if (c.isPlaying != st.playing && c.playbackState != Player.STATE_BUFFERING) { if (st.playing) c.play() else c.pause() }
         if (!st.playing && kotlin.math.abs(localPos() - target) > 1.0) c.seekTo((target * 1000).toLong())
@@ -513,25 +559,26 @@ class EcoState(private val vm: AppState) {
             correct(st.pos + (serverNow() - st.at).coerceAtLeast(0) / 1000.0)
         }
         if (!r.control(me) || vm.remote != null || now() < quietUntil) return
-        // конец трека у управляющего — следующий из общей очереди по голосам
-        if (c.playbackState == Player.STATE_ENDED || (c.duration > 0 && c.currentPosition >= c.duration - 400 && !playing)) {
-            r.next()?.let { q ->
-                vm.play(listOf(q.track), 0)
+        // самое популярное предложение — следующим за полминуты до конца трека (или сразу, если дальше пусто)
+        r.next()?.takeIf { it.id !in taken }?.let { q ->
+            if (c.currentMediaItemIndex + 1 >= c.mediaItemCount || (c.duration > 0 && c.duration - c.currentPosition < 30_000)) {
+                taken += q.id
+                c.addMediaItem(c.currentMediaItemIndex + 1, q.track.item())
                 unqueue(q.id)
-                quietUntil = now() + 1500
-                return
             }
         }
         val t = vm.current ?: return
         if (c.playbackState == Player.STATE_BUFFERING) return
-        val sig = "${t.key}|$playing"
+        val up = upcoming().filter { it.src != "lc" }.take(30)
+        val sig = "${t.key}|${qsig(up)}|$playing"
         val expected = pubPos + if (pubSig.endsWith("|true")) (now() - pubAt) / 1000.0 else 0.0
         val refresh = r.owner(me) && now() - pubAt > 20_000
         if (sig == pubSig && kotlin.math.abs(pos - expected) < 2.5 && !refresh) return
         if (t.src == "lc") return
         pubSig = sig; pubPos = pos; pubAt = now(); seq++
         val s = seq
-        withContext(Dispatchers.IO) { runCatching { coreNow("rooms_state", kotlinx.serialization.json.buildJsonObject { put("track", t); put("pos", JsonPrimitive(pos)); put("playing", JsonPrimitive(playing)); put("seq", JsonPrimitive(s)) }) } }
+        val upJson = json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(Track.serializer()), up)
+        withContext(Dispatchers.IO) { runCatching { coreNow("rooms_state", kotlinx.serialization.json.buildJsonObject { put("track", t); put("pos", JsonPrimitive(pos)); put("playing", JsonPrimitive(playing)); put("seq", JsonPrimitive(s)); put("upnext", upJson) }) } }
     }
 }
 

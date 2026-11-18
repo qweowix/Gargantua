@@ -42,7 +42,7 @@ fn input(a: &Value) -> Input {
         }
     }
     let (mb_artists, mb_recs) = musicbrainz::snapshot();
-    Input { tracks, playlists: pls.iter().map(|p| p.tracks.iter().map(|t| t.key()).collect()).collect(), dna: dna::all(), mb_artists, mb_recs, yt_similar: universe::similar_cache() }
+    Input { tracks, playlists: pls.iter().map(|p| p.tracks.iter().map(|t| t.key()).collect()).collect(), dna: dna::all(), mb_artists, mb_recs, yt_similar: universe::similar_cache(), history: crate::journal::history(3000) }
 }
 
 fn kind_num(k: crate::graph::Kind) -> u8 {
@@ -80,45 +80,84 @@ fn run_inner(m: &str, a: &Value) -> Result<Value> {
         // ── вселенная ──
         "uni_build" => {
             let u = Universe::new(Graph::build(&input(a)));
-            let nodes: Vec<Value> = u
-                .rank
-                .iter()
-                .map(|&i| {
-                    let n = &u.g.nodes[i];
-                    json!({"i": i, "n": n.name, "k": kind_num(n.kind), "x": u.pos[i].0, "y": u.pos[i].1, "r": u.radius[i], "c": u.color[i], "l": n.listened})
+            let g = &u.g;
+            // звёзды по порядку важности: i — номер звезды, n — узел графа
+            let stars: Vec<Value> = (0..u.stars.len())
+                .map(|s| {
+                    let n = &g.nodes[u.stars[s]];
+                    json!({"i": s, "node": u.stars[s], "n": n.name, "x": u.pos[s].0, "y": u.pos[s].1, "r": u.radius[s], "c": u.color[s], "l": n.listened, "top": u.ladj[s].iter().take(3).collect::<Vec<_>>()})
                 })
                 .collect();
-            let edges: Vec<Value> = u.g.edges.iter().map(|e| json!([e.a, e.b, match e.rel.origin() { crate::graph::Origin::Confirmed => 0, crate::graph::Origin::External => 1, _ => 2 }, e.w])).collect();
+            let links: Vec<Value> = u.links.iter().map(|l| json!([l.a, l.b, match l.origin { crate::graph::Origin::Confirmed => 0, crate::graph::Origin::External => 1, _ => 2 }, l.w])).collect();
+            let nebulas: Vec<Value> = u.nebulas.iter().map(|n| json!({"n": n.name, "x": n.x, "y": n.y, "r": n.r, "c": n.color})).collect();
             let (cx, cy, w, h) = u.bounds();
-            let dna_n = u.g.nodes.iter().filter(|n| n.track.as_ref().is_some_and(|t| dna::get(&t.key()).is_some())).count();
-            let out = json!({"nodes": nodes, "edges": edges, "bounds": [cx, cy, w, h], "dna": dna_n});
+            let dna_n = g.nodes.iter().filter(|n| n.track.as_ref().is_some_and(|t| dna::get(&t.key()).is_some())).count();
+            let lonely = u.ladj.iter().filter(|l| l.is_empty()).count();
+            let genres = g.nodes.iter().filter(|n| n.kind == crate::graph::Kind::Genre).count();
+            let out = json!({"stars": stars, "links": links, "nebulas": nebulas, "bounds": [cx, cy, w, h], "dna": dna_n, "sparse": u.stars.len() >= 8 && (lonely * 2 > u.stars.len() || genres == 0)});
             *uni().lock().unwrap() = Some(u);
             out
         }
-        "uni_node" => {
-            let g = uni().lock().unwrap();
-            let u = g.as_ref().context("нет вселенной")?;
-            let i = a["i"].as_u64().unwrap_or(u64::MAX) as usize;
-            let n = u.g.nodes.get(i).context("нет узла")?;
-            let rels: Vec<Value> = explore::relations(&u.g, i, 300)
-                .into_iter()
-                .map(|e| {
-                    let ed = &u.g.edges[e];
-                    let o = u.g.other(e, i);
-                    json!({"id": o, "name": u.g.nodes[o].name, "kind": kind_num(u.g.nodes[o].kind), "rel": ed.rel, "note": ed.note, "origin": ed.rel.origin()})
+        // звезда: связанные артисты (все причины пары), треки, жанры, альбомы, люди за записями
+        "uni_star" => {
+            let lk = uni().lock().unwrap();
+            let u = lk.as_ref().context("нет вселенной")?;
+            let s = a["i"].as_u64().unwrap_or(u64::MAX) as usize;
+            let node = *u.stars.get(s).context("нет звезды")?;
+            let g = &u.g;
+            let n = &g.nodes[node];
+            let links: Vec<Value> = u.ladj[s]
+                .iter()
+                .take(80)
+                .map(|&li| {
+                    let l = &u.links[li];
+                    let o = if l.a == s { l.b } else { l.a };
+                    json!({"star": o, "name": g.nodes[u.stars[o]].name, "origin": l.origin, "w": l.w, "why": l.why})
                 })
                 .collect();
-            let d = explore::dna_of(&u.g, i);
+            let near = |rel: crate::graph::Rel, from: usize| -> Vec<String> { g.adj[from].iter().filter(|&&e| g.edges[e].rel == rel).map(|&e| g.nodes[g.other(e, from)].name.clone()).collect() };
+            let mut people: Vec<String> = Vec::new();
+            for &e in &g.adj[node] {
+                if g.edges[e].rel != crate::graph::Rel::Performs {
+                    continue;
+                }
+                let t = g.other(e, node);
+                for &e2 in &g.adj[t] {
+                    if matches!(g.edges[e2].rel, crate::graph::Rel::Producer | crate::graph::Rel::Engineer | crate::graph::Rel::Musician) {
+                        let p = g.nodes[g.other(e2, t)].name.clone();
+                        if p != n.name && !people.contains(&p) {
+                            people.push(p);
+                        }
+                    }
+                }
+            }
+            let d = explore::dna_of(g, node);
             json!({
-                "name": n.name, "kind": kind_num(n.kind), "listened": n.listened, "plays": n.plays, "track": n.track,
+                "node": node, "name": n.name, "listened": n.listened, "plays": n.plays,
                 "dna": d.as_ref().map(|(d, k)| json!({"bpm": d.bpm, "key": d.key_name(), "n": k})),
-                "rels": rels, "tracks": explore::tracks_of(&u.g, i).into_iter().take(50).collect::<Vec<_>>(),
+                "links": links, "tracks": explore::tracks_of(g, node).into_iter().take(60).collect::<Vec<_>>(),
+                "genres": near(crate::graph::Rel::Genre, node), "albums": near(crate::graph::Rel::AlbumBy, node), "people": people,
             })
         }
+        // поиск: узлы графа (артисты, треки, жанры) и куда лететь — звезда или туманность
         "uni_search" => {
-            let g = uni().lock().unwrap();
-            let u = g.as_ref().context("нет вселенной")?;
-            json!(u.search(s(a, "q"), 8))
+            let lk = uni().lock().unwrap();
+            let u = lk.as_ref().context("нет вселенной")?;
+            json!(u
+                .search(s(a, "q"), 8)
+                .into_iter()
+                .map(|i| {
+                    let n = &u.g.nodes[i];
+                    let neb = (n.kind == crate::graph::Kind::Genre).then(|| u.nebulas.iter().position(|x| x.name == n.name)).flatten();
+                    json!({"node": i, "name": n.name, "kind": kind_num(n.kind), "sub": n.track.as_ref().map(|t| t.artist.clone()), "star": u.star_for(i), "nebula": neb})
+                })
+                .collect::<Vec<_>>())
+        }
+        // узел графа → звезда (для DNA, мостов, комнаты)
+        "uni_star_of" => {
+            let lk = uni().lock().unwrap();
+            let u = lk.as_ref().context("нет вселенной")?;
+            json!(u.star_for(a["node"].as_u64().unwrap_or(u64::MAX) as usize))
         }
         "uni_bridge" => {
             let g = uni().lock().unwrap();
@@ -136,7 +175,9 @@ fn run_inner(m: &str, a: &Value) -> Result<Value> {
                 .map(|p| {
                     let st = explore::steps(&u.g, from, p);
                     let facts = st.iter().filter(|s| s.origin == Some(crate::graph::Origin::Confirmed)).count();
-                    json!({"steps": st, "facts": facts, "edges": p})
+                    let mut stars: Vec<usize> = st.iter().filter_map(|x| u.star_for(x.node)).collect();
+                    stars.dedup();
+                    json!({"steps": st, "facts": facts, "stars": stars})
                 })
                 .collect::<Vec<_>>())
         }
@@ -162,8 +203,7 @@ fn run_inner(m: &str, a: &Value) -> Result<Value> {
             let (artists, recs): (Vec<String>, Vec<Track>) = {
                 let g = uni().lock().unwrap();
                 let u = g.as_ref().context("нет вселенной")?;
-                let mut arts: Vec<(u64, String)> = u.g.nodes.iter().filter(|n| n.kind == crate::graph::Kind::Artist).map(|n| (n.listened, n.name.clone())).collect();
-                arts.sort_by(|a, b| b.0.cmp(&a.0));
+                let arts: Vec<(u64, String)> = u.stars.iter().map(|&s| (u.g.nodes[s].listened, u.g.nodes[s].name.clone())).collect();
                 let mut recs: Vec<(u64, Track)> = u.g.nodes.iter().filter_map(|n| Some((n.listened, n.track.clone()?))).collect();
                 recs.sort_by(|a, b| b.0.cmp(&a.0));
                 (arts.into_iter().take(80).map(|a| a.1).collect(), recs.into_iter().take(400).map(|r| r.1).collect())
@@ -249,7 +289,8 @@ fn run_inner(m: &str, a: &Value) -> Result<Value> {
         }
         "rooms_state" => {
             let t: Option<Track> = serde_json::from_value(a["track"].clone()).ok();
-            rooms::set_state(t.as_ref(), a["pos"].as_f64().unwrap_or(0.0), a["playing"].as_bool().unwrap_or(false), a["seq"].as_u64().unwrap_or(0))?;
+            let up: Vec<Track> = serde_json::from_value(a["upnext"].clone()).unwrap_or_default();
+            rooms::set_state(t.as_ref(), a["pos"].as_f64().unwrap_or(0.0), a["playing"].as_bool().unwrap_or(false), a["seq"].as_u64().unwrap_or(0), &up)?;
             Value::Null
         }
         "rooms_beat" => {

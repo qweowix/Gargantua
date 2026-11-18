@@ -762,6 +762,7 @@ impl App {
             self.ui.set_coll_cover(img.clone());
             self.ui.set_has_coll_cover(true);
         }
+        self.room_cover(&url, &img);
         if self.current.as_ref().is_some_and(|t| t.cover == url) {
             self.ui.set_now_cover(img);
             self.ui.set_now_has_cover(true);
@@ -1675,7 +1676,7 @@ impl App {
         }
         let playlists = self.store.playlists.iter().map(|p| p.tracks.iter().map(key).collect()).collect();
         let (mb_artists, mb_recs) = musicbrainz::snapshot();
-        graph::Input { tracks, playlists, dna: dna::all(), mb_artists, mb_recs, yt_similar: universe::similar_cache() }
+        graph::Input { tracks, playlists, dna: dna::all(), mb_artists, mb_recs, yt_similar: universe::similar_cache(), history: journal::history(3000) }
     }
 
     /// Граф и раскладка — в фоне: на тысячах треков это доли секунды, но UI ждать не должен
@@ -1708,12 +1709,12 @@ impl App {
         });
     }
 
-    /// Пришли новые связи — перестроим не чаще раза в 6 с
+    /// Пришли новые связи — перестроим не чаще раза в 20 с (раскладка заново — это заметный скачок картинки)
     fn uni_soon(&mut self) {
         if self.uni_timer.running() {
             return;
         }
-        self.uni_timer.start(TimerMode::SingleShot, Duration::from_secs(6), || {
+        self.uni_timer.start(TimerMode::SingleShot, Duration::from_secs(20), || {
             with(|a| {
                 if a.ui.get_page() == "universe" {
                     a.uni_build();
@@ -4994,12 +4995,17 @@ fn main() -> Result<(), slint::PlatformError> {
         }
         let uni = ui.global::<Uni>();
         uni.on_opened(|| {
-            with(|a| a.uni_build());
+            fn bg() {
+                with(|a| a.uni.bg_tick(&a.ui));
+            }
+            with(|a| {
+                a.uni.start_bg(&a.ui, bg);
+                a.uni_build();
+            });
         });
         uni.on_wheel(|dy, x, y, w, h| {
             with(|a| a.uni.wheel(&a.ui, dy, x, y, w, h));
         });
-        uni.on_panned(|| {});
         uni.on_pick(|id| {
             with(|a| a.uni.pick(&a.ui, id));
         });
@@ -5015,8 +5021,16 @@ fn main() -> Result<(), slint::PlatformError> {
         uni.on_search(|q| {
             with(|a| a.uni.search(&a.ui, &q));
         });
-        uni.on_toggle_kind(|k| {
-            with(|a| a.uni.toggle_kind(&a.ui, k));
+        uni.on_goto(|n| {
+            with(|a| a.uni.goto(&a.ui, n, tick));
+        });
+        uni.on_play_track(|i| {
+            with(|a| {
+                let (q, from) = a.uni.panel_from(i.max(0) as usize);
+                if !q.is_empty() {
+                    a.play_queue(q, from);
+                }
+            });
         });
         uni.on_toggle_origin(|k| {
             with(|a| a.uni.toggle_origin(&a.ui, k));

@@ -79,7 +79,7 @@ import app.blackhole.DnaInfo
 import app.blackhole.DnaPick
 import app.blackhole.EcoText
 import app.blackhole.Room
-import app.blackhole.UNode
+import app.blackhole.UStar
 import app.blackhole.tr
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -180,57 +180,66 @@ fun UniverseScreen(vm: AppState) {
     var h by remember { mutableFloatStateOf(1f) }
     var bridgeOpen by remember { mutableStateOf(false) }
     var q by remember { mutableStateOf("") }
-    val byI = remember(data) { data?.nodes?.associateBy { it.i } ?: emptyMap() }
+    val stars = data?.stars ?: emptyList()
+    val density = LocalDensity.current.density
+    fun fitZoom(bw: Float, bh: Float) = (w / bw.coerceAtLeast(200f)).coerceAtMost(h / bh.coerceAtLeast(200f)).coerceIn(0.08f, 2f)
     fun fit() {
         val b = data?.bounds ?: return
-        cx = b[0]; cy = b[1]
-        zoom = (w / b[2].coerceAtLeast(50f)).coerceAtMost(h / b[3].coerceAtLeast(50f)).coerceIn(0.08f, 2f) * 0.9f
+        cx = b[0]; cy = b[1]; zoom = fitZoom(b[2], b[3])
     }
     LaunchedEffect(data, w) { if (data != null && !fitted && w > 1f) { fit(); fitted = true } }
-    // полёт к узлу: плавно, зум по логарифму
-    fun fly(i: Int) {
-        val n = byI[i] ?: return
+    // плавный перелёт: зум по логарифму, чтобы издалека камера не «ныряла»
+    fun flyCam(x: Float, y: Float, z1: Float) {
         val (x0, y0, z0) = Triple(cx, cy, zoom)
-        val z1 = when (n.k) { 0 -> 2.2f; 3 -> 0.6f; else -> maxOf(zoom, 1.3f) }
         scope.launch {
-            val t = Animatable(0f)
-            t.animateTo(1f, tween(480)) {
-                cx = x0 + (n.x - x0) * value; cy = y0 + (n.y - y0) * value
+            Animatable(0f).animateTo(1f, tween(480)) {
+                cx = x0 + (x - x0) * value; cy = y0 + (y - y0) * value
                 zoom = kotlin.math.exp(kotlin.math.ln(z0) + (kotlin.math.ln(z1) - kotlin.math.ln(z0)) * value)
             }
         }
-        eco.pick(i)
+    }
+    fun fly(star: Int) {
+        val s = stars.getOrNull(star) ?: return
+        flyCam(s.x, s.y, maxOf(zoom, 1.1f))
+        eco.pick(star)
     }
     LaunchedEffect(eco.flyTo) { eco.flyTo?.let { fly(it); eco.flyTo = null } }
+    LaunchedEffect(eco.flyNeb) { eco.flyNeb?.let { i -> data?.nebulas?.getOrNull(i)?.let { n -> eco.clear(); flyCam(n.x, n.y, (350f / n.r).coerceIn(0.3f, 2f)) }; eco.flyNeb = null } }
 
-    // что подсвечено: соседи выбранного или узлы показанного моста
-    val focus: Set<Int> = remember(eco.sel, eco.info, eco.brShown, eco.bridges) {
-        eco.brShown?.let { b -> eco.bridges.getOrNull(b)?.steps?.map { it.node }?.toSet() }
-            ?: eco.sel?.let { s -> setOf(s) + (eco.info?.rels?.map { it.id } ?: emptyList()) } ?: emptySet()
+    // в фокусе: звёзды моста, иначе выбранная и её связи
+    val bridge = eco.brShown?.let { eco.bridges.getOrNull(it) }
+    val focus: Set<Int> = remember(eco.sel, eco.info, bridge) {
+        bridge?.stars?.toSet() ?: eco.sel?.let { s -> setOf(s) + (eco.info?.links?.map { it.star } ?: emptyList()) } ?: emptySet()
     }
-    val hiEdges: Set<Int> = remember(eco.brShown, eco.bridges) { eco.brShown?.let { eco.bridges.getOrNull(it)?.edges?.toSet() } ?: emptySet() }
-    val (coreCap, trackCap) = when { zoom < 0.35f -> 90 to 0; zoom < 0.8f -> 350 to 0; zoom < 1.6f -> 600 to 300; else -> 700 to 900 }
-    val visible: List<UNode> = remember(data, coreCap, trackCap, focus) {
-        var nc = 0; var nt = 0
-        data?.nodes?.filter { n ->
-            when {
-                n.i in focus -> true
-                n.k == 0 -> ++nt <= trackCap
-                zoom < 0.35f && n.k != 1 && n.k != 3 -> false
-                else -> ++nc <= coreCap
-            }
-        } ?: emptyList()
-    }
+    val cap = when { zoom < 0.4f -> 150; zoom < 0.9f -> 400; else -> 1200 }
+    val visible: List<UStar> = remember(data, cap, focus) { stars.filter { it.i < cap || it.i in focus } }
     val labelPx = with(LocalDensity.current) { 11.sp.toPx() }
-    val genrePx = with(LocalDensity.current) { 13.sp.toPx() }
+    val nebPx = with(LocalDensity.current) { 15.sp.toPx() }
+    // фон: три пятна цветов темы медленно плывут; в лайт-режиме стоят
+    val acc = LocalAccent.current
+    val lite = LocalLite.current
+    val drift = androidx.compose.animation.core.rememberInfiniteTransition(label = "sky")
+    val bgT by drift.animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable(tween(60_000, easing = androidx.compose.animation.core.LinearEasing)), label = "t")
 
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF07060B))) {
+        Canvas(Modifier.fillMaxSize()) {
+            val t = if (lite) 0f else bgT
+            val big = maxOf(size.width, size.height)
+            listOf(Triple(acc.c1, 0.25f to 0.3f, 0.8f), Triple(acc.c2, 0.75f to 0.75f, 0.8f), Triple(acc.deep, 0.5f to 0.5f, 0.95f)).forEachIndexed { i, (c, at, k) ->
+                val r = big * k / 2
+                val o = Offset(
+                    size.width * at.first + size.width * 0.12f * sin(Math.toRadians((t * (1 + i * 0.3) + i * 120).toDouble())).toFloat(),
+                    size.height * at.second + size.height * 0.12f * cos(Math.toRadians((t * (1.2 + i * 0.2) + i * 70).toDouble())).toFloat(),
+                )
+                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(c.copy(alpha = if (i == 2) 0.35f else 0.2f), c.copy(alpha = 0.06f), Color.Transparent), o, r), r, o)
+            }
+        }
         Canvas(
             Modifier.fillMaxSize()
                 .pointerInput(data) {
                     detectTransformGestures { centroid, pan, gz, _ ->
-                        // зум к точке под пальцами — она остаётся на месте
-                        val nz = (zoom * gz).coerceIn(0.08f, 8f)
+                        // зум к точке между пальцами — она остаётся на месте
+                        val nz = (zoom * gz).coerceIn(0.08f, 6f)
                         val wx = cx + (centroid.x - size.width / 2) / zoom
                         val wy = cy + (centroid.y - size.height / 2) / zoom
                         zoom = nz
@@ -238,51 +247,65 @@ fun UniverseScreen(vm: AppState) {
                         cy = wy - (centroid.y - size.height / 2) / nz - pan.y / nz
                     }
                 }
-                .pointerInput(data, visible) {
+                .pointerInput(visible) {
+                    fun hit(p: Offset): UStar? = visible.minByOrNull { s -> hypot((s.x - cx) * zoom + size.width / 2 - p.x, (s.y - cy) * zoom + size.height / 2 - p.y) }
+                        ?.takeIf { s -> hypot((s.x - cx) * zoom + size.width / 2 - p.x, (s.y - cy) * zoom + size.height / 2 - p.y) < 30.dp.toPx() }
                     detectTapGestures(
-                        onTap = { p ->
-                            val hit = visible.minByOrNull { n -> hypot((n.x - cx) * zoom + size.width / 2 - p.x, (n.y - cy) * zoom + size.height / 2 - p.y) }
-                            val d = hit?.let { n -> hypot((n.x - cx) * zoom + size.width / 2 - p.x, (n.y - cy) * zoom + size.height / 2 - p.y) } ?: Float.MAX_VALUE
-                            if (hit != null && d < 28.dp.toPx()) eco.pick(hit.i) else { eco.sel = null; eco.info = null; eco.brShown = null }
-                        },
-                        onDoubleTap = { p ->
-                            visible.minByOrNull { n -> hypot((n.x - cx) * zoom + size.width / 2 - p.x, (n.y - cy) * zoom + size.height / 2 - p.y) }?.let { fly(it.i) }
-                        },
+                        onTap = { p -> hit(p)?.let { eco.pick(it.i) } ?: eco.clear() },
+                        onDoubleTap = { p -> hit(p)?.let { fly(it.i) } },
                     )
                 },
         ) {
             w = size.width; h = size.height
-            val on = BooleanArray((data?.nodes?.size ?: 0) + 1)
-            visible.forEach { if (it.i < on.size) on[it.i] = true }
-            val rk = zoom.toDouble().pow(0.6).toFloat()
             fun sx(x: Float) = (x - cx) * zoom + size.width / 2
             fun sy(y: Float) = (y - cy) * zoom + size.height / 2
-            data?.edges?.forEachIndexed { ei, e ->
-                val a = e[0].toInt(); val b = e[1].toInt()
-                if (a >= on.size || b >= on.size || !on[a] || !on[b]) return@forEachIndexed
-                val na = byI[a] ?: return@forEachIndexed
-                val nb = byI[b] ?: return@forEachIndexed
-                val hi = ei in hiEdges
-                drawLine(if (hi) LocalAccentColor else originColor(e[2].toInt()), Offset(sx(na.x), sy(na.y)), Offset(sx(nb.x), sy(nb.y)), if (hi) 5f else 1.6f)
-            }
-            val dim = focus.isNotEmpty()
             val paint = android.graphics.Paint().apply { isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER }
-            for (n in visible) {
-                val x = sx(n.x); val y = sy(n.y)
-                if (x < -80 || x > size.width + 80 || y < -80 || y > size.height + 80) continue
-                val r = maxOf(if (n.k == 3) 5.dp.toPx() else 2.5.dp.toPx(), n.r * rk * density * 0.6f)
+            // туманности жанров
+            data?.nebulas?.forEach { n ->
+                val r = maxOf(30.dp.toPx(), n.r * zoom)
+                val o = Offset(sx(n.x), sy(n.y))
+                if (o.x + r < 0 || o.x - r > size.width || o.y + r < 0 || o.y - r > size.height) return@forEach
                 val c = rgb(n.c)
-                val faded = dim && n.i !in focus
-                if (n.k == 3) {
-                    drawCircle(c.copy(alpha = if (faded) 0.1f else 0.45f), r, Offset(x, y))
-                    drawCircle(c, r, Offset(x, y), style = Stroke(3f))
-                } else drawCircle(c.copy(alpha = if (faded) 0.15f else 0.95f), r, Offset(x, y))
-                if (n.i == eco.sel) drawCircle(Color.White, r + 4f, Offset(x, y), style = Stroke(4f))
-                if (!faded && (n.k == 3 || r > 7.dp.toPx() || n.i in focus)) {
-                    paint.color = if (n.k == 3) c.toArgb() else 0xD9ECE8F6.toInt()
-                    paint.textSize = if (n.k == 3) genrePx else labelPx
-                    paint.isFakeBoldText = n.k == 3
-                    drawContext.canvas.nativeCanvas.drawText(n.n.take(26), x, if (n.k == 3) y + paint.textSize / 3 else y + r + paint.textSize + 2f, paint)
+                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(c.copy(alpha = 0.16f), c.copy(alpha = 0.07f), Color.Transparent), o, r), r, o)
+                paint.color = c.copy(alpha = 0.75f).toArgb(); paint.textSize = (r / 7f).coerceIn(nebPx * 0.8f, nebPx * 1.8f); paint.isFakeBoldText = true
+                drawContext.canvas.nativeCanvas.drawText(n.n, o.x, o.y - r * 0.6f, paint)
+            }
+            // линии: у каждой звезды — её самые сильные; в фокусе — только связи выбранной (или моста)
+            val on = BooleanArray(stars.size)
+            visible.forEach { on[it.i] = true }
+            val links = data?.links ?: emptyList()
+            fun line(li: Int, hi: Boolean) {
+                val l = links.getOrNull(li) ?: return
+                val a = l[0].toInt(); val b = l[1].toInt()
+                if (a !in stars.indices || b !in stars.indices || !on[a] || !on[b]) return
+                val sa = stars[a]; val sb = stars[b]
+                drawLine(if (hi) LocalAccentColor else originColor(l[2].toInt()), Offset(sx(sa.x), sy(sa.y)), Offset(sx(sb.x), sy(sb.y)), if (hi) 4f else 1.5f)
+            }
+            if (focus.isEmpty()) {
+                val drawn = HashSet<Int>()
+                visible.forEach { s -> s.top.forEach { li -> if (drawn.add(li)) line(li, false) } }
+            } else if (bridge != null) {
+                bridge.stars.zipWithNext().forEach { (a, b) ->
+                    if (a in stars.indices && b in stars.indices) drawLine(LocalAccentColor, Offset(sx(stars[a].x), sy(stars[a].y)), Offset(sx(stars[b].x), sy(stars[b].y)), 4f)
+                }
+            } else eco.sel?.let { s ->
+                eco.info?.links?.forEach { l -> if (l.star in stars.indices) drawLine(LocalAccentColor.copy(alpha = 0.7f), Offset(sx(stars[s].x), sy(stars[s].y)), Offset(sx(stars[l.star].x), sy(stars[l.star].y)), 2.5f) }
+            }
+            // звёзды и подписи
+            val rk = zoom.toDouble().pow(0.55).toFloat()
+            val labelCap = when { zoom < 0.4f -> 25; zoom < 0.9f -> 45; else -> 90 }
+            for (st in visible) {
+                val x = sx(st.x); val y = sy(st.y)
+                if (x < -60 || x > size.width + 60 || y < -60 || y > size.height + 60) continue
+                val r = maxOf(2.5.dp.toPx(), st.r * rk * density * 0.55f)
+                val c = rgb(st.c)
+                val faded = focus.isNotEmpty() && st.i !in focus
+                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.White, c, c.copy(alpha = 0.85f)), Offset(x, y), r), r, Offset(x, y), alpha = if (faded) 0.18f else 1f)
+                if (st.i == eco.sel) drawCircle(Color.White, r + 5f, Offset(x, y), style = Stroke(3f))
+                val lab = if (focus.isNotEmpty()) st.i in focus else st.i < labelCap || r > 11.dp.toPx()
+                if (lab && !faded) {
+                    paint.color = 0xE6ECE8F6.toInt(); paint.textSize = labelPx; paint.isFakeBoldText = st.i == eco.sel
+                    drawContext.canvas.nativeCanvas.drawText(st.n.take(24), x, y + r + labelPx + 2f, paint)
                 }
             }
         }
@@ -295,71 +318,90 @@ fun UniverseScreen(vm: AppState) {
             }
             GlassField(
                 q, { q = it; eco.search(it) }, Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth(),
-                placeholder = { Text(tr("Найти артиста, альбом, трек…", "Find an artist, album, track…", "Знайти артиста, альбом, трек…", "Nájsť interpreta, album, skladbu…")) },
+                placeholder = { Text(tr("Артист, трек или жанр…", "Artist, track or genre…", "Артист, трек або жанр…", "Interpret, skladba alebo žáner…")) },
                 leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { eco.found.firstOrNull()?.let { fly(it); q = ""; eco.search("") } }),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { eco.found.firstOrNull()?.let { eco.go(it); q = ""; eco.search("") } }),
             )
             if (q.isNotBlank() && eco.found.isNotEmpty()) Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().liquid(RoundedCornerShape(18.dp)).padding(6.dp)) {
-                for (i in eco.found) byI[i]?.let { n ->
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { fly(i); q = ""; eco.search("") }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(10.dp).clip(CircleShape).background(rgb(n.c)))
-                        Spacer(Modifier.width(10.dp))
-                        Text(n.n, color = Pal.text, fontSize = 14.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(EcoText.kind(n.k).lowercase(), color = Pal.faint, fontSize = 11.sp)
+                for (f in eco.found) Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { eco.go(f); q = ""; eco.search("") }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(f.name, color = Pal.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        f.sub?.let { Text(it, color = Pal.faint, fontSize = 11.sp, maxLines = 1) }
                     }
+                    Text(EcoText.kind(f.kind).lowercase(), color = Pal.faint, fontSize = 11.sp)
                 }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GlassChip(tr("Мосты", "Bridges", "Мости", "Mosty"), bridgeOpen) { bridgeOpen = !bridgeOpen }
+                GlassChip(tr("Всё небо", "Whole sky", "Усе небо", "Celá obloha"), false) { eco.clear(); fit() }
                 GlassChip(if (eco.fetching) tr("Подтягиваю…", "Fetching…", "Підтягую…", "Doťahujem…") else tr("Подтянуть связи", "Fetch links", "Підтягнути зв'язки", "Doplniť väzby"), eco.fetching) { eco.fetch() }
-                GlassChip(tr("Вся вселенная", "Whole universe", "Весь всесвіт", "Celý vesmír"), false) { fit() }
             }
-            if (eco.cmpPick) Text(tr("Выбери второй узел для сравнения", "Pick a second node to compare", "Обери другий вузол для порівняння", "Vyber druhý uzol na porovnanie"), color = Pal.text, fontSize = 13.sp, modifier = Modifier.padding(16.dp).liquid(RoundedCornerShape(14.dp)).padding(10.dp))
+            if (data?.sparse == true && eco.sel == null) Text(
+                tr("Связей пока мало. «Подтянуть связи» добавит жанры, продюсеров и лейблы из MusicBrainz и похожих из YouTube.", "Few links so far. “Fetch links” adds genres, producers and labels from MusicBrainz and similar artists from YouTube.", "Зв'язків поки мало. «Підтягнути зв'язки» додасть жанри, продюсерів і лейбли з MusicBrainz та схожих з YouTube.", "Zatiaľ málo väzieb. „Doplniť väzby“ pridá žánre, producentov a vydavateľstvá z MusicBrainz a podobných z YouTube."),
+                color = Pal.dim, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).liquid(RoundedCornerShape(14.dp)).padding(10.dp),
+            )
+            if (eco.cmpPick) Text(tr("Выбери второго артиста для сравнения", "Pick a second artist to compare", "Обери другого артиста для порівняння", "Vyber druhého interpreta na porovnanie"), color = Pal.text, fontSize = 13.sp, modifier = Modifier.padding(16.dp).liquid(RoundedCornerShape(14.dp)).padding(10.dp))
         }
 
-        if (data != null && data.nodes.isEmpty()) Text(
-            tr("Вселенная строится из твоих плейлистов и того, что ты слушал. Послушай что-нибудь — и тут появятся звёзды.", "The universe is built from your playlists and what you've listened to. Play something and stars will appear.", "Всесвіт будується з твоїх плейлистів і того, що ти слухав. Послухай щось — і тут з'являться зірки.", "Vesmír vzniká z tvojich playlistov a toho, čo si počúval. Pusti si niečo a objavia sa hviezdy."),
+        if (data != null && stars.isEmpty()) Text(
+            tr("Вселенная строится из того, что ты слушал. Послушай что-нибудь — и тут появятся звёзды.", "The universe is built from what you've listened to. Play something and stars will appear.", "Всесвіт будується з того, що ти слухав. Послухай щось — і тут з'являться зірки.", "Vesmír vzniká z toho, čo si počúval. Pusti si niečo a objavia sa hviezdy."),
             color = Pal.dim, fontSize = 15.sp, modifier = Modifier.align(Alignment.Center).padding(32.dp),
         )
 
-        // низ: выбранный узел
+        // низ: выбранный артист — связи, треки, факты
         val info = eco.info
         if (eco.sel != null && info != null) {
-            Column(
-                Modifier.align(Alignment.BottomCenter).padding(bottom = LocalBottomPad.current).padding(horizontal = 12.dp).fillMaxWidth().heightIn(max = 380.dp)
-                    .liquid(RoundedCornerShape(28.dp)).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            LazyColumn(
+                Modifier.align(Alignment.BottomCenter).padding(bottom = LocalBottomPad.current).padding(horizontal = 12.dp).fillMaxWidth().heightIn(max = 400.dp)
+                    .liquid(RoundedCornerShape(28.dp)),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(EcoText.kind(info.kind), color = Pal.faint, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Icon(Icons.Rounded.Close, null, tint = Pal.dim, modifier = Modifier.size(22.dp).clickable { eco.sel = null; eco.info = null })
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(EcoText.kind(1), color = Pal.faint, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Icon(Icons.Rounded.Close, null, tint = Pal.dim, modifier = Modifier.size(22.dp).clickable { eco.clear() })
+                    }
+                    Text(info.name, color = Pal.text, fontSize = 22.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    val sub = listOfNotNull(
+                        info.listened.takeIf { it > 0 }?.let { tr("слушал ${dur(it)}", "listened ${dur(it)}", "слухав ${dur(it)}", "počúval si ${dur(it)}") },
+                        info.dna?.let { d -> listOfNotNull(d.bpm?.let { "~${it.toInt()} BPM" }, tr("DNA по ${d.n} трекам", "DNA from ${d.n} tracks", "DNA за ${d.n} треками", "DNA z ${d.n} skladieb")).joinToString(" · ") },
+                    ).joinToString(" · ")
+                    if (sub.isNotEmpty()) Text(sub, color = Pal.dim, fontSize = 12.sp)
+                    Row(Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (info.tracks.isNotEmpty()) GlassChip(tr("Играть", "Play", "Грати", "Hrať"), true) { vm.play(info.tracks, 0) }
+                        if (info.dna != null) GlassChip("Music DNA", false) { eco.openDna(info.node) }
+                        GlassChip(tr("Мост отсюда", "Bridge from here", "Міст звідси", "Most odtiaľto"), eco.brA == info.node) { eco.bridgeEnd(info.node, true); bridgeOpen = true }
+                        GlassChip(tr("Мост сюда", "Bridge to here", "Міст сюди", "Most sem"), eco.brB == info.node) { eco.bridgeEnd(info.node, false); bridgeOpen = true }
+                        if (eco.inRoom) info.tracks.firstOrNull { it.src != "lc" }?.let { t -> GlassChip(tr("В комнату", "To the room", "У кімнату", "Do miestnosti"), false) { eco.add(t) } }
+                        if (eco.inRoom) GlassChip(tr("Показать всем", "Show everyone", "Показати всім", "Ukázať všetkým"), false) { eco.say(info.name, "🪐") }
+                    }
+                    val facts = listOfNotNull(
+                        info.genres.takeIf { it.isNotEmpty() }?.let { tr("Жанры: ", "Genres: ", "Жанри: ", "Žánre: ") + it.joinToString(", ") },
+                        info.albums.takeIf { it.isNotEmpty() }?.let { tr("Альбомы: ", "Albums: ", "Альбоми: ", "Albumy: ") + it.joinToString(", ") },
+                        info.people.takeIf { it.isNotEmpty() }?.let { tr("Люди за записями: ", "People behind the records: ", "Люди за записами: ", "Ľudia za nahrávkami: ") + it.take(12).joinToString(", ") },
+                    )
+                    for (f in facts) Text(f, color = Pal.dim, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                    Text(if (info.links.isEmpty()) tr("Связей пока нет", "No links yet", "Зв'язків поки немає", "Zatiaľ žiadne väzby") else tr("Связанные артисты · ${info.links.size}", "Related artists · ${info.links.size}", "Пов'язані артисти · ${info.links.size}", "Súvisiaci interpreti · ${info.links.size}"), color = Pal.text, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                 }
-                Text(info.name, color = Pal.text, fontSize = 22.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                val sub = listOfNotNull(
-                    info.track?.artist,
-                    info.listened.takeIf { it > 0 }?.let { tr("слушал ${dur(it)}", "listened ${dur(it)}", "слухав ${dur(it)}", "počúval si ${dur(it)}") },
-                    info.dna?.let { d -> listOfNotNull(d.bpm?.let { "${it.toInt()} BPM" }, d.key).joinToString(" · ").ifEmpty { null } },
-                ).joinToString(" · ")
-                if (sub.isNotEmpty()) Text(sub, color = Pal.dim, fontSize = 12.sp)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (info.tracks.isNotEmpty()) GlassChip(tr("Играть", "Play", "Грати", "Hrať"), true) { vm.play(info.tracks, 0) }
-                    if (info.dna != null) GlassChip("Music DNA", false) { eco.openDna(eco.sel!!) }
-                    GlassChip(tr("Мост отсюда", "Bridge from here", "Міст звідси", "Most odtiaľto"), eco.brA == eco.sel) { eco.bridgeEnd(eco.sel!!, true); bridgeOpen = true }
-                    GlassChip(tr("Мост сюда", "Bridge to here", "Міст сюди", "Most sem"), eco.brB == eco.sel) { eco.bridgeEnd(eco.sel!!, false); bridgeOpen = true }
-                    if (eco.inRoom && info.track != null && info.track.src != "lc") GlassChip(tr("В комнату", "To the room", "У кімнату", "Do miestnosti"), false) { eco.add(info.track) }
-                    if (eco.inRoom) GlassChip(tr("Показать всем", "Show everyone", "Показати всім", "Ukázať všetkým"), false) { eco.say(info.name, "🪐") }
-                }
-                Text(if (info.rels.isEmpty()) tr("Связей пока нет", "No links yet", "Зв'язків поки немає", "Zatiaľ žiadne väzby") else tr("Связи · ${info.rels.size}", "Links · ${info.rels.size}", "Зв'язки · ${info.rels.size}", "Väzby · ${info.rels.size}"), color = Pal.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                LazyColumn(Modifier.heightIn(max = 180.dp)) {
-                    items(info.rels) { r ->
-                        Row(Modifier.fillMaxWidth().clickable { fly(r.id) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(8.dp).clip(CircleShape).background(originColor(when (r.origin) { "Confirmed" -> 0; "External" -> 1; else -> 2 }).copy(alpha = 1f)))
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(r.name, color = Pal.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(listOf(EcoText.rel(r.rel), r.note, "${EcoText.origin(r.origin)} · ${EcoText.src(r.rel)}").filter { it.isNotEmpty() }.joinToString(" · "), color = Pal.faint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
+                items(info.links) { l ->
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { fly(l.star) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(originColor(when (l.origin) { "Confirmed" -> 0; "External" -> 1; else -> 2 }).copy(alpha = 1f)))
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(l.name, color = Pal.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(l.why.joinToString(" · ") { r -> if (r.note.isEmpty() || r.rel == "Feat") EcoText.rel(r.rel) else "${EcoText.rel(r.rel)}: ${r.note}" }, color = Pal.dim, fontSize = 11.sp)
+                            Text(l.why.map { EcoText.src(it.rel) }.distinct().joinToString(", "), color = Pal.faint, fontSize = 10.sp)
                         }
+                    }
+                }
+                if (info.tracks.isNotEmpty()) item { Text(tr("Треки · ${info.tracks.size}", "Tracks · ${info.tracks.size}", "Треки · ${info.tracks.size}", "Skladby · ${info.tracks.size}"), color = Pal.text, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) }
+                items(info.tracks.size.coerceAtMost(15)) { i ->
+                    val t = info.tracks[i]
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { vm.play(info.tracks, i) }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Cover(t.cover, 40.dp, 8.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(t.title, color = Pal.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -377,15 +419,15 @@ private val LocalAccentColor = Color(0xFFFFD166)
 @Composable
 private fun BridgeDialog(vm: AppState, close: () -> Unit) {
     val eco = vm.eco
-    val byI = eco.uni?.nodes?.associateBy { it.i } ?: emptyMap()
+    val byNode = eco.uni?.stars?.associateBy { it.node } ?: emptyMap()
     var depth by remember { mutableFloatStateOf(5f) }
     var groups by remember { mutableStateOf(listOf(true, true, true, true)) }
     GlassDialog(close, tr("Музыкальные мосты", "Musical bridges", "Музичні мости", "Hudobné mosty"), buttons = {
         Pill(tr("Найти мост", "Find a bridge", "Знайти міст", "Nájsť most"), enabled = eco.brA != null && eco.brB != null) { eco.runBridge(depth.toInt(), groups) }
     }) {
-        Text(tr("Выбери на карте два узла: «Мост отсюда» и «Мост сюда». Я найду цепочку связей и объясню каждый шаг.", "Pick two nodes on the map: “Bridge from here” and “Bridge to here”. I'll find a chain of links and explain each step.", "Обери на карті два вузли: «Міст звідси» і «Міст сюди». Я знайду ланцюжок зв'язків і поясню кожен крок.", "Vyber na mape dva uzly: „Most odtiaľto“ a „Most sem“. Nájdem reťaz väzieb a vysvetlím každý krok."), color = Pal.dim, fontSize = 13.sp)
-        Text("${tr("От", "From", "Від", "Od")}: ${eco.brA?.let { byI[it]?.n } ?: "—"}", color = Pal.text, fontWeight = FontWeight.Bold)
-        Text("${tr("До", "To", "До", "Do")}: ${eco.brB?.let { byI[it]?.n } ?: "—"}", color = Pal.text, fontWeight = FontWeight.Bold)
+        Text(tr("Выбери артиста: «Мост отсюда», потом другого — «Мост сюда». Я найду цепочку связей и объясню каждый шаг.", "Pick two nodes on the map: “Bridge from here” and “Bridge to here”. I'll find a chain of links and explain each step.", "Обери на карті два вузли: «Міст звідси» і «Міст сюди». Я знайду ланцюжок зв'язків і поясню кожен крок.", "Vyber na mape dva uzly: „Most odtiaľto“ a „Most sem“. Nájdem reťaz väzieb a vysvetlím každý krok."), color = Pal.dim, fontSize = 13.sp)
+        Text("${tr("От", "From", "Від", "Od")}: ${eco.brA?.let { byNode[it]?.n } ?: "—"}", color = Pal.text, fontWeight = FontWeight.Bold)
+        Text("${tr("До", "To", "До", "Do")}: ${eco.brB?.let { byNode[it]?.n } ?: "—"}", color = Pal.text, fontWeight = FontWeight.Bold)
         Text(tr("Шагов до ${depth.toInt()}", "Up to ${depth.toInt()} steps", "Кроків до ${depth.toInt()}", "Krokov do ${depth.toInt()}"), color = Pal.dim, fontSize = 12.sp)
         Slider(depth, { depth = it }, valueRange = 2f..8f, steps = 5, colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = LocalAccent.current.c1))
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -415,7 +457,7 @@ private fun BridgeDialog(vm: AppState, close: () -> Unit) {
 @Composable
 private fun DnaDialog(vm: AppState, d: DnaInfo, close: () -> Unit) {
     val eco = vm.eco
-    val name = eco.dnaNode?.let { i -> eco.uni?.nodes?.firstOrNull { it.i == i }?.n } ?: ""
+    val name = eco.dnaNode?.let { i -> eco.uni?.stars?.firstOrNull { it.node == i }?.n } ?: ""
     GlassDialog(close, "Music DNA · $name", buttons = {
         Pill(tr("Сравнить с…", "Compare with…", "Порівняти з…", "Porovnať s…"), primary = false) { eco.cmpPick = true; close() }
     }) {
@@ -439,9 +481,9 @@ private fun DnaDialog(vm: AppState, d: DnaInfo, close: () -> Unit) {
             Bar(tr("Низ · середина · верх", "Low · mid · high", "Низ · середина · верх", "Basy · stredy · výšky"), x.bands.joinToString("/") { "${(it * 100).toInt()}" } + " %", x.bands.getOrElse(0) { 0f })
             Text(tr("Танцевальность, акустичность, речь, настроение, инструменты и вокал по спектру честно не определить — для них нужна локальная ML-модель, она ещё не подключена.", "Danceability, acousticness, speech, mood, instruments and vocals can't be honestly read off the spectrum — that needs a local ML model, not connected yet.", "Танцювальність, акустичність, мовлення, настрій, інструменти й вокал за спектром чесно не визначити — для них потрібна локальна ML-модель, її ще не підключено.", "Tanečnosť, akustickosť, reč, náladu, nástroje a vokál zo spektra poctivo neurčíš — na to treba lokálny ML model, ešte nie je pripojený."), color = Pal.faint, fontSize = 11.sp)
             if (d.similar.isNotEmpty()) Section(tr("Звучит похоже", "Sounds alike", "Звучить схоже", "Znie podobne"))
-            for (p in d.similar) PickRow(p) { close(); eco.flyTo = p.id }
+            for (p in d.similar) PickRow(p) { close(); eco.goNode(p.id) }
             if (d.far.isNotEmpty()) Section(tr("Совсем не как обычно", "Nothing like your usual", "Зовсім не як зазвичай", "Úplne iné než zvyčajne"))
-            for (p in d.far) PickRow(p) { close(); eco.flyTo = p.id }
+            for (p in d.far) PickRow(p) { close(); eco.goNode(p.id) }
         }
     }
 }
@@ -716,16 +758,36 @@ private fun RoomInside(vm: AppState, r: Room) {
         }
         item {
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (r.canQueue(me)) vm.current?.let { cur -> Pill(tr("Добавить играющий", "Add what's playing", "Додати поточний", "Pridať hrajúcu"), primary = false) { eco.add(cur) } }
+                if (r.canQueue(me)) vm.current?.let { cur -> Pill(tr("Предложить играющий", "Suggest what's playing", "Запропонувати поточний", "Navrhnúť hrajúcu"), primary = false) { eco.add(cur) } }
                 Pill(if (r.owner(me)) tr("Закрыть", "Close", "Закрити", "Zatvoriť") else tr("Выйти", "Leave", "Вийти", "Odísť"), danger = true) { eco.leave() }
             }
         }
-        item { Section(tr("Очередь комнаты", "Room queue", "Черга кімнати", "Front miestnosti")) }
-        if (r.queue.isEmpty()) item { Dim(tr("Очередь пуста. Добавлять можно и из «Вселенной».", "The queue is empty. You can add from the Universe too.", "Черга порожня. Додавати можна й із «Всесвіту».", "Front je prázdny."), Modifier.padding(horizontal = 20.dp)) }
+        // очередь того, кто управляет: у всех одна и грузится заранее
+        val up = r.state?.upnext ?: emptyList()
+        item { Section(tr("Дальше играет", "Up next", "Далі грає", "Ďalej hrá")) }
+        if (up.isEmpty()) item { Dim(tr("Очередь пуста", "The queue is empty", "Черга порожня", "Front je prázdny"), Modifier.padding(horizontal = 20.dp)) }
+        items(up.size.coerceAtMost(30)) { i ->
+            val t = up[i]
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 3.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Cover(t.cover, 42.dp, 8.dp)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(t.title, color = Pal.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(t.artist, color = Pal.faint, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        item {
+            Section(tr("Предложения", "Suggestions", "Пропозиції", "Návrhy"))
+            Text(tr("Голосуй: самое популярное встанет следующим за полминуты до конца трека. Предлагать можно и из «Вселенной».", "Vote: the most popular one plays next, queued 30 s before the track ends. You can suggest from the Universe too.", "Голосуй: найпопулярніше стане наступним за пів хвилини до кінця треку. Пропонувати можна й із «Всесвіту».", "Hlasuj: najobľúbenejšia pôjde ako ďalšia 30 s pred koncom skladby."), color = Pal.faint, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 20.dp))
+        }
+        if (r.queue.isEmpty()) item { Dim(tr("Предложений пока нет", "No suggestions yet", "Пропозицій поки немає", "Zatiaľ žiadne návrhy"), Modifier.padding(horizontal = 20.dp)) }
         val next = r.next()?.id
         items(r.queue.size) { i ->
             val q = r.queue[i]
             Row(Modifier.padding(horizontal = 16.dp, vertical = 3.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(if (q.id == next) a.c1.copy(alpha = 0.16f) else Color(0x0AFFFFFF)).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Cover(q.track.cover, 40.dp, 8.dp)
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(q.track.title, color = Pal.text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("${q.track.artist} · ${tr("добавил(а)", "by", "додав(ла)", "pridal(a)")} ${q.by_name}${if (q.id == next) " · " + tr("следующий", "next", "наступний", "ďalšia") else ""}", color = Pal.faint, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -60,6 +60,14 @@ pub struct PlayState {
     pub playing: bool,
     pub by: String,
     pub seq: u64,
+    /// очередь того, кто управляет: что заиграет дальше. Её видят все и заранее грузят — смена трека без ожидания
+    #[serde(deserialize_with = "nullable")]
+    pub upnext: Vec<Track>,
+}
+
+/// Пустые списки база не хранит — приходят как null
+fn nullable<'de, D: serde::Deserializer<'de>, T: Default + Deserialize<'de>>(d: D) -> Result<T, D::Error> {
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
 }
 
 impl PlayState {
@@ -370,10 +378,12 @@ fn path(sub: &str) -> Result<String> {
     Ok(format!("rooms/{}/{sub}", code().context("не в комнате")?))
 }
 
-/// Записать состояние плеера комнаты (только тем, кому можно управлять)
-pub fn set_state(track: Option<&Track>, pos: f64, playing: bool, seq: u64) -> Result<()> {
+/// Записать состояние плеера комнаты (только тем, кому можно управлять). upnext — своя очередь, до 30 треков
+pub fn set_state(track: Option<&Track>, pos: f64, playing: bool, seq: u64, upnext: &[Track]) -> Result<()> {
     let (uid, _) = me()?;
-    req("PUT", &path("state")?, Some(&json!({"track": track, "pos": pos, "at": {".sv": "timestamp"}, "playing": playing, "by": uid, "seq": seq})))?;
+    // обложки большие и не нужны в очереди целиком — только ссылка, она и так короткая; локальные файлы — мимо
+    let up: Vec<&Track> = upnext.iter().filter(|t| shareable(t)).take(30).collect();
+    req("PUT", &path("state")?, Some(&json!({"track": track, "pos": pos, "at": {".sv": "timestamp"}, "playing": playing, "by": uid, "seq": seq, "upnext": up})))?;
     Ok(())
 }
 

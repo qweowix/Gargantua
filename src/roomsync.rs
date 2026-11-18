@@ -1,11 +1,14 @@
 //! Плеер в комнате: публикуем свои действия (если нам можно управлять) и следуем за комнатой.
 //! Расхождение до 0.15 с не трогаем, до 2 с догоняем скоростью ±3 % (на слух незаметно), больше — перематываем.
-//! Конец трека: следующий берёт тот, кто управляет, — из общей очереди по голосам.
+//! Очередь — очередь управляющего: она едет вместе с состоянием, у всех видна и у всех заранее грузится,
+//! так что смена трека происходит сразу, без ожидания загрузки. Участники в конце трека сами включают
+//! следующий из этой очереди. Предложения участников (с голосами) управляющий за полминуты до конца трека
+//! ставит следующим — самое популярное.
 
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use slint::{ComponentHandle, ModelRc, SharedString, TimerMode, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, TimerMode, VecModel};
 
 use crate::model::Track;
 use crate::player::Cmd;
@@ -26,6 +29,13 @@ pub struct RoomLink {
     beat: Option<Instant>,
     warned: Option<Instant>,
     last_chat: usize,
+    /// предложения, которые уже поставили в очередь (чтобы не взять дважды, пока база не удалила)
+    taken: std::collections::HashSet<String>,
+}
+
+/// Отпечаток очереди: меняется — публикуем заново
+fn qsig(q: &[Track]) -> u64 {
+    q.iter().take(30).flat_map(|t| key(t).into_bytes()).fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3))
 }
 
 fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
@@ -148,21 +158,28 @@ impl App {
             .collect();
         ui.set_members(model(members));
         let next_id = r.next().map(|q| q.id.clone()).unwrap_or_default();
+        let row = |a: &Self, t: &Track| -> RoomQ {
+            let img = a.covers.get(&t.cover).cloned();
+            RoomQ { title: t.title.as_str().into(), artist: t.artist.as_str().into(), has_cover: img.is_some(), cover: img.unwrap_or_default(), cover_url: t.cover.as_str().into(), ..Default::default() }
+        };
         let q: Vec<RoomQ> = r
             .queue
             .iter()
             .map(|q| RoomQ {
                 id: q.id.as_str().into(),
-                title: q.track.title.as_str().into(),
-                artist: q.track.artist.as_str().into(),
                 by: q.by_name.as_str().into(),
                 votes: q.votes as i32,
                 mine: q.mine,
                 next: q.id == next_id,
                 removable: r.is_owner(&me) || q.by == me,
+                ..row(self, &q.track)
             })
             .collect();
         ui.set_queue(model(q));
+        // очередь управляющего — то, что реально заиграет дальше
+        let up: Vec<Track> = r.state.as_ref().map(|s| s.upnext.clone()).unwrap_or_default();
+        ui.set_upnext(model(up.iter().map(|t| row(self, t)).collect()));
+        let mut want: Vec<String> = r.queue.iter().map(|q| q.track.cover.clone()).chain(up.iter().map(|t| t.cover.clone())).collect();
         let cur = self.current.as_ref().map(key).unwrap_or_default();
         let chat: Vec<RoomMsg> = r
             .chat
@@ -193,11 +210,20 @@ impl App {
             Some(t) => {
                 ui.set_now_title(t.title.as_str().into());
                 ui.set_now_artist(t.artist.as_str().into());
+                let img = self.covers.get(&t.cover).cloned();
+                ui.set_now_has_cover(img.is_some());
+                ui.set_now_cover(img.unwrap_or_default());
+                ui.set_now_cover_url(t.cover.as_str().into());
+                want.push(t.cover.clone());
             }
             None => {
                 ui.set_now_title(SharedString::new());
                 ui.set_now_artist(SharedString::new());
+                ui.set_now_has_cover(false);
             }
+        }
+        for u in want {
+            self.want_cover(&u);
         }
         if let Some(n) = note {
             self.toast(&n);
@@ -214,13 +240,21 @@ impl App {
         let Some(t) = st.track.clone() else { return };
         let target = st.pos_now();
         let same = self.current.as_ref().is_some_and(|c| key(c) == key(&t));
-        let sig = format!("{}|{}", key(&t), st.playing);
+        // очередь управляющего — к себе: плеер заранее грузит следующие, смена трека — без ожидания
+        if qsig(&st.upnext) != qsig(&self.upnext) {
+            self.upnext = st.upnext.clone();
+            self.queue_changed();
+        }
+        let sig = format!("{}|{}|{}", key(&t), qsig(&st.upnext), st.playing);
         self.room.sig = sig;
         self.room.pos = target;
         self.room.at = Some(Instant::now());
         self.room.seq = self.room.seq.max(st.seq);
         self.room.quiet = Some(Instant::now());
         if !same {
+            if let Some(c) = self.current.take() {
+                self.played.push(c);
+            }
             self.play_now(t);
             // play_now сбрасывает resume_at — ставим после: поток откроется и встанет на позицию комнаты
             self.resume_at = Some(target).filter(|p| *p > 1.0);
@@ -309,7 +343,19 @@ impl App {
         if self.ui.get_loading() {
             return;
         }
-        let sig = format!("{}|{}", key(&t), playing);
+        // самое популярное предложение — следующим, за полминуты до конца трека (или сразу, если очередь пуста)
+        if let Some(q) = r.next().filter(|q| !self.room.taken.contains(&q.id)) {
+            if self.upnext.is_empty() || (self.dur > 0.0 && self.dur - pos < 30.0) {
+                self.room.taken.insert(q.id.clone());
+                self.upnext.insert(0, q.track.clone());
+                self.queue_changed();
+                let id = q.id.clone();
+                std::thread::spawn(move || {
+                    let _ = rooms::unqueue(&id);
+                });
+            }
+        }
+        let sig = format!("{}|{}|{}", key(&t), qsig(&self.upnext), playing);
         let expected = self.room.pos + if self.room.sig.ends_with("|true") { self.room.at.map_or(0.0, |a| a.elapsed().as_secs_f64()) } else { 0.0 };
         let owner_refresh = r.is_owner(&me) && self.room.at.is_some_and(|a| a.elapsed() > Duration::from_secs(20));
         if sig == self.room.sig && (pos - expected).abs() < 2.5 && !owner_refresh {
@@ -327,38 +373,33 @@ impl App {
         self.room.at = Some(Instant::now());
         self.room.seq += 1;
         let seq = self.room.seq;
+        let up: Vec<Track> = self.upnext.iter().take(30).cloned().collect();
         std::thread::spawn(move || {
-            if let Err(e) = rooms::set_state(Some(&t), pos, playing, seq) {
+            if let Err(e) = rooms::set_state(Some(&t), pos, playing, seq, &up) {
                 crate::logln!("комната: {e:#}");
             }
         });
     }
 
-    /// Трек кончился. В комнате следующий даёт общая очередь; true — обработано
+    /// Трек кончился. Управляющий — обычный переход по своей очереди (false). Участник включает следующий
+    /// из той же очереди сам, не дожидаясь сети: он уже загружен; состояние комнаты потом лишь подправит позицию
     pub(crate) fn room_ended(&mut self) -> bool {
         if !self.room.live {
             return false;
         }
         let Some(r) = rooms::room() else { return false };
-        let me = rooms::uid();
-        if !r.can_control(&me) {
-            // ждём, что включит управляющий; своё не включаем
-            return true;
+        if r.can_control(&rooms::uid()) {
+            return false;
         }
-        match r.next().cloned() {
-            Some(q) => {
-                if let Some(c) = self.current.take() {
-                    self.played.push(c);
-                }
-                self.play_now(q.track.clone());
-                let id = q.id.clone();
-                std::thread::spawn(move || {
-                    let _ = rooms::unqueue(&id);
-                });
-                true
+        if !self.upnext.is_empty() {
+            let next = self.upnext.remove(0);
+            if let Some(c) = self.current.take() {
+                self.played.push(c);
             }
-            None => false,
+            self.play_now(next);
+            self.room.quiet = Some(Instant::now());
         }
+        true
     }
 
     /// «Дальше» в комнате: управляющий берёт из общей очереди, остальным нельзя
@@ -371,7 +412,7 @@ impl App {
             self.toast(&tr!("В этой комнате треки переключает владелец", "Only the owner switches tracks in this room", "У цій кімнаті треки перемикає власник", "V tejto miestnosti prepína skladby vlastník"));
             return true;
         }
-        self.room_ended()
+        false
     }
 
     pub(crate) fn room_add(&mut self, t: Track) {
@@ -404,5 +445,28 @@ impl App {
                 Err(e) => a.room_rooms().set_error(room_err(&e).into()),
             });
         });
+    }
+
+    /// Обложка загрузилась — подставить в комнату (играющий трек, очередь, предложения)
+    pub(crate) fn room_cover(&mut self, url: &str, img: &slint::Image) {
+        if !self.room.live {
+            return;
+        }
+        let ui = self.ui.global::<Rooms>();
+        if ui.get_now_cover_url() == url {
+            ui.set_now_cover(img.clone());
+            ui.set_now_has_cover(true);
+        }
+        for m in [ui.get_upnext(), ui.get_queue()] {
+            for i in 0..m.row_count() {
+                if let Some(mut r) = m.row_data(i) {
+                    if r.cover_url == url && !r.has_cover {
+                        r.cover = img.clone();
+                        r.has_cover = true;
+                        m.set_row_data(i, r);
+                    }
+                }
+            }
+        }
     }
 }
