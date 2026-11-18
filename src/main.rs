@@ -1569,9 +1569,36 @@ impl App {
             Some(Confirm::Download(v)) => self.download(v),
             Some(Confirm::Remove(i)) => self.remove_track(i),
             Some(Confirm::Radio(t)) => self.start_radio(t),
-            Some(Confirm::Update(_)) => self.ui.invoke_do_update(),
+            // напрямую, не через колбэк: тот снова берёт App, а мы уже внутри него — паника и плеер падал
+            Some(Confirm::Update(_)) => self.start_update(),
             None => {}
         }
+    }
+
+    /// Скачать новую версию, заменить себя и перезапуститься
+    fn start_update(&mut self) {
+        if self.update_url.is_empty() || self.ui.get_update_busy() {
+            return;
+        }
+        self.ui.set_update_busy(true);
+        let url = self.update_url.clone();
+        std::thread::spawn(move || {
+            let r = update::install(&url);
+            post(move |a| {
+                a.ui.set_update_busy(false);
+                match r {
+                    Ok(exe) => {
+                        a.store.save();
+                        let _ = util::command(&exe).env("BLACKHOLE_AFTER_UPDATE", "1").spawn();
+                        let _ = slint::quit_event_loop();
+                    }
+                    Err(e) => {
+                        crate::logln!("обновление: {e:#}");
+                        a.toast(&tr!("Не обновилось: {}", "Update failed: {}", "Не оновилося: {}", "Aktualizácia zlyhala: {}", format!("{e:#}")));
+                    }
+                }
+            });
+        });
     }
 
     fn download(&mut self, tracks: Vec<Track>) {
@@ -4762,30 +4789,7 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
     ui.on_do_update(|| {
-        with(|a| {
-            if a.update_url.is_empty() || a.ui.get_update_busy() {
-                return;
-            }
-            a.ui.set_update_busy(true);
-            let url = a.update_url.clone();
-            std::thread::spawn(move || {
-                let r = update::install(&url);
-                post(move |a| {
-                    a.ui.set_update_busy(false);
-                    match r {
-                        Ok(exe) => {
-                            a.store.save();
-                            let _ = util::command(&exe).env("BLACKHOLE_AFTER_UPDATE", "1").spawn();
-                            let _ = slint::quit_event_loop();
-                        }
-                        Err(e) => {
-                            crate::logln!("обновление: {e:#}");
-                            a.toast(&tr!("Не обновилось: {}", "Update failed: {}", "Не оновилося: {}", "Aktualizácia zlyhala: {}", format!("{e:#}")));
-                        }
-                    }
-                });
-            });
-        });
+        with(|a| a.start_update());
     });
     ui.on_copy_log(|| {
         with(|a| {
