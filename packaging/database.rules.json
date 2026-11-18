@@ -52,6 +52,24 @@
         }
       }
     },
+    "duels": {
+      "$code": {
+        ".read": "auth != null && auth.token.email_verified == true",
+        ".write": "auth != null && auth.token.email_verified == true && ((!data.exists() && newData.child('meta/host').val() == auth.uid) || data.child('meta/host').val() == auth.uid)",
+        "meta": {
+          "guest": {
+            ".write": "auth != null && auth.token.email_verified == true && ((newData.val() == auth.uid && (!data.exists() || data.val() == '' || data.val() == auth.uid)) || (newData.val() == '' && data.val() == auth.uid))"
+          },
+          "guest_name": {
+            ".write": "auth != null && (newData.parent().child('guest').val() == auth.uid || (newData.val() == '' && data.parent().child('guest').val() == auth.uid))",
+            ".validate": "newData.isString() && newData.val().length <= 60"
+          }
+        },
+        "want": { "$uid": { ".write": "auth != null && auth.uid == $uid", ".validate": "newData.isNumber()" } },
+        "claim": { "$uid": { ".write": "auth != null && auth.uid == $uid" } },
+        "score": { "$uid": { ".write": "auth != null && auth.uid == $uid", ".validate": "newData.isNumber()" } }
+      }
+    },
     "public_rooms": {
       ".read": "auth != null && auth.token.email_verified == true",
       "$code": {

@@ -1537,3 +1537,108 @@ msgstr "Hlasuj za návrhy: najobľúbenejší pôjde ako ďalší 30 s pred konc
 
 msgid "Предложений пока нет"
 msgstr "Zatiaľ žiadne návrhy"
+
+msgid "Угадай песню"
+msgstr "Uhádni pieseň"
+
+msgid "Выбери плейлист или артиста — заиграет случайная песня: сначала 0.1 секунды, потом 0.5, 1, 2 и 5. Узнал — начни писать название и выбери трек из поиска. Чем раньше угадаешь, тем больше очков."
+msgstr "Vyber playlist alebo interpreta — zahrá náhodná pieseň: najprv 0,1 sekundy, potom 0,5, 1, 2 a 5. Poznáš ju? Začni písať názov a vyber skladbu z vyhľadávania. Čím skôr uhádneš, tým viac bodov."
+
+msgid "Соло"
+msgstr "Sólo"
+
+msgid "1 на 1"
+msgstr "1 na 1"
+
+msgid "Дуэль: у вас одни и те же песни, раунд берёт тот, кто угадал первым. Фрагмент становится длиннее, только когда «дальше» нажали оба. Есть код от друга — входи; нет — выбери источник ниже, и код появится у тебя."
+msgstr "Duel: obaja máte rovnaké piesne, kolo berie ten, kto uhádne prvý. Úryvok sa predĺži, až keď obaja stlačia „ďalej“. Máš kód od kamaráta — vstúp; nemáš — vyber zdroj nižšie a kód dostaneš ty."
+
+msgid "Код дуэли"
+msgstr "Kód duelu"
+
+msgid "Плейлист"
+msgstr "Playlist"
+
+msgid "Готовлю…"
+msgstr "Pripravujem…"
+
+msgid "Плейлистов пока нет"
+msgstr "Zatiaľ žiadne playlisty"
+
+msgid "Имя артиста"
+msgstr "Meno interpreta"
+
+msgid "Отправь его сопернику: «Угадай песню» → «1 на 1» → «Войти». Как только он войдёт, начнётся первый раунд."
+msgstr "Pošli ho súperovi: „Uhádni pieseň“ → „1 na 1“ → „Vstúpiť“. Prvé kolo začne, hneď ako vstúpi."
+
+msgid "Отменить"
+msgstr "Zrušiť"
+
+msgid "ты · {}"
+msgstr "ty · {}"
+
+msgid "очки"
+msgstr "body"
+
+msgid "серия"
+msgstr "séria"
+
+msgid "угадано"
+msgstr "uhádnuté"
+
+msgid "с"
+msgstr "s"
+
+msgid "Ещё раз"
+msgstr "Znova"
+
+msgid "Готовлю фрагмент…"
+msgstr "Pripravujem úryvok…"
+
+msgid "Фрагмент {} с — жми, чтобы переслушать"
+msgstr "Úryvok {} s — stlač a vypočuj znova"
+
+msgid "Ты был первым!"
+msgstr "Bol si prvý!"
+
+msgid "Раунд взял(а) {}"
+msgstr "Kolo vyhral(a) {}"
+
+msgid "Никто не угадал"
+msgstr "Nikto neuhádol"
+
+msgid "Угадал! +{}"
+msgstr "Uhádol si! +{}"
+
+msgid "Не угадал"
+msgstr "Neuhádol"
+
+msgid "Ждём, пока «дальше» нажмёт соперник"
+msgstr "Čakáme, kým súper stlačí „ďalej“"
+
+msgid "Соперник хочет фрагмент подлиннее"
+msgstr "Súper chce dlhší úryvok"
+
+msgid "Не знаю — дальше"
+msgstr "Neviem — ďalej"
+
+msgid "Сдаюсь"
+msgstr "Vzdávam"
+
+msgid "Название трека…"
+msgstr "Názov skladby…"
+
+msgid "Ищу…"
+msgstr "Hľadám…"
+
+msgid "Следующая"
+msgstr "Ďalšia"
+
+msgid "Следующую включит {}"
+msgstr "Ďalšiu pustí {}"
+
+msgid "Слушать целиком"
+msgstr "Počúvať celú"
+
+msgid "Лучшая серия: {}"
+msgstr "Najlepšia séria: {}"

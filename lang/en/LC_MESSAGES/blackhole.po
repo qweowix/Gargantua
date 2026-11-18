@@ -1537,3 +1537,108 @@ msgstr "Vote for suggestions: the most popular one is queued next 30 s before th
 
 msgid "Предложений пока нет"
 msgstr "No suggestions yet"
+
+msgid "Угадай песню"
+msgstr "Guess the song"
+
+msgid "Выбери плейлист или артиста — заиграет случайная песня: сначала 0.1 секунды, потом 0.5, 1, 2 и 5. Узнал — начни писать название и выбери трек из поиска. Чем раньше угадаешь, тем больше очков."
+msgstr "Pick a playlist or an artist — a random song plays: first 0.1 seconds, then 0.5, 1, 2 and 5. Know it? Start typing the title and pick the track from the search. The sooner you guess, the more points."
+
+msgid "Соло"
+msgstr "Solo"
+
+msgid "1 на 1"
+msgstr "1 vs 1"
+
+msgid "Дуэль: у вас одни и те же песни, раунд берёт тот, кто угадал первым. Фрагмент становится длиннее, только когда «дальше» нажали оба. Есть код от друга — входи; нет — выбери источник ниже, и код появится у тебя."
+msgstr "Duel: you both get the same songs, whoever guesses first takes the round. The clip gets longer only when both press “next”. Got a code from a friend — join; if not, pick a source below and you'll get a code."
+
+msgid "Код дуэли"
+msgstr "Duel code"
+
+msgid "Плейлист"
+msgstr "Playlist"
+
+msgid "Готовлю…"
+msgstr "Preparing…"
+
+msgid "Плейлистов пока нет"
+msgstr "No playlists yet"
+
+msgid "Имя артиста"
+msgstr "Artist name"
+
+msgid "Отправь его сопернику: «Угадай песню» → «1 на 1» → «Войти». Как только он войдёт, начнётся первый раунд."
+msgstr "Send it to your opponent: “Guess the song” → “1 vs 1” → “Join”. The first round starts as soon as they join."
+
+msgid "Отменить"
+msgstr "Cancel"
+
+msgid "ты · {}"
+msgstr "you · {}"
+
+msgid "очки"
+msgstr "points"
+
+msgid "серия"
+msgstr "streak"
+
+msgid "угадано"
+msgstr "guessed"
+
+msgid "с"
+msgstr "s"
+
+msgid "Ещё раз"
+msgstr "Again"
+
+msgid "Готовлю фрагмент…"
+msgstr "Preparing the clip…"
+
+msgid "Фрагмент {} с — жми, чтобы переслушать"
+msgstr "Clip {} s — press to replay"
+
+msgid "Ты был первым!"
+msgstr "You were first!"
+
+msgid "Раунд взял(а) {}"
+msgstr "{} took the round"
+
+msgid "Никто не угадал"
+msgstr "Nobody got it"
+
+msgid "Угадал! +{}"
+msgstr "Got it! +{}"
+
+msgid "Не угадал"
+msgstr "Missed"
+
+msgid "Ждём, пока «дальше» нажмёт соперник"
+msgstr "Waiting for your opponent to press “next”"
+
+msgid "Соперник хочет фрагмент подлиннее"
+msgstr "Your opponent wants a longer clip"
+
+msgid "Не знаю — дальше"
+msgstr "Don't know — next"
+
+msgid "Сдаюсь"
+msgstr "Give up"
+
+msgid "Название трека…"
+msgstr "Track title…"
+
+msgid "Ищу…"
+msgstr "Searching…"
+
+msgid "Следующая"
+msgstr "Next"
+
+msgid "Следующую включит {}"
+msgstr "{} starts the next one"
+
+msgid "Слушать целиком"
+msgstr "Play in full"
+
+msgid "Лучшая серия: {}"
+msgstr "Best streak: {}"

@@ -53,6 +53,10 @@ pub mod musicbrainz;
 pub mod taste;
 #[path = "../../../src/rooms.rs"]
 pub mod rooms;
+#[path = "../../../src/guess.rs"]
+pub mod guess;
+#[path = "../../../src/duel.rs"]
+pub mod duel;
 mod api;
 mod eco;
 #[cfg(target_os = "android")]

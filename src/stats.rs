@@ -31,6 +31,10 @@ pub struct Stats {
     /// чья это доля статистики аккаунта (поле st.<device> в облаке). Живёт в самом файле: копия файла
     /// на другой машине пишет в ту же долю, а не считается дважды
     pub device: String,
+    /// аккаунт (uid), чья это статистика; пусто — без аккаунта. Сохраняется в файл своего аккаунта,
+    /// даже если к моменту сохранения уже вошли в другой
+    #[serde(default)]
+    pub owner: String,
 }
 
 /// Сейчас по местному времени (поля C-шного tm: год от 1900, месяц с 0)
@@ -105,13 +109,27 @@ pub fn weekday(day: i64) -> i64 {
     (day + 3).rem_euclid(7) // 1970-01-01 был четвергом
 }
 
-impl Stats {
-    fn path() -> std::path::PathBuf {
-        Store::dir().join("stats.json")
+/// Файл данных аккаунта: у каждого свой (stats-<uid>.json), без аккаунта — общий (stats.json).
+/// Переход со старой версии: общий файл достаётся аккаунту, который первым войдёт
+pub fn account_file(base: &str, uid: &str) -> std::path::PathBuf {
+    let dir = Store::dir();
+    let legacy = dir.join(format!("{base}.json"));
+    if uid.is_empty() {
+        return legacy;
     }
+    let mine = dir.join(format!("{base}-{uid}.json"));
+    if !mine.exists() && legacy.exists() {
+        let _ = fs::rename(&legacy, &mine);
+    }
+    mine
+}
 
+impl Stats {
+    /// Статистика того, кто сейчас вошёл
     pub fn load() -> Self {
-        let mut s: Self = fs::read(Self::path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        let uid = crate::cloud::account().uid;
+        let mut s: Self = fs::read(account_file("stats", &uid)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        s.owner = uid;
         if s.device.is_empty() {
             use std::hash::{BuildHasher, Hasher};
             // RandomState засеян случайно на каждый процесс — хватает, чтобы у устройств не совпало
@@ -157,7 +175,7 @@ impl Stats {
     }
 
     pub fn save(&self) {
-        let p = Self::path();
+        let p = account_file("stats", &self.owner);
         let tmp = p.with_extension("json.tmp");
         if let Ok(data) = serde_json::to_vec(self) {
             if fs::write(&tmp, data).is_ok() {

@@ -54,6 +54,7 @@ sealed interface Screen {
     data object Universe : Screen
     data object Taste : Screen
     data object Rooms : Screen
+    data object Guess : Screen
 }
 
 @UnstableApi
@@ -200,6 +201,9 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     /** Вселенная, вкус, комнаты, Music DNA */
     val eco = EcoState(this)
+
+    /** «Угадай песню» */
+    val guess = GuessState(this)
 
     fun copyText(s: String) {
         val clip = getApplication<Application>().getSystemService(android.content.ClipboardManager::class.java)

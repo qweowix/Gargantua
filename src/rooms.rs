@@ -184,7 +184,7 @@ fn req(method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
 }
 
 /// Код комнаты: 6 знаков без похожих (0/O, 1/I/L), из системного источника случайности
-fn new_code() -> String {
+pub fn new_code() -> String {
     const AB: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
     let mut buf = [0u8; 6];
     if std::fs::File::open("/dev/urandom").and_then(|mut f| std::io::Read::read_exact(&mut f, &mut buf)).is_err() {

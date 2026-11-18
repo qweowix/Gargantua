@@ -878,6 +878,11 @@ fun SettingsScreen(vm: AppState) {
             }
         }
 
+        // ── игры ──
+        GlassGroup(tr("Игры", "Games", "Ігри", "Hry")) {
+            GroupRow(tr("Угадай песню", "Guess the song", "Вгадай пісню", "Uhádni pieseň"), tr("Соло или 1 на 1: узнай песню по долям секунды", "Solo or 1 vs 1: name the song from a split second", "Соло або 1 на 1: впізнай пісню за частки секунди", "Sólo alebo 1 na 1: uhádni pieseň zo zlomku sekundy"), onClick = { vm.go(Screen.Guess) }) {}
+        }
+
         // ── звук ──
         GlassGroup(tr("Звук", "Sound", "Звук", "Zvuk")) {
             GroupRow(

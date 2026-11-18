@@ -9,6 +9,7 @@ mod discord;
 mod dna;
 mod download;
 mod graph;
+mod guess;
 mod fx;
 mod home;
 mod journal;
@@ -62,6 +63,8 @@ macro_rules! tr {
 }
 
 mod remote;
+mod duel;
+mod gview;
 mod rooms;
 mod roomsync;
 mod taste;
@@ -305,6 +308,8 @@ struct App {
     /// отпечаток вкуса и граф, из которого он посчитан
     fp: Option<(taste::Fingerprint, graph::Graph)>,
     fp_busy: bool,
+    /// «Угадай песню»
+    game: gview::Game,
     cloud_timer: Timer,
     push_timer: Timer,
     syncing: bool,
@@ -763,6 +768,7 @@ impl App {
             self.ui.set_has_coll_cover(true);
         }
         self.room_cover(&url, &img);
+        self.guess_cover(&url, &img);
         if self.current.as_ref().is_some_and(|t| t.cover == url) {
             self.ui.set_now_cover(img);
             self.ui.set_now_has_cover(true);
@@ -1955,6 +1961,17 @@ impl App {
 
     fn acc_refresh_ui(&mut self) {
         let a = cloud::account();
+        // сменился аккаунт — статистика и история тоже его: прошлую сохраняем в её файл, загружаем эту
+        if self.stats.owner != a.uid {
+            self.stats.save();
+            self.stats = stats::Stats::load();
+            self.stats_others = stats::Stats::default();
+            self.fp = None;
+            self.refresh_home();
+            if self.ui.get_page() == "stats" {
+                self.open_stats();
+            }
+        }
         if self.cloud_loaded && !(a.signed_in() && a.verified) {
             // вышли (или сессия кончилась) — плейлисты этого аккаунта на экране больше не показываем
             self.cloud_loaded = false;
@@ -4549,6 +4566,7 @@ fn main() -> Result<(), slint::PlatformError> {
         room_pause_after_load: false,
         fp: None,
         fp_busy: false,
+        game: Default::default(),
         cloud_timer: Timer::default(),
         push_timer: Timer::default(),
         syncing: false,
@@ -5282,6 +5300,52 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 a.uni.toggle_taste(&a.ui, on);
             });
+        });
+    }
+    // ── Угадай песню ──
+    {
+        let g = ui.global::<Guess>();
+        g.on_opened(|| {
+            with(|a| a.guess_opened());
+        });
+        g.on_set_mode(|m| {
+            with(|a| a.ui.global::<Guess>().set_mode(m));
+        });
+        g.on_pick_playlist(|i| {
+            with(|a| a.guess_pick_playlist(i.max(0) as usize));
+        });
+        g.on_search_artist(|q| {
+            with(|a| a.guess_search_artist(q.to_string()));
+        });
+        g.on_pick_artist(|i| {
+            with(|a| a.guess_pick_artist(i.max(0) as usize));
+        });
+        g.on_replay(|| {
+            with(|a| a.guess_play());
+        });
+        g.on_skip(|| {
+            with(|a| a.guess_skip());
+        });
+        g.on_search(|q| {
+            with(|a| a.guess_search(q.to_string()));
+        });
+        g.on_guess(|i| {
+            with(|a| a.guess_pick(i.max(0) as usize));
+        });
+        g.on_guess_text(|t| {
+            with(|a| a.guess_typed(t.to_string()));
+        });
+        g.on_next(|| {
+            with(|a| a.guess_next());
+        });
+        g.on_play_full(|| {
+            with(|a| a.guess_full());
+        });
+        g.on_change(|| {
+            with(|a| a.guess_change());
+        });
+        g.on_duel_join(|c| {
+            with(|a| a.duel_join(c.to_string()));
         });
     }
     ui.set_app_version(update::VERSION.into());

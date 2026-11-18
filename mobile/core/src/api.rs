@@ -242,13 +242,18 @@ fn run(m: &str, a: &Value) -> Result<Value> {
             let acc = cloud::account();
             json!({ "configured": cloud::cfg().is_some(), "email": acc.email, "signed_in": acc.signed_in(), "verified": acc.verified })
         }
-        "sign_in" => json!(cloud::sign_in(&cfg()?, s(a, "lang"), s(a, "email").trim(), s(a, "password"))?),
+        "sign_in" => {
+            let ok = cloud::sign_in(&cfg()?, s(a, "lang"), s(a, "email").trim(), s(a, "password"))?;
+            switch_stats();
+            json!(ok)
+        }
         "sign_up" => json!(cloud::sign_up(&cfg()?, s(a, "lang"), s(a, "email").trim(), s(a, "password"))?),
         "send_verify" => json!(cloud::send_verify(&cfg()?, s(a, "lang"))?),
         "send_reset" => json!(cloud::send_reset(&cfg()?, s(a, "lang"), s(a, "email").trim())?),
         "check_verified" => json!(cloud::check_verified(&cfg()?, s(a, "lang"))?),
         "sign_out" => {
             cloud::sign_out();
+            switch_stats();
             Value::Null
         }
         // база слияния в Kotlin не ходит (u64 не влезает в Long): держим её тут до cloud_commit
@@ -292,6 +297,17 @@ fn pending() -> std::sync::MutexGuard<'static, Option<HashMap<String, u64>>> {
 fn others_lock() -> std::sync::MutexGuard<'static, Stats> {
     static S: OnceLock<Mutex<Stats>> = OnceLock::new();
     S.get_or_init(Default::default).lock().unwrap()
+}
+
+/// Аккаунт сменился — статистика и доли других устройств тоже его (прошлая сохраняется в свой файл)
+fn switch_stats() {
+    let uid = cloud::account().uid;
+    let mut st = stats_lock();
+    if st.owner != uid {
+        st.save();
+        *st = Stats::load();
+        *others_lock() = Stats::default();
+    }
 }
 
 /// Статистика всего аккаунта: своя доля и доли других устройств

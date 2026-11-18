@@ -66,6 +66,18 @@ fn room_cv() -> &'static (Mutex<()>, Condvar) {
     C.get_or_init(|| (Mutex::new(()), Condvar::new()))
 }
 
+static DUEL_VER: AtomicU64 = AtomicU64::new(0);
+
+fn duel_cv() -> &'static (Mutex<()>, Condvar) {
+    static C: OnceLock<(Mutex<()>, Condvar)> = OnceLock::new();
+    C.get_or_init(|| (Mutex::new(()), Condvar::new()))
+}
+
+fn duel_bump() {
+    DUEL_VER.fetch_add(1, Ordering::SeqCst);
+    duel_cv().1.notify_all();
+}
+
 fn room_bump() {
     ROOM_VER.fetch_add(1, Ordering::SeqCst);
     room_cv().1.notify_all();
@@ -332,6 +344,66 @@ fn run_inner(m: &str, a: &Value) -> Result<Value> {
             let g = Graph::build(&inp);
             let fp = taste::build(&crate::api::stats_all(), &g, &[], 0, 0);
             json!(taste::one_liner(&fp))
+        }
+        // ── «Угадай песню» (guess.rs) и 1 на 1 (duel.rs) ──
+        "guess_artists" => json!(crate::ytmusic::search_cards(s(a, "q"), crate::ytmusic::ARTISTS, 6)?),
+        "guess_pool_artist" => json!(crate::guess::artist_pool(s(a, "id"), s(a, "name"))?),
+        "guess_pool" => {
+            let mut v = crate::guess::dedupe(serde_json::from_value::<Vec<Track>>(a["tracks"].clone()).unwrap_or_default());
+            crate::guess::shuffle(&mut v);
+            json!(v)
+        }
+        "guess_start" => {
+            let t: Track = serde_json::from_value(a["track"].clone())?;
+            json!(crate::guess::clip_start(&t, a["dur"].as_f64().unwrap_or(t.dur as f64)))
+        }
+        "guess_same" => json!(crate::guess::same(&serde_json::from_value(a["answer"].clone())?, &serde_json::from_value(a["guess"].clone())?)),
+        "guess_typed" => json!(crate::guess::typed(&serde_json::from_value(a["answer"].clone())?, s(a, "text"))),
+        "guess_points" => json!(crate::guess::points(a["level"].as_u64().unwrap_or(9) as usize)),
+        "duel_create" => {
+            let pool: Vec<Track> = serde_json::from_value(a["pool"].clone()).unwrap_or_default();
+            let code = crate::duel::create(s(a, "source"), &pool, duel_bump)?;
+            duel_bump();
+            json!(code)
+        }
+        "duel_join" => {
+            crate::duel::join(s(a, "code"), duel_bump)?;
+            duel_bump();
+            Value::Null
+        }
+        "duel_leave" => {
+            crate::duel::leave();
+            duel_bump();
+            Value::Null
+        }
+        // длинный опрос: ждёт изменений после версии since; отдаёт дуэль целиком и производные — уровень, победителя
+        "duel_wait" => {
+            let since = a["since"].as_u64().unwrap_or(0);
+            let (lock, cv) = duel_cv();
+            let g = lock.lock().unwrap();
+            let _ = cv.wait_timeout_while(g, Duration::from_millis(a["ms"].as_u64().unwrap_or(20_000)), |_| DUEL_VER.load(Ordering::SeqCst) == since).unwrap();
+            let d = crate::duel::state();
+            json!({
+                "ver": DUEL_VER.load(Ordering::SeqCst), "me": crate::duel::uid(), "duel": d,
+                "level": d.as_ref().map(|d| d.level()), "given_up": d.as_ref().is_some_and(|d| d.given_up()),
+                "winner": d.as_ref().and_then(|d| d.winner()).map(|(u, c)| json!({"uid": u, "level": c.level})),
+            })
+        }
+        "duel_round" => {
+            crate::duel::start_round(a["n"].as_u64().unwrap_or(0) as usize, a["start"].as_f64().unwrap_or(0.0))?;
+            Value::Null
+        }
+        "duel_want" => {
+            crate::duel::want(a["times"].as_u64().unwrap_or(0) as usize)?;
+            Value::Null
+        }
+        "duel_claim" => {
+            crate::duel::claim(a["level"].as_u64().unwrap_or(0) as usize)?;
+            Value::Null
+        }
+        "duel_score" => {
+            crate::duel::set_score(a["total"].as_u64().unwrap_or(0) as u32)?;
+            Value::Null
         }
         _ => anyhow::bail!("нет метода {m}"),
     })

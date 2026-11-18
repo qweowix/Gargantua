@@ -7,13 +7,14 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Store, Track};
+use crate::model::Track;
 
 const KEEP: usize = 3000;
 static LOCK: Mutex<()> = Mutex::new(());
 
+/// История у каждого аккаунта своя (history-<uid>.json)
 fn history_path() -> PathBuf {
-    Store::dir().join("history.json")
+    crate::stats::account_file("history", &crate::cloud::account().uid)
 }
 
 fn notes_path() -> PathBuf {
