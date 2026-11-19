@@ -314,7 +314,7 @@ impl View {
                 continue;
             }
             let name = &u.g.nodes[u.stars[s]].name;
-            let w = (name.chars().count().min(22) as f32 * 6.4).min(150.0) + 6.0;
+            let w = (name.chars().count().min(22) as f32 * 7.4).min(150.0) + 10.0;
             let r = (u.radius[s] * rk).max(2.5);
             let (cx, cy) = (u.pos[s].0 * zoom, u.pos[s].1 * zoom + r + 4.0);
             let rect = (cx - w / 2.0, cy, cx + w / 2.0, cy + 15.0);
