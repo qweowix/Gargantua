@@ -30,6 +30,7 @@ class App : Application() {
         Streams.init(http)
         cache = SimpleCache(java.io.File(filesDir, "audio"), LeastRecentlyUsedCacheEvictor(CACHE_BYTES), StandaloneDatabaseProvider(this))
         YtAuth.init(this)
+        YtSolver.init(cacheDir)
         BhLog.install()
         Offline.init(this)
         Eq.init(this)

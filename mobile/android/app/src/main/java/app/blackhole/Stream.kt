@@ -94,7 +94,8 @@ object Streams {
         var url = try {
             urlFor(key)
         } catch (e: Exception) {
-            if (!isBotBlock(e)) throw e
+            // YouTube не дал звук ни одним путём (бан, сломанный плеер, видео недоступно) — та же песня с SoundCloud
+            if (e is java.io.InterruptedIOException) throw e
             throw substitute(key) ?: e
         }
         if (isHls(url)) throw HlsNeeded(key, url)

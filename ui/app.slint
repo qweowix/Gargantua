@@ -4747,6 +4747,7 @@ component GuessCard inherits Rectangle {
         height: root.height;
         opacity: root.a;
         art := Rectangle {
+            y: 0px; // без y встаёт по центру плитки и наезжает на подписи
             width: root.side;
             height: root.side;
             border-radius: root.round ? root.side / 2 : 18px;

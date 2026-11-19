@@ -270,8 +270,7 @@ class GuessState(private val vm: AppState) {
     /** Раунд раскрыт: песня играет целиком с начала, пока не нажмёшь «Следующая» */
     private fun reveal(ok: Boolean, who: String) {
         won = ok; winner = who
-        stage = 2
-        level = GUESS_LEVELS.size - 1
+        stage = 2 // уровень не трогаем: на ответе видно, за сколько секунд узнал
         val t = cur ?: return
         Streams.tracks[t.key] = t
         val uri = Offline.uri(t.key) ?: Uri.parse("bh://t/" + Uri.encode(t.key))

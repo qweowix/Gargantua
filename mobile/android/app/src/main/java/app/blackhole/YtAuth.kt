@@ -194,7 +194,7 @@ object YtAuth {
     }
 
     private fun audioOnce(id: String, acc: Boolean): String {
-        val sts = runCatching { YoutubeJavaScriptPlayerManager.getSignatureTimestamp(id) }.getOrNull()
+        val sts = runCatching { YoutubeJavaScriptPlayerManager.getSignatureTimestamp(id) }.getOrNull() ?: YtSolver.sts()
         // на бан второй запрос без 2AMB не шлём — он только продлит бан
         val first = if (noAdsOk()) runCatching { player(id, sts, true, acc) }.getOrNull() else null
         if (first != null && isBot(first)) throw BotCheck(reason(first))
@@ -212,11 +212,44 @@ object YtAuth {
             // зашифрованная подпись: расшифровывает плеер YouTube, его разбор есть в NewPipe
             val c = best["signatureCipher"]?.jsonPrimitive?.contentOrNull ?: throw IOException("нет ссылки")
             val q = c.split('&').associate { it.substringBefore('=') to URLDecoder.decode(it.substringAfter('='), "UTF-8") }
-            val sig = YoutubeJavaScriptPlayerManager.deobfuscateSignature(id, q["s"] ?: throw IOException("нет подписи"))
+            val sig = deobfuscate(id, q["s"] ?: throw IOException("нет подписи"))
             "${q["url"]}&${q["sp"] ?: "signature"}=$sig"
         }
         // параметр n — без расшифровки googlevideo режет скорость до улитки
-        return YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(id, raw)
+        return throttle(id, raw)
+    }
+
+    /** Когда NewPipe не смог разобрать плеер: пока он такой, сразу идём к решателю (раз в 6 ч пробуем NewPipe снова) */
+    @Volatile
+    private var npBrokenAt = 0L
+
+    private fun npBroken() = System.currentTimeMillis() - npBrokenAt < 6 * 3600_000L
+
+    private fun npFailed(e: Throwable) {
+        if (!npBroken()) BhLog.line("YouTube: NewPipe не разобрал плеер (${e.message}) — расшифровываю как yt-dlp")
+        npBrokenAt = System.currentTimeMillis()
+    }
+
+    private fun deobfuscate(id: String, s: String): String {
+        if (!npBroken()) {
+            try {
+                return YoutubeJavaScriptPlayerManager.deobfuscateSignature(id, s)
+            } catch (e: org.schabi.newpipe.extractor.exceptions.ParsingException) {
+                npFailed(e)
+            }
+        }
+        return YtSolver.sig(s)
+    }
+
+    private fun throttle(id: String, url: String): String {
+        if (!npBroken()) {
+            try {
+                return YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(id, url)
+            } catch (e: org.schabi.newpipe.extractor.exceptions.ParsingException) {
+                npFailed(e)
+            }
+        }
+        return YtSolver.nUrl(url)
     }
 }
 

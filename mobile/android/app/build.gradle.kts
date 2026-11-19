@@ -82,6 +82,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.27.1")
+    // тот же Rhino, что тянет NewPipe (у него он только в runtime): на нём решатель подписи YouTube — YtSolver
+    implementation("org.mozilla:rhino:1.8.1")
     testImplementation("junit:junit:4.13.2")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
 }

@@ -391,7 +391,7 @@ impl App {
         g.set_ans_cover(img.unwrap_or_default());
         g.set_ans_url(t.cover.as_str().into());
         g.set_stage(2);
-        g.set_level(LEVELS.len() as i32 - 1);
+        // уровень на экране не трогаем — видно, за сколько секунд узнал; внутри — последний (запасной фрагмент на 5 с)
         self.game.level = LEVELS.len() - 1;
         self.guess_full();
     }
@@ -673,7 +673,6 @@ impl App {
         g.set_rounds(self.game.rounds as i32);
         g.set_hits(self.game.hits as i32);
         g.set_stage(2);
-        g.set_level(LEVELS.len() as i32 - 1);
         self.game.level = LEVELS.len() - 1;
         self.guess_full();
     }
