@@ -511,7 +511,9 @@ impl App {
                     Ok(()) => a.duel_enter(code.trim().to_uppercase(), false),
                     Err(e) => {
                         let s = format!("{e:#}");
-                        a.g().set_error(if s.contains("NO_DUEL") {
+                        a.g().set_error(if s.contains("OWN_DUEL") {
+                            tr!("Это твоя же дуэль — войди с другого устройства", "That's your own duel — join from another device", "Це твоя ж дуель — зайди з іншого пристрою", "To je tvoj vlastný duel — vstúp z iného zariadenia")
+                        } else if s.contains("NO_DUEL") {
                             tr!("Дуэли с таким кодом нет", "No duel with this code", "Дуелі з таким кодом немає", "Duel s týmto kódom neexistuje")
                         } else if s.contains("DUEL_FULL") {
                             tr!("В этой дуэли уже двое", "This duel already has two players", "У цій дуелі вже двоє", "V tomto dueli sú už dvaja")
@@ -569,7 +571,9 @@ impl App {
             if d.meta.host == me && !d.pool.is_empty() {
                 let start = guess::clip_start(&d.pool[0], d.pool[0].dur as f64);
                 std::thread::spawn(move || {
-                    let _ = duel::start_round(0, start);
+                    if let Err(e) = duel::start_round(0, start) {
+                        crate::logln!("дуэль, первый раунд: {e:#}");
+                    }
                 });
             }
             return;
@@ -590,7 +594,9 @@ impl App {
             if won {
                 let total = d.score.get(&me).copied().unwrap_or(0) + guess::points(c.level);
                 std::thread::spawn(move || {
-                    let _ = duel::set_score(total);
+                    if let Err(e) = duel::set_score(total) {
+                        crate::logln!("дуэль, счёт: {e:#}");
+                    }
                 });
             }
             self.duel_reveal(won, d.name_of(&w));

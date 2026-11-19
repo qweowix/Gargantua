@@ -7,6 +7,8 @@
 //!                 то есть длиннее становится, только когда нажали оба
 //!   claim/<uid> = {at, level} — угадал (at — серверное время): раунд берёт тот, у кого at раньше
 //!   score/<uid> = очки; пишет только сам игрок, когда взял раунд
+//! Игрок — не аккаунт, а аккаунт на устройстве («uid_устройство»): с одним аккаунтом на ПК и телефоне
+//! можно сыграть друг с другом. Правила базы пускают в чужое поле, только если оно начинается с твоего uid
 //! Новый раунд начинает хозяин: перезаписывает round и чистит want и claim.
 
 use std::collections::HashMap;
@@ -89,16 +91,29 @@ impl Duel {
     }
 }
 
+/// Это устройство в этом запуске: случайная метка (хватает, чтобы два устройства одного аккаунта не совпали)
+fn device() -> &'static str {
+    static D: OnceLock<String> = OnceLock::new();
+    D.get_or_init(|| {
+        use std::hash::{BuildHasher, Hasher};
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
+        format!("{:08x}", h.finish() as u32)
+    })
+}
+
+/// (игрок, имя): игрок — «uid_устройство»
 fn me() -> Result<(String, String)> {
     let a = crate::cloud::account();
     if !a.verified || a.uid.is_empty() {
         bail!("NOT_VERIFIED");
     }
-    Ok((a.uid.clone(), a.email.split('@').next().unwrap_or("?").to_string()))
+    Ok((format!("{}_{}", a.uid, device()), a.email.split('@').next().unwrap_or("?").to_string()))
 }
 
+/// Я как игрок дуэли
 pub fn uid() -> String {
-    crate::cloud::account().uid
+    format!("{}_{}", crate::cloud::account().uid, device())
 }
 
 fn req(method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
@@ -163,12 +178,13 @@ pub fn join(code: &str, on_change: impl Fn() + Send + 'static) -> Result<()> {
     if meta.host.is_empty() {
         bail!("NO_DUEL");
     }
+    if meta.host == uid {
+        bail!("OWN_DUEL");
+    }
     if !meta.guest.is_empty() && meta.guest != uid {
         bail!("DUEL_FULL");
     }
-    if meta.host != uid {
-        req("PATCH", &format!("duels/{code}/meta"), Some(&json!({"guest": uid, "guest_name": name})))?;
-    }
+    req("PATCH", &format!("duels/{code}/meta"), Some(&json!({"guest": uid, "guest_name": name})))?;
     listen_start(&code, on_change);
     Ok(())
 }

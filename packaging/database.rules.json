@@ -18,15 +18,25 @@
         "meta": {
           ".write": "auth != null && auth.token.email_verified == true && ((!data.exists() && newData.child('owner').val() == auth.uid) || data.child('owner').val() == auth.uid)",
           ".validate": "newData.hasChildren(['owner', 'name', 'public', 'queue', 'control'])",
-          "name": { ".validate": "newData.isString() && newData.val().length <= 60" },
-          "public": { ".validate": "newData.isBoolean()" },
-          "queue": { ".validate": "newData.val() == 'all' || newData.val() == 'owner'" },
-          "control": { ".validate": "newData.val() == 'all' || newData.val() == 'owner'" }
+          "name": {
+            ".validate": "newData.isString() && newData.val().length <= 60"
+          },
+          "public": {
+            ".validate": "newData.isBoolean()"
+          },
+          "queue": {
+            ".validate": "newData.val() == 'all' || newData.val() == 'owner'"
+          },
+          "control": {
+            ".validate": "newData.val() == 'all' || newData.val() == 'owner'"
+          }
         },
         "members": {
           "$uid": {
             ".write": "auth != null && auth.token.email_verified == true && (auth.uid == $uid || root.child('rooms').child($code).child('meta/owner').val() == auth.uid)",
-            "name": { ".validate": "newData.isString() && newData.val().length <= 60" }
+            "name": {
+              ".validate": "newData.isString() && newData.val().length <= 60"
+            }
           }
         },
         "state": {
@@ -47,7 +57,9 @@
         "chat": {
           "$id": {
             ".write": "auth != null && root.child('rooms').child($code).child('members').child(auth.uid).exists() && ((!data.exists() && newData.child('uid').val() == auth.uid) || root.child('rooms').child($code).child('meta/owner').val() == auth.uid)",
-            "text": { ".validate": "newData.isString() && newData.val().length <= 300" }
+            "text": {
+              ".validate": "newData.isString() && newData.val().length <= 300"
+            }
           }
         }
       }
@@ -55,19 +67,33 @@
     "duels": {
       "$code": {
         ".read": "auth != null && auth.token.email_verified == true",
-        ".write": "auth != null && auth.token.email_verified == true && ((!data.exists() && newData.child('meta/host').val() == auth.uid) || data.child('meta/host').val() == auth.uid)",
+        ".write": "auth != null && auth.token.email_verified == true && ((!data.exists() && newData.child('meta/host').isString() && newData.child('meta/host').val().beginsWith(auth.uid + '_')) || (data.child('meta/host').isString() && data.child('meta/host').val().beginsWith(auth.uid + '_')))",
         "meta": {
           "guest": {
-            ".write": "auth != null && auth.token.email_verified == true && ((newData.val() == auth.uid && (!data.exists() || data.val() == '' || data.val() == auth.uid)) || (newData.val() == '' && data.val() == auth.uid))"
+            ".write": "auth != null && auth.token.email_verified == true && newData.isString() && ((newData.val().beginsWith(auth.uid + '_') && (!data.exists() || data.val() == '' || data.val() == newData.val())) || (newData.val() == '' && data.isString() && data.val().beginsWith(auth.uid + '_')))"
           },
           "guest_name": {
-            ".write": "auth != null && (newData.parent().child('guest').val() == auth.uid || (newData.val() == '' && data.parent().child('guest').val() == auth.uid))",
+            ".write": "auth != null && ((newData.parent().child('guest').isString() && newData.parent().child('guest').val().beginsWith(auth.uid + '_')) || (newData.val() == '' && data.parent().child('guest').isString() && data.parent().child('guest').val().beginsWith(auth.uid + '_')))",
             ".validate": "newData.isString() && newData.val().length <= 60"
           }
         },
-        "want": { "$uid": { ".write": "auth != null && auth.uid == $uid", ".validate": "newData.isNumber()" } },
-        "claim": { "$uid": { ".write": "auth != null && auth.uid == $uid" } },
-        "score": { "$uid": { ".write": "auth != null && auth.uid == $uid", ".validate": "newData.isNumber()" } }
+        "want": {
+          "$pid": {
+            ".write": "auth != null && $pid.beginsWith(auth.uid + '_')",
+            ".validate": "newData.isNumber()"
+          }
+        },
+        "claim": {
+          "$pid": {
+            ".write": "auth != null && $pid.beginsWith(auth.uid + '_')"
+          }
+        },
+        "score": {
+          "$pid": {
+            ".write": "auth != null && $pid.beginsWith(auth.uid + '_')",
+            ".validate": "newData.isNumber()"
+          }
+        }
       }
     },
     "public_rooms": {

@@ -309,6 +309,7 @@ class GuessState(private val vm: AppState) {
         r.onSuccess { enterDuel(code.trim().uppercase(), false) }.onFailure {
             val m = it.message ?: ""
             error = when {
+                "OWN_DUEL" in m -> tr("Это твоя же дуэль — войди с другого устройства", "That's your own duel — join from another device", "Це твоя ж дуель — зайди з іншого пристрою", "To je tvoj vlastný duel — vstúp z iného zariadenia")
                 "NO_DUEL" in m -> tr("Дуэли с таким кодом нет", "No duel with this code", "Дуелі з таким кодом немає", "Duel s týmto kódom neexistuje")
                 "DUEL_FULL" in m -> tr("В этой дуэли уже двое", "This duel already has two players", "У цій дуелі вже двоє", "V tomto dueli sú už dvaja")
                 else -> EcoText.err(it)
@@ -356,7 +357,7 @@ class GuessState(private val vm: AppState) {
         if (r == null) {
             if (host && d.pool.isNotEmpty()) vm.viewModelScope.launch {
                 val start = runCatching { core("guess_start") { put("track", d.pool[0]) }.jsonPrimitive.content.toDouble() }.getOrDefault(30.0)
-                runCatching { core("duel_round") { put("n", JsonPrimitive(0)); put("start", JsonPrimitive(start)) } }
+                runCatching { core("duel_round") { put("n", JsonPrimitive(0)); put("start", JsonPrimitive(start)) } }.onFailure { error = EcoText.err(it) }
             }
             return
         }
