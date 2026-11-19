@@ -37,6 +37,12 @@ const W: u32 = 1280;
 const H: u32 = 800;
 
 fn snap(win: &MinimalSoftwareWindow, name: &str) -> image::RgbImage {
+    // пробный кадр: списки создают строки при отрисовке, и их анимации появления стартуют отсюда, а не в самом снимке
+    let mut warm = vec![slint::Rgb8Pixel::default(); (W * H) as usize];
+    win.request_redraw();
+    win.draw_if_needed(|r| {
+        r.render(&mut warm, W as usize);
+    });
     for _ in 0..4 {
         NOW.with(|n| n.set(n.get() + Duration::from_secs(5)));
         slint::platform::update_timers_and_animations();
@@ -873,4 +879,83 @@ fn universe_real() {
     println!("перф: вселенная с выбором {:.1} мс/кадр", frame_ms(&win));
     v.pick(&ui, 7);
     snap(&win, "32-real-8th");
+}
+
+/// «Угадай песню»: выбор, раунд, ответ, лобби дуэли — картинки в target/shots/40-…
+#[test]
+#[ignore]
+fn guess_shots() {
+    let win = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    slint::platform::set_platform(Box::new(Offscreen(win.clone()))).unwrap();
+    win.set_size(slint::PhysicalSize::new(W, H));
+    let ui = AppWindow::new().unwrap();
+    ui.show().unwrap();
+    ui.set_intro_t(100_000.0);
+    ui.set_intro_gone(true);
+    slint::select_bundled_translation("").unwrap();
+    ui.set_page("guess".into());
+    let g = ui.global::<Guess>();
+    let item = |t: &str, s: &str, id: i32| GItem { title: t.into(), sub: s.into(), id, ..Default::default() };
+    let rows = |v: Vec<GItem>| slint::ModelRc::from(Rc::new(VecModel::from(v)));
+    g.set_playlists(rows(vec![item("GOATED", "48 треков", 0), item("Ночь", "112 треков", 1), item("Дорога", "31 трек", 2), item("Любимые треки", "530 треков", 3), item("Rap", "77 треков", 4)]));
+    g.set_rounds(4);
+    g.set_hits(3);
+    g.set_score(160);
+    g.set_best(3);
+    snap(&win, "40-guess-setup");
+    g.set_kind(1);
+    g.set_mode(1);
+    g.set_artists(rows(vec![item("TV Girl", "Исполнитель", 0), item("Скриптонит", "Исполнитель", 1), item("Mac DeMarco", "Исполнитель", 2)]));
+    snap(&win, "41-guess-setup-duel");
+
+    g.set_kind(0);
+    g.set_source("Плейлист «GOATED»".into());
+    g.set_pool_n(48);
+    g.set_stage(1);
+    g.set_level(1);
+    g.set_ready(true);
+    g.set_streak(3);
+    snap(&win, "42-guess-round");
+    g.set_q("lov".into());
+    g.set_results(rows(vec![item("Lovers Rock", "TV Girl", 0), item("Loverboy", "Mac DeMarco", 1), item("Love Me Like You Do", "Ellie Goulding", 2)]));
+    g.set_wrong("Не то: Cigarettes out the Window".into());
+    snap(&win, "43-guess-search");
+    g.set_ready(false);
+    g.set_level(0);
+    snap(&win, "44-guess-busy");
+
+    g.set_stage(2);
+    g.set_level(1);
+    g.set_won(true);
+    g.set_gained(60);
+    g.set_score(220);
+    g.set_ans_title("Lovers Rock".into());
+    g.set_ans_artist("TV Girl".into());
+    snap(&win, "45-guess-won");
+    println!("перф: угадайка, ответ {:.1} мс/кадр", frame_ms(&win));
+    g.set_won(false);
+    g.set_level(4);
+    snap(&win, "46-guess-lost");
+
+    g.set_kind(1);
+    g.set_stage(3);
+    g.set_host(true);
+    g.set_duel_code("K7QF2M".into());
+    g.set_code_chars(rows_s(&["K", "7", "Q", "F", "2", "M"]));
+    snap(&win, "47-guess-lobby");
+    g.set_stage(1);
+    g.set_level(2);
+    g.set_ready(true);
+    g.set_q("".into());
+    g.set_wrong("".into());
+    g.set_opp_name("Кент".into());
+    g.set_me_score(140);
+    g.set_opp_score(100);
+    g.set_opp_skip(true);
+    snap(&win, "48-guess-duel");
+    println!("перф: угадайка, раунд {:.1} мс/кадр", frame_ms(&win));
+}
+
+fn rows_s(v: &[&str]) -> slint::ModelRc<slint::SharedString> {
+    slint::ModelRc::from(Rc::new(VecModel::from(v.iter().map(|s| slint::SharedString::from(*s)).collect::<Vec<_>>())))
 }

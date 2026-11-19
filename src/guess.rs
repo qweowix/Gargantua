@@ -178,31 +178,40 @@ pub fn clip_start(_t: &Track, _dur: f64) -> f64 {
     0.0
 }
 
-/// Простой поиск по названию и исполнителю среди песен игры: начинающиеся с запроса — первыми
+/// Простой поиск по названию и исполнителю среди песен игры: начинающиеся с запроса — первыми,
+/// внутри — по алфавиту. Не по порядку в списке игры: он и есть порядок раундов, и загаданная песня
+/// всегда стояла сразу за уже сыгранными (по имени артиста — первой в первом раунде)
 pub fn search_pool(pool: &[Track], q: &str, limit: usize) -> Vec<usize> {
     let q = letters(q);
     if q.is_empty() {
         return Vec::new();
     }
-    let mut hits: Vec<(u8, usize)> = pool
+    let mut hits: Vec<(u8, String, String, usize)> = pool
         .iter()
         .enumerate()
         .filter_map(|(i, t)| {
             let title = letters(&t.title);
-            let all = format!("{title} {}", letters(&t.artist));
-            if title.starts_with(&q) {
-                Some((0, i))
+            let artist = letters(&t.artist);
+            let rank = if title.starts_with(&q) {
+                0
             } else if title.contains(&q) {
-                Some((1, i))
-            } else if all.contains(&q) {
-                Some((2, i))
+                1
+            } else if format!("{title} {artist}").contains(&q) {
+                2
             } else {
-                None
-            }
+                return None;
+            };
+            Some((rank, title, artist, i))
         })
         .collect();
     hits.sort();
-    hits.into_iter().take(limit).map(|h| h.1).collect()
+    hits.into_iter().take(limit).map(|h| h.3).collect()
+}
+
+/// Запрос нашёл трек по названию (а не только по исполнителю)
+pub fn title_hit(t: &Track, q: &str) -> bool {
+    let q = letters(q);
+    !q.is_empty() && letters(&t.title).contains(&q)
 }
 
 /// Перемешать (Фишер — Йейтс на xorshift, засеянном временем — для игры этого хватает)
@@ -336,6 +345,20 @@ mod tests {
         assert!(typed(&a, "Blinding Light"), "опечатка на длинном названии");
         assert!(!typed(&a, "lights"));
         assert!(!typed(&a, ""));
+    }
+
+    #[test]
+    fn search_order_does_not_leak_the_round() {
+        // список игры перемешан, и его порядок — порядок раундов: поиск не должен его повторять
+        let pool: Vec<Track> = ["Zebra", "Mango", "Apple", "Kiwi"].iter().map(|n| t(Src::Yt, n, "Same Artist")).collect();
+        let order: Vec<&str> = search_pool(&pool, "same artist", 10).into_iter().map(|i| pool[i].title.as_str()).collect();
+        assert_eq!(order, ["Apple", "Kiwi", "Mango", "Zebra"]);
+        let mut rev = pool.clone();
+        rev.reverse();
+        let again: Vec<&str> = search_pool(&rev, "same artist", 10).into_iter().map(|i| rev[i].title.as_str()).collect();
+        assert_eq!(again, order, "от порядка в списке игры выдача не зависит");
+        assert_eq!(pool[search_pool(&pool, "ki", 10)[0]].title, "Kiwi");
+        assert!(title_hit(&pool[0], "zeb") && !title_hit(&pool[0], "same"));
     }
 
     #[test]

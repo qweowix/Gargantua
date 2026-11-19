@@ -75,6 +75,11 @@ class GuessState(private val vm: AppState) {
     var meSkip by mutableStateOf(false)
     var oppSkip by mutableStateOf(false)
     var winner by mutableStateOf("")
+    // для анимаций: каждый запуск звука (+1) и длина фрагмента (0 — песня целиком), неверные ответы, песен в игре
+    var playN by mutableStateOf(0)
+    var clipMs by mutableStateOf(0)
+    var wrongN by mutableStateOf(0)
+    var poolN by mutableStateOf(0)
 
     private var pool: List<Track> = emptyList()
     private var next = 0
@@ -133,7 +138,7 @@ class GuessState(private val vm: AppState) {
     private fun begin(v: List<Track>, src: String) {
         if (kind == 1) { createDuel(v, src); return }
         vm.controller?.pause()
-        pool = v; next = 0; source = src
+        pool = v; next = 0; source = src; poolN = v.size
         round()
     }
 
@@ -182,6 +187,7 @@ class GuessState(private val vm: AppState) {
         p.setMediaItem(item)
         p.prepare()
         p.play()
+        clipMs = GUESS_LEVELS[level].toInt(); playN++
     }
 
     fun skip() {
@@ -199,7 +205,9 @@ class GuessState(private val vm: AppState) {
         play()
     }
 
-    /** Поиск-ответ — только среди песен игры (плейлиста или артиста): мгновенно, без сети */
+    /** Поиск-ответ — только среди песен игры (плейлиста или артиста): мгновенно, без сети.
+     *  Внутри одного ранга — по алфавиту, а не по порядку в списке игры: тот и есть порядок раундов,
+     *  и загаданная песня всегда стояла сразу за уже сыгранными */
     fun search(q: String) {
         searchJob?.cancel()
         searching = false
@@ -217,8 +225,8 @@ class GuessState(private val vm: AppState) {
                     else -> null
                 }
             }
-            .sortedWith(compareBy({ it.first }, { it.second }))
-            .take(12).map { list[it.second] }
+            .sortedWith(compareBy({ it.first }, { norm(list[it.second].title) }, { norm(list[it.second].artist) }))
+            .take(30).map { list[it.second] }
     }
 
     fun pick(g: Track) = vm.viewModelScope.launch {
@@ -236,6 +244,7 @@ class GuessState(private val vm: AppState) {
 
     private fun wrongGuess(what: String) {
         results = emptyList()
+        wrongN++
         val msg = tr("Не то: $what", "Not it: $what", "Не те: $what", "Nie je to: $what")
         if (kind == 1) { wrong = msg; return }
         skip()
@@ -270,6 +279,7 @@ class GuessState(private val vm: AppState) {
         p.setMediaItem(MediaItem.Builder().setUri(uri).setCustomCacheKey(t.key).build())
         p.prepare()
         p.play()
+        clipMs = 0; playN++
     }
 
     fun nextRound() {
@@ -347,6 +357,7 @@ class GuessState(private val vm: AppState) {
             leaveDuel(); stage = 0; return
         }
         lastDuel = d
+        poolN = d.pool.size
         val opp = d.opp(me)
         source = d.meta.source
         host = d.meta.host == me

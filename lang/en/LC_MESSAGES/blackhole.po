@@ -1648,3 +1648,78 @@ msgstr "Playing in full until the next song"
 
 msgid "Название — ищу среди песен игры…"
 msgstr "Title — searching the game's songs…"
+
+msgid "+{} очков"
+msgstr "+{} points"
+
+msgid "Вот что это было"
+msgstr "Here's what it was"
+
+msgid "Дуэль с другом: одни и те же песни, кто первый — тот и взял"
+msgstr "Duel a friend: the same songs, first to guess takes it"
+
+msgid "Ждём начала"
+msgstr "Waiting for the start"
+
+msgid "Ждём соперника"
+msgstr "Waiting for your opponent"
+
+msgid "ИГРА"
+msgstr "GAME"
+
+msgid "КОД ДУЭЛИ"
+msgstr "DUEL CODE"
+
+msgid "Начни писать название — ищу только среди песен игры. Enter выбирает первый вариант."
+msgstr "Start typing the title — I search only the game's songs. Enter picks the first match."
+
+msgid "ОТКУДА ПЕСНИ"
+msgstr "SONGS FROM"
+
+msgid "Песня играет целиком — до следующей"
+msgstr "The song plays in full until the next one"
+
+msgid "Плейлистов пока нет — нужен хотя бы один на три песни"
+msgstr "No playlists yet — you need one with at least three songs"
+
+msgid "РЕЖИМ"
+msgstr "MODE"
+
+msgid "Собираю песни"
+msgstr "Gathering songs"
+
+msgid "Среди песен игры такого нет — попробуй иначе"
+msgstr "Nothing like that among the game's songs — try another way"
+
+msgid "ТЫ"
+msgstr "YOU"
+
+msgid "Твой ответ"
+msgstr "Your answer"
+
+msgid "Ты и музыка: очки за скорость, серии подряд"
+msgstr "You and the music: points for speed, streaks"
+
+msgid "УГАДАЙ ПЕСНЮ"
+msgstr "GUESS THE SONG"
+
+msgid "Угадаешь сейчас — +{} · нажми на шар, чтобы переслушать"
+msgstr "Guess now — +{} · click the orb to replay"
+
+msgid "Угадал!"
+msgstr "Got it!"
+
+msgid "Узнал за {} с"
+msgstr "Got it in {} s"
+
+msgid "Фрагмент {} с"
+msgstr "Clip {} s"
+
+msgid "лучшая серия"
+msgstr "best streak"
+
+msgid "песен в игре: {}"
+msgstr "songs in the game: {}"
+
+msgid "серия {}"
+msgstr "streak {}"

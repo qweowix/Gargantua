@@ -5347,6 +5347,13 @@ fn main() -> Result<(), slint::PlatformError> {
         g.on_duel_join(|c| {
             with(|a| a.duel_join(c.to_string()));
         });
+        g.on_copy_code(|| {
+            with(|a| {
+                let code = a.ui.global::<Guess>().get_duel_code();
+                a.ui.invoke_copy_text(code);
+                a.toast(&tr!("Код скопирован", "Code copied", "Код скопійовано", "Kód skopírovaný"));
+            });
+        });
     }
     ui.set_app_version(update::VERSION.into());
     // Music DNA: через 45 с после старта (не мешаем запуску), дальше раз в 15 минут

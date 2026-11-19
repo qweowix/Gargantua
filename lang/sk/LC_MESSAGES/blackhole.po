@@ -1648,3 +1648,78 @@ msgstr "Hrá celá — do ďalšej piesne"
 
 msgid "Название — ищу среди песен игры…"
 msgstr "Názov — hľadám medzi piesňami hry…"
+
+msgid "+{} очков"
+msgstr "+{} bodov"
+
+msgid "Вот что это было"
+msgstr "Toto to bolo"
+
+msgid "Дуэль с другом: одни и те же песни, кто первый — тот и взял"
+msgstr "Duel s kamarátom: rovnaké piesne, kto prvý, ten berie"
+
+msgid "Ждём начала"
+msgstr "Čakáme na začiatok"
+
+msgid "Ждём соперника"
+msgstr "Čakáme na súpera"
+
+msgid "ИГРА"
+msgstr "HRA"
+
+msgid "КОД ДУЭЛИ"
+msgstr "KÓD DUELU"
+
+msgid "Начни писать название — ищу только среди песен игры. Enter выбирает первый вариант."
+msgstr "Začni písať názov — hľadám len medzi piesňami hry. Enter vyberie prvú možnosť."
+
+msgid "ОТКУДА ПЕСНИ"
+msgstr "ODKIAĽ PIESNE"
+
+msgid "Песня играет целиком — до следующей"
+msgstr "Pieseň hrá celá — do ďalšej"
+
+msgid "Плейлистов пока нет — нужен хотя бы один на три песни"
+msgstr "Zatiaľ žiadne playlisty — treba aspoň jeden s tromi skladbami"
+
+msgid "РЕЖИМ"
+msgstr "REŽIM"
+
+msgid "Собираю песни"
+msgstr "Zbieram piesne"
+
+msgid "Среди песен игры такого нет — попробуй иначе"
+msgstr "Medzi piesňami hry nič také nie je — skús inak"
+
+msgid "ТЫ"
+msgstr "TY"
+
+msgid "Твой ответ"
+msgstr "Tvoja odpoveď"
+
+msgid "Ты и музыка: очки за скорость, серии подряд"
+msgstr "Ty a hudba: body za rýchlosť, série"
+
+msgid "УГАДАЙ ПЕСНЮ"
+msgstr "UHÁDNI PIESEŇ"
+
+msgid "Угадаешь сейчас — +{} · нажми на шар, чтобы переслушать"
+msgstr "Uhádneš teraz — +{} · klikni na guľu a vypočuj znova"
+
+msgid "Угадал!"
+msgstr "Uhádol si!"
+
+msgid "Узнал за {} с"
+msgstr "Spoznal si za {} s"
+
+msgid "Фрагмент {} с"
+msgstr "Úryvok {} s"
+
+msgid "лучшая серия"
+msgstr "najlepšia séria"
+
+msgid "песен в игре: {}"
+msgstr "piesní v hre: {}"
+
+msgid "серия {}"
+msgstr "séria {}"

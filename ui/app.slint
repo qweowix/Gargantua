@@ -199,6 +199,9 @@ global Icons {
     out property <string> finger: "M12 2a9 9 0 0 0-9 9v2h2v-2a7 7 0 0 1 14 0v2.5h2V11a9 9 0 0 0-9-9zm0 4a5 5 0 0 0-5 5v4h2v-4a3 3 0 0 1 6 0v6h2v-6a5 5 0 0 0-5-5zm-1 5v8h2v-8zM7 17v3h2v-3zm8 2v2h2v-2z";
     // нота с вопросом — «Угадай песню»
     out property <string> quiz: "M9 3v10.55A4 4 0 1 0 11 17V7h4V3zM17.5 9a3.5 3.5 0 0 0-3.5 3.5h2a1.5 1.5 0 1 1 2.2 1.32c-.7.37-1.2 1.08-1.2 1.88V16h2v-.3c0-.1.06-.2.16-.25A3.5 3.5 0 0 0 17.5 9zM16.5 18h2v2h-2z";
+    // огонёк — серия угаданных подряд
+    out property <string> flame: "M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z";
+    out property <string> copy: "M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11z";
     out property <string> refresh: "M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z";
 }
 
@@ -4335,13 +4338,18 @@ export global Guess {
     in property <[GItem]> artists;
     in property <bool> busy;
     in property <string> source; // откуда треки
+    in property <int> pool-n; // сколько песен в игре
     in property <int> level; // 0..4
     in property <bool> ready; // фрагменты нарезаны
-    in property <bool> playing;
+    // каждый запуск звука — +1 (фрагмент или песня целиком на ответе); clip-ms — длина фрагмента, 0 — целиком.
+    // По ним кольцо заливается, пока звучит фрагмент, и частицы пляшут
+    in property <int> play-n;
+    in property <int> clip-ms;
     in-out property <string> q;
     in property <[GItem]> results;
     in property <bool> searching;
     in property <string> wrong; // «Не то: …»
+    in property <int> wrong-n; // +1 на каждый неверный ответ — поле вздрагивает
     in property <bool> won;
     in property <string> ans-title;
     in property <string> ans-artist;
@@ -4359,6 +4367,7 @@ export global Guess {
     in-out property <int> kind; // 0 соло, 1 на 1
     in-out property <string> join-code;
     in property <string> duel-code;
+    in property <[string]> code-chars; // код по буквам — каждая в своей плашке
     in property <bool> host;
     in property <string> me-name;
     in property <string> opp-name;
@@ -4369,6 +4378,7 @@ export global Guess {
     in property <string> winner;
     callback opened();
     callback duel-join(string);
+    callback copy-code();
     callback set-mode(int);
     callback pick-playlist(int);
     callback search-artist(string);
@@ -4382,48 +4392,448 @@ export global Guess {
     callback change();
 }
 
-component GRow inherits Rectangle {
-    in property <GItem> it;
+// фон игры: три пятна цветов темы медленно плывут (t — секунды, стоит на месте, когда страницу не видно)
+component GuessSky inherits Rectangle {
+    in property <float> t;
+    property <length> big: max(root.width, root.height);
+    clip: true;
+    for blob[i] in [Theme.c1, Theme.c2, Theme.glow]: Rectangle {
+        width: root.big * (i == 2 ? 0.95 : 0.75);
+        height: self.width;
+        x: root.width * (i == 0 ? 0.12 : i == 1 ? 0.9 : 0.45) - self.width / 2 + root.width * 0.08 * Math.sin((root.t * (7 + i * 3) + i * 120) * 1deg);
+        y: root.height * (i == 0 ? 0.15 : i == 1 ? 0.85 : 0.5) - self.height / 2 + root.height * 0.08 * Math.cos((root.t * (5 + i * 2) + i * 70) * 1deg);
+        background: @radial-gradient(circle, blob.transparentize(i == 2 ? 0.9 : 0.86) 0%, blob.transparentize(0.96) 40%, blob.transparentize(1) 68%);
+    }
+}
+
+// Чёрная дыра игры. Снаружи частицы (пляшут, пока звучит), кольцо из пяти делений — сколько открыто
+// (текущее заливается, пока играет фрагмент), за ним вращается аккреционный диск, в центре горизонт событий:
+// «?», пока не угадали, на ответе — обложка, крутится как пластинка. При угадывании — разлёт искр
+component GuessOrb inherits Rectangle {
+    in property <length> size: 280px;
+    in property <float> t; // секунды
+    in property <float> energy; // 0 тишина … 1 звучит
+    in property <int> level: -1; // открытые деления 0..4, -1 — ни одного (заставка, лобби)
+    in property <float> fill: 1; // заливка текущего деления
+    in property <int> mode; // 0 заставка, 1 раунд, 2 ответ
+    in property <bool> won;
+    in property <bool> busy; // готовлю фрагмент — по кольцу бежит огонёк
+    in property <float> spin: 70; // скорость огонька, °/с
+    in property <string> icon; // вместо «?» в центре
+    in property <image> cover;
+    in property <bool> has-cover;
+    in property <float> reveal: 1; // 0..1 — обложка проявляется
+    in property <float> burst; // 0..1 — разлёт искр, 0 — нет
+    in property <bool> clickable;
     callback clicked();
-    height: 52px;
-    border-radius: 12px;
-    background: gta.has-hover ? #ffffff10 : transparent;
-    HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 12px;
-        VerticalLayout {
-            alignment: center;
-            Cover {
-                width: 40px;
-                height: 40px;
-                img: root.it.cover;
-                has: root.it.has-cover;
-                src: "yt";
+    width: root.size;
+    height: root.size;
+
+    property <length> s: root.size;
+    property <length> ring-d: root.s * 0.8;
+    property <length> th: max(6px, root.s * 0.03);
+    property <length> disc-d: root.s * 0.66;
+    property <length> core-d: root.s * 0.44;
+    property <color> bad: #ff5a6e;
+    property <bool> lost: root.mode == 2 && !root.won;
+    property <bool> hot: ta.has-hover && root.clickable;
+    // деления по долям 1-1-1-2-4 с зазорами по 7°, начиная сверху по часовой
+    property <[float]> sa: [3.5, 46.61, 89.72, 132.83, 212.06];
+    property <[float]> ea: [39.61, 82.72, 125.83, 205.06, 356.5];
+
+    // цвет кольца в точке a (градусы): от главного акцента ко второму
+    pure function grad(a: float) -> color {
+        return Theme.c1.mix(Theme.c2, 1 - a / 360);
+    }
+    // залитая часть деления i
+    pure function seg(i: int, a: float) -> color {
+        return root.mode == 2 ? (root.won ? root.grad(a) : root.bad.transparentize(0.3))
+            : i < root.level ? root.grad(a).transparentize(0.45)
+            : i == root.level ? root.grad(a).brighter(0.15)
+            : #ffffff12;
+    }
+    pure function cut(i: int) -> float {
+        return root.mode == 1 && i == root.level ? root.fill : 1;
+    }
+    pure function mid(i: int) -> float {
+        return root.sa[i] + (root.ea[i] - root.sa[i]) * root.cut(i);
+    }
+
+    // ореол
+    Rectangle {
+        width: root.s * 1.5;
+        height: self.width;
+        x: (root.s - self.width) / 2;
+        y: (root.s - self.height) / 2;
+        background: @radial-gradient(circle, (root.lost ? root.bad : Theme.glow).transparentize(0.66 - 0.3 * root.energy) 0%, (root.lost ? root.bad : Theme.glow).transparentize(0.92) 34%, Theme.glow.transparentize(1) 62%);
+    }
+
+    // частицы по кругу: в тишине чуть дышат, под звук разлетаются и вспыхивают
+    for d[i] in 44: Rectangle {
+        property <float> a: i * 360 / 44 + root.t * 6;
+        property <float> w: (0.5 + 0.5 * Math.sin((root.t * 190 + i * 47) * 1deg)) * (0.5 + 0.5 * Math.sin((root.t * 113 + i * 83) * 1deg));
+        property <length> r: root.s * (0.45 + 0.012 * Math.sin((root.t * 40 + i * 30) * 1deg) + 0.075 * root.energy * self.w);
+        width: 2px + 3.5px * (0.3 + root.energy * self.w);
+        height: self.width;
+        border-radius: self.width / 2;
+        x: root.s / 2 + self.r * Math.sin(self.a * 1deg) - self.width / 2;
+        y: root.s / 2 - self.r * Math.cos(self.a * 1deg) - self.height / 2;
+        background: root.lost ? root.bad : root.grad(Math.mod(self.a, 360));
+        opacity: 0.25 + 0.12 * Math.sin((root.t * 60 + i * 50) * 1deg) + 0.6 * root.energy * self.w;
+    }
+
+    // кольцо делений
+    Rectangle {
+        width: root.ring-d;
+        height: self.width;
+        x: (root.s - self.width) / 2;
+        y: (root.s - self.height) / 2;
+        border-radius: self.width / 2;
+        background: @conic-gradient(
+            #00000000 0deg,
+            #00000000 root.sa[0] * 1deg,
+            root.seg(0, root.sa[0]) root.sa[0] * 1deg,
+            root.seg(0, root.mid(0)) root.mid(0) * 1deg,
+            #ffffff21 root.mid(0) * 1deg,
+            #ffffff21 root.ea[0] * 1deg,
+            #00000000 root.ea[0] * 1deg,
+            #00000000 root.sa[1] * 1deg,
+            root.seg(1, root.sa[1]) root.sa[1] * 1deg,
+            root.seg(1, root.mid(1)) root.mid(1) * 1deg,
+            #ffffff21 root.mid(1) * 1deg,
+            #ffffff21 root.ea[1] * 1deg,
+            #00000000 root.ea[1] * 1deg,
+            #00000000 root.sa[2] * 1deg,
+            root.seg(2, root.sa[2]) root.sa[2] * 1deg,
+            root.seg(2, root.mid(2)) root.mid(2) * 1deg,
+            #ffffff21 root.mid(2) * 1deg,
+            #ffffff21 root.ea[2] * 1deg,
+            #00000000 root.ea[2] * 1deg,
+            #00000000 root.sa[3] * 1deg,
+            root.seg(3, root.sa[3]) root.sa[3] * 1deg,
+            root.seg(3, root.mid(3)) root.mid(3) * 1deg,
+            #ffffff21 root.mid(3) * 1deg,
+            #ffffff21 root.ea[3] * 1deg,
+            #00000000 root.ea[3] * 1deg,
+            #00000000 root.sa[4] * 1deg,
+            root.seg(4, root.sa[4]) root.sa[4] * 1deg,
+            root.seg(4, root.mid(4)) root.mid(4) * 1deg,
+            #ffffff21 root.mid(4) * 1deg,
+            #ffffff21 root.ea[4] * 1deg,
+            #00000000 root.ea[4] * 1deg,
+            #00000000 360deg);
+    }
+
+    // огонёк бежит по кольцу: заставка, лобби, «готовлю фрагмент»
+    if root.mode == 0 || root.busy: Rectangle {
+        width: root.ring-d;
+        height: self.width;
+        x: (root.s - self.width) / 2;
+        y: (root.s - self.height) / 2;
+        border-radius: self.width / 2;
+        background: @conic-gradient(from root.t * (root.busy ? 320 : root.spin) * 1deg, #00000000 0deg, Theme.soft1.transparentize(1) 200deg, Theme.soft1.transparentize(0.35) 330deg, Theme.pale1 358deg, #00000000 360deg);
+    }
+
+    // провал между кольцом и диском
+    Rectangle {
+        width: root.ring-d - root.th * 2;
+        height: self.width;
+        x: (root.s - self.width) / 2;
+        y: (root.s - self.height) / 2;
+        border-radius: self.width / 2;
+        background: #07060b;
+    }
+
+    // аккреционный диск: медленно вращается, под звук ярче
+    Rectangle {
+        width: root.disc-d;
+        height: self.width;
+        x: (root.s - self.width) / 2;
+        y: (root.s - self.height) / 2;
+        border-radius: self.width / 2;
+        opacity: 0.55 + 0.45 * root.energy;
+        background: @conic-gradient(from root.t * 26deg, (root.lost ? root.bad : Theme.c1).transparentize(0.92) 0deg, (root.lost ? root.bad : Theme.c1).transparentize(0.2) 70deg, Theme.c2.transparentize(0.45) 140deg, Theme.glow.transparentize(0.85) 205deg, Theme.soft1.transparentize(0.3) 285deg, (root.lost ? root.bad : Theme.c1).transparentize(0.92) 360deg);
+    }
+
+    // к центру диск тает: светится только край, как у настоящего кольца вокруг дыры
+    Rectangle {
+        width: root.disc-d;
+        height: self.width;
+        x: (root.s - self.width) / 2;
+        y: (root.s - self.height) / 2;
+        border-radius: self.width / 2;
+        background: @radial-gradient(circle, #030205 0%, #030205 42%, #03020500 70%);
+    }
+
+    // горизонт событий
+    core := Rectangle {
+        width: root.core-d;
+        height: self.width;
+        x: (root.s - self.width) / 2;
+        y: (root.s - self.height) / 2;
+        border-radius: self.width / 2;
+        clip: true;
+        background: @radial-gradient(circle, #000000 0%, #040209 50%, #0b0716 70%);
+        border-width: 1.5px;
+        border-color: (root.lost ? root.bad : Theme.soft1).transparentize(0.6 - 0.35 * root.energy);
+        drop-shadow-blur: root.s * 0.12;
+        drop-shadow-color: (root.lost ? root.bad : Theme.c1).transparentize(0.5 - 0.25 * root.energy);
+
+        // «?»
+        Text {
+            width: 100%;
+            height: 100%;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            visible: root.icon == "" && root.mode != 2;
+            text: "?";
+            color: Theme.pale1;
+            font-size: root.core-d * 0.46;
+            font-weight: 900;
+            opacity: root.mode == 0 ? 0.9 : root.busy ? 0.18 : root.hot ? 0 : 1 - root.energy;
+            animate opacity { duration: 220ms; }
+        }
+
+        if root.icon != "": Icon {
+            d: root.icon;
+            width: root.core-d * 0.4;
+            height: self.width;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            fill: Theme.pale1;
+        }
+
+        // навёл мышь — «сыграть ещё раз»
+        Icon {
+            d: Icons.play;
+            width: root.core-d * 0.32;
+            height: self.width;
+            x: (parent.width - self.width) / 2 + self.width * 0.06;
+            y: (parent.height - self.height) / 2;
+            fill: #ffffff;
+            opacity: root.hot && root.mode == 1 && !root.busy && root.energy < 0.5 ? 1 : 0;
+            animate opacity { duration: 160ms; }
+        }
+
+        // звучит — пять столбиков пляшут
+        for b[i] in 5: Rectangle {
+            property <float> h: 0.25 + 0.75 * abs(Math.sin((root.t * (250 + i * 67) + i * 50) * 1deg));
+            property <length> gap: root.core-d * 0.045;
+            width: root.core-d * 0.07;
+            height: 4px + root.core-d * 0.42 * self.h * root.energy;
+            x: (root.core-d - 5 * self.width - 4 * self.gap) / 2 + i * (self.width + self.gap);
+            y: (root.core-d - self.height) / 2;
+            border-radius: self.width / 2;
+            background: @linear-gradient(0deg, Theme.c1 0%, Theme.c2 100%);
+            opacity: root.mode == 1 ? root.energy : 0;
+        }
+
+        // готовлю — три точки кружат
+        if root.busy && root.mode == 1: Rectangle {
+            for p[i] in 3: Rectangle {
+                property <float> a: root.t * 300 + i * 120;
+                width: root.core-d * 0.07 * (1 - i * 0.2);
+                height: self.width;
+                border-radius: self.width / 2;
+                x: root.core-d / 2 + root.core-d * 0.2 * Math.sin(self.a * 1deg) - self.width / 2;
+                y: root.core-d / 2 - root.core-d * 0.2 * Math.cos(self.a * 1deg) - self.height / 2;
+                background: i == 0 ? Theme.pale1 : i == 1 ? Theme.soft1 : Theme.c2;
             }
         }
 
-        VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 1;
-            Text {
-                text: root.it.title;
-                color: Theme.text;
-                font-size: 14px;
-                font-weight: 600;
-                overflow: elide;
+        // ответ: обложка проявляется и крутится пластинкой
+        if root.mode == 2: Rectangle {
+            width: root.core-d * (0.72 + 0.28 * root.reveal);
+            height: self.width;
+            x: (root.core-d - self.width) / 2;
+            y: (root.core-d - self.height) / 2;
+            border-radius: self.width / 2;
+            clip: true;
+            opacity: root.reveal;
+            background: @linear-gradient(135deg, Theme.deep1 0%, #120d1d 100%);
+            Image {
+                width: 100%;
+                height: 100%;
+                source: root.cover;
+                image-fit: ImageFit.cover;
+                visible: root.has-cover;
+                transform-rotation: root.t * 9deg;
             }
 
-            if root.it.sub != "": Text {
-                text: root.it.sub;
-                color: Theme.faint;
-                font-size: 12px;
-                overflow: elide;
+            if !root.has-cover: Icon {
+                d: Icons.note;
+                width: parent.width * 0.36;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                fill: #ffffff40;
+            }
+            Rectangle {
+                width: parent.width * 0.66;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.width / 2;
+                border-width: 1px;
+                border-color: #ffffff1a;
+            }
+
+            Rectangle {
+                width: parent.width * 0.13;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.width / 2;
+                background: #07060b;
+                border-width: 2px;
+                border-color: #ffffff30;
             }
         }
     }
 
-    gta := TouchArea {
+    // угадал — ударная волна и искры
+    if root.burst > 0 && root.burst < 1: Rectangle {
+        property <float> k: 1 - Math.pow(1 - root.burst, 3);
+        Rectangle {
+            width: root.core-d + root.s * 0.95 * parent.k;
+            height: self.width;
+            x: (root.s - self.width) / 2;
+            y: (root.s - self.height) / 2;
+            border-radius: self.width / 2;
+            border-width: 2px;
+            border-color: Theme.soft2.transparentize(0.2 + 0.8 * root.burst);
+        }
+
+        for p[i] in 32: Rectangle {
+            property <float> a: i * 11.25 + Math.mod(i * 37, 13);
+            property <length> r: root.core-d / 2 + root.s * (0.32 + 0.3 * Math.mod(i * 7, 5) / 4) * parent.k;
+            width: (6px - 3px * root.burst) * (1 + Math.mod(i, 3) * 0.4);
+            height: self.width;
+            border-radius: self.width / 2;
+            x: root.s / 2 + self.r * Math.sin(self.a * 1deg) - self.width / 2;
+            y: root.s / 2 - self.r * Math.cos(self.a * 1deg) - self.height / 2;
+            background: Math.mod(i, 4) == 0 ? Theme.pale1 : Math.mod(i, 4) == 1 ? Theme.c1 : Math.mod(i, 4) == 2 ? Theme.c2 : Theme.soft2;
+            opacity: 1 - root.burst;
+        }
+    }
+
+    ta := TouchArea {
+        enabled: root.clickable;
+        mouse-cursor: root.clickable ? MouseCursor.pointer : MouseCursor.default;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// плитка плейлиста или артиста: всплывает по очереди, под мышью приподнимается и светится
+component GuessCard inherits Rectangle {
+    in property <GItem> it;
+    in property <bool> round;
+    in property <int> idx;
+    callback clicked();
+    property <float> a: 0;
+    property <bool> hov: ta.has-hover;
+    property <length> lift: root.hov ? -5px : 0px;
+    property <length> side: root.width;
+    animate a { duration: 460ms; delay: min(root.idx, 14) * 38ms; easing: ease-out-quart; }
+    animate lift { duration: 240ms; easing: ease-out-back; }
+    init => {
+        root.a = 1;
+    }
+    Rectangle {
+        y: (1 - root.a) * 18px + root.lift;
+        width: root.width;
+        height: root.height;
+        opacity: root.a;
+        art := Rectangle {
+            width: root.side;
+            height: root.side;
+            border-radius: root.round ? root.side / 2 : 18px;
+            clip: true;
+            background: @linear-gradient(135deg, Theme.deep1 0%, #120d1d 100%);
+            drop-shadow-blur: root.hov ? 30px : 12px;
+            drop-shadow-color: root.hov ? Theme.c1.transparentize(0.45) : #00000080;
+            animate drop-shadow-blur { duration: 220ms; }
+            Icon {
+                d: Icons.note;
+                width: parent.width * 0.3;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                fill: #ffffff26;
+                visible: !root.it.has-cover;
+            }
+
+            Image {
+                width: 100%;
+                height: 100%;
+                source: root.it.cover;
+                image-fit: cover;
+                opacity: root.it.has-cover ? 1 : 0;
+                animate opacity { duration: 260ms; }
+            }
+
+            // под мышью снизу темнеет и выезжает кнопка «играть»
+            Rectangle {
+                background: @linear-gradient(180deg, #00000000 45%, #000000a0 100%);
+                opacity: root.hov ? 1 : 0;
+                animate opacity { duration: 200ms; }
+            }
+
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                x: root.round ? (parent.width - self.width) / 2 : parent.width - self.width - 12px;
+                y: parent.height - self.height - (root.hov ? 12px : 2px);
+                animate y { duration: 260ms; easing: ease-out-back; }
+                border-radius: 22px;
+                background: Theme.accent;
+                opacity: root.hov ? 1 : 0;
+                animate opacity { duration: 200ms; }
+                drop-shadow-blur: 14px;
+                drop-shadow-color: Theme.c1.transparentize(0.4);
+                Icon {
+                    d: Icons.play;
+                    width: 20px;
+                    height: 20px;
+                    x: 13px;
+                    y: 12px;
+                    fill: #ffffff;
+                }
+            }
+
+            Rectangle {
+                border-radius: parent.border-radius;
+                border-width: 1px;
+                border-color: root.hov ? Theme.c1.transparentize(0.4) : #ffffff12;
+                animate border-color { duration: 200ms; }
+            }
+        }
+
+        Text {
+            y: root.side + 10px;
+            width: root.side;
+            text: root.it.title;
+            color: root.hov ? #ffffff : Theme.text;
+            font-size: 14px;
+            font-weight: 700;
+            overflow: elide;
+            horizontal-alignment: root.round ? center : left;
+        }
+
+        Text {
+            y: root.side + 30px;
+            width: root.side;
+            text: root.it.sub;
+            color: Theme.faint;
+            font-size: 12px;
+            overflow: elide;
+            horizontal-alignment: root.round ? center : left;
+        }
+    }
+
+    ta := TouchArea {
         mouse-cursor: pointer;
         clicked => {
             root.clicked();
@@ -4431,49 +4841,497 @@ component GRow inherits Rectangle {
     }
 }
 
+// найденный трек в ответе: въезжает справа, под мышью — галочка «это она»
+component GuessRow inherits Rectangle {
+    in property <GItem> it;
+    in property <int> idx;
+    callback clicked();
+    property <float> a: 0;
+    animate a { duration: 300ms; delay: min(root.idx, 10) * 26ms; easing: ease-out-quart; }
+    init => {
+        root.a = 1;
+    }
+    height: 60px;
+    Rectangle {
+        x: (1 - root.a) * 28px;
+        width: root.width;
+        height: root.height - 4px;
+        y: 2px;
+        opacity: root.a;
+        border-radius: 14px;
+        background: ta.has-hover ? Theme.c1.transparentize(0.84) : #ffffff05;
+        border-width: 1px;
+        border-color: ta.has-hover ? Theme.c1.transparentize(0.45) : #ffffff0a;
+        animate background, border-color { duration: 160ms; }
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 12px;
+            spacing: 12px;
+            VerticalLayout {
+                alignment: center;
+                Cover {
+                    width: 42px;
+                    height: 42px;
+                    border-radius: 10px;
+                    img: root.it.cover;
+                    has: root.it.has-cover;
+                    src: "yt";
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Text {
+                    text: root.it.title;
+                    color: Theme.text;
+                    font-size: 14px;
+                    font-weight: 700;
+                    overflow: elide;
+                }
+
+                if root.it.sub != "": Text {
+                    text: root.it.sub;
+                    color: Theme.faint;
+                    font-size: 12px;
+                    overflow: elide;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 30px;
+                    height: 30px;
+                    border-radius: 15px;
+                    background: Theme.accent;
+                    opacity: ta.has-hover ? 1 : 0;
+                    animate opacity { duration: 160ms; }
+                    Icon {
+                        d: Icons.check;
+                        width: 16px;
+                        height: 16px;
+                        x: 7px;
+                        y: 7px;
+                        fill: #ffffff;
+                    }
+                }
+            }
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// выбор режима: соло или дуэль
+component GuessModeTile inherits Rectangle {
+    in property <string> icon;
+    in property <string> title;
+    in property <string> sub;
+    in property <bool> active;
+    callback clicked();
+    min-height: 84px;
+    border-radius: 20px;
+    background: root.active ? @linear-gradient(120deg, Theme.c1.transparentize(0.74) 0%, Theme.c2.transparentize(0.88) 100%) : (ta.has-hover ? #ffffff0d : #ffffff06);
+    border-width: 1px;
+    border-color: root.active ? Theme.c1.transparentize(0.3) : (ta.has-hover ? #ffffff24 : #ffffff12);
+    drop-shadow-blur: root.active ? 26px : 0px;
+    drop-shadow-color: Theme.c1.transparentize(0.62);
+    animate border-color, drop-shadow-blur { duration: 220ms; }
+    HorizontalLayout {
+        padding: 16px;
+        spacing: 14px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 46px;
+                height: 46px;
+                border-radius: 23px;
+                background: root.active ? Theme.accent : #ffffff0f;
+                drop-shadow-blur: root.active ? 16px : 0px;
+                drop-shadow-color: Theme.c1.transparentize(0.4);
+                Icon {
+                    d: root.icon;
+                    width: 22px;
+                    height: 22px;
+                    x: 12px;
+                    y: 12px;
+                    fill: root.active ? #ffffff : Theme.dim;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: 16px;
+                font-weight: 800;
+            }
+
+            Text {
+                text: root.sub;
+                color: Theme.dim;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                border-radius: 11px;
+                border-width: 2px;
+                border-color: root.active ? Theme.soft1 : #ffffff26;
+                animate border-color { duration: 200ms; }
+                Rectangle {
+                    width: root.active ? 10px : 0px;
+                    height: self.width;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: self.width / 2;
+                    background: Theme.soft1;
+                    animate width { duration: 260ms; easing: ease-out-back; }
+                }
+            }
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// переключатель с ползунком
+component GuessTabs inherits Rectangle {
+    in property <[string]> items;
+    in property <int> current;
+    callback picked(int);
+    height: 42px;
+    width: 300px;
+    border-radius: 21px;
+    background: #ffffff08;
+    border-width: 1px;
+    border-color: #ffffff10;
+    property <length> w: (root.width - 8px) / max(1, root.items.length);
+    Rectangle {
+        x: 4px + root.current * root.w;
+        animate x { duration: 300ms; easing: ease-out-back; }
+        y: 4px;
+        width: root.w;
+        height: root.height - 8px;
+        border-radius: self.height / 2;
+        background: Theme.accent;
+        drop-shadow-blur: 14px;
+        drop-shadow-color: Theme.c1.transparentize(0.5);
+    }
+
+    for s[i] in root.items: Rectangle {
+        x: 4px + i * root.w;
+        y: 4px;
+        width: root.w;
+        height: root.height - 8px;
+        Text {
+            width: 100%;
+            height: 100%;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            text: s;
+            color: i == root.current ? #ffffff : (tta.has-hover ? Theme.text : Theme.dim);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        tta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                root.picked(i);
+            }
+        }
+    }
+}
+
+// счёт, серия, угадано
+component GuessStat inherits Rectangle {
+    in property <string> value;
+    in property <string> label;
+    in property <string> icon;
+    in property <bool> hot;
+    height: 52px;
+    horizontal-stretch: 0;
+    border-radius: 16px;
+    background: root.hot ? Theme.c1.transparentize(0.82) : #ffffff08;
+    border-width: 1px;
+    border-color: root.hot ? Theme.c1.transparentize(0.5) : #ffffff10;
+    animate background, border-color { duration: 300ms; }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 16px;
+        spacing: 9px;
+        if root.icon != "": VerticalLayout {
+            alignment: center;
+            Icon {
+                d: root.icon;
+                width: 18px;
+                height: 18px;
+                fill: root.hot ? Theme.soft2 : Theme.dim;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: root.value;
+                color: root.hot ? Theme.soft2 : Theme.text;
+                font-size: 18px;
+                font-weight: 900;
+            }
+
+            Text {
+                text: root.label;
+                color: Theme.faint;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+        }
+    }
+}
+
+// буква кода дуэли: плашки выпрыгивают по очереди
+component GuessCodeChar inherits Rectangle {
+    in property <string> ch;
+    in property <int> idx;
+    property <float> a: 0;
+    animate a { duration: 560ms; delay: root.idx * 70ms; easing: ease-out-back; }
+    init => {
+        root.a = 1;
+    }
+    width: 58px;
+    height: 72px;
+    Rectangle {
+        y: (1 - root.a) * 22px;
+        width: root.width;
+        height: root.height;
+        opacity: min(1, max(0, root.a));
+        border-radius: 16px;
+        background: @linear-gradient(160deg, #ffffff14 0%, #ffffff05 100%);
+        border-width: 1px;
+        border-color: Theme.c1.transparentize(0.45);
+        drop-shadow-blur: 20px;
+        drop-shadow-color: Theme.c1.transparentize(0.7);
+        Text {
+            width: 100%;
+            height: 100%;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            text: root.ch;
+            color: Theme.text;
+            font-size: 34px;
+            font-weight: 900;
+        }
+    }
+}
+
+// подпись-надзаголовок: «ИГРА», «КОД ДУЭЛИ»
+component GuessEyebrow inherits Text {
+    color: Theme.soft1;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2.5px;
+}
+
 component GuessPage inherits Rectangle {
+    in property <bool> live; // страницу видно и не лайт: можно анимировать (иначе всё стоит, кадры не тратятся)
+    property <float> t: root.live ? animation-tick() / 1s : 0;
+    property <[string]> secs: ["0.1", "0.5", "1", "2", "5"];
+    property <[int]> pts: [100, 60, 40, 25, 10];
+    // звук: сколько мс назад запустили фрагмент
+    property <int> pn: Guess.play-n;
+    property <duration> p0: -100s;
+    changed pn => {
+        root.p0 = animation-tick();
+    }
+    property <float> since: root.live ? (animation-tick() - root.p0) / 1ms : 100000;
+    property <bool> sounding: Guess.stage == 2 || (Guess.stage == 1 && Guess.ready && root.since < Guess.clip-ms + 250);
+    property <float> energy: root.sounding ? 1 : 0;
+    animate energy { duration: 420ms; easing: ease-out; }
+    property <float> fill: !Guess.ready ? 0 : Guess.clip-ms <= 0 || !root.live ? 1 : clamp((root.since - 90) / Guess.clip-ms, 0, 1);
+    // ответ раскрыт: с какого мгновения
+    property <int> st: Guess.stage;
+    property <duration> r0: -100s;
+    changed st => {
+        if root.st == 2 {
+            root.r0 = animation-tick();
+        }
+    }
+    property <float> rv: root.live ? clamp((animation-tick() - root.r0) / 900ms, 0, 1) : 1;
+    property <float> rve: 1 - Math.pow(1 - root.rv, 3);
+    property <float> burst: root.live && Guess.won && root.st == 2 ? clamp((animation-tick() - root.r0 - 120ms) / 1300ms, 0, 1) : 0;
+    // неверный ответ — поле вздрагивает
+    property <int> wn: Guess.wrong-n;
+    property <duration> w0: -100s;
+    changed wn => {
+        root.w0 = animation-tick();
+    }
+    property <float> wd: root.live ? (animation-tick() - root.w0) / 1ms : 100000;
+    property <length> shake: root.wd < 520 ? 11px * Math.sin(root.wd * 4.2deg) * (1 - root.wd / 520) : 0px;
+    // числа досчитывают до нового значения
+    property <float> sc: Guess.score;
+    animate sc { duration: 900ms; easing: ease-out-quart; }
+    property <float> ms: Guess.me-score;
+    animate ms { duration: 900ms; easing: ease-out-quart; }
+    property <float> os: Guess.opp-score;
+    animate os { duration: 900ms; easing: ease-out-quart; }
+    property <float> gn: Guess.stage == 2 && Guess.won ? Guess.gained : 0;
+    animate gn { duration: 900ms; delay: 250ms; easing: ease-out-quart; }
+    // шар: по высоте и ширине страницы
+    property <length> orb: clamp(min(root.width * 0.34, root.height - 330px), 170px, 340px);
+
+    GuessSky {
+        t: root.t;
+    }
+
     // ── выбор источника ──
     if Guess.stage == 0: Flickable {
         content-height: g0.preferred-height;
         g0 := VerticalLayout {
             width: parent.width;
             padding: 26px;
-            spacing: 14px;
+            spacing: 18px;
             alignment: start;
-            Text {
-                text: @tr("Угадай песню");
-                color: Theme.text;
-                font-size: 28px;
-                font-weight: 800;
+            // шапка с шаром
+            Rectangle {
+                height: 210px;
+                border-radius: 28px;
+                clip: true;
+                background: @linear-gradient(115deg, Theme.deep1 0%, #0d0a16 55%, Theme.deep2 100%);
+                border-width: 1px;
+                border-color: #ffffff14;
+                GuessOrb {
+                    size: 250px;
+                    x: parent.width - 240px;
+                    y: (parent.height - self.height) / 2;
+                    t: root.t;
+                    energy: 0.3 + 0.25 * Math.sin(root.t * 50deg);
+                    mode: 0;
+                }
+
+                Rectangle {
+                    background: @linear-gradient(90deg, #00000070 0%, #00000030 55%, #00000000 100%);
+                }
+
+                VerticalLayout {
+                    x: 30px;
+                    width: max(200px, parent.width - 320px);
+                    spacing: 8px;
+                    alignment: center;
+                    GuessEyebrow {
+                        text: @tr("ИГРА");
+                    }
+
+                    Text {
+                        text: @tr("Угадай песню");
+                        color: Theme.text;
+                        font-size: 38px;
+                        font-weight: 900;
+                    }
+
+                    Text {
+                        text: @tr("Выбери плейлист или артиста — заиграет случайная песня: сначала 0.1 секунды, потом 0.5, 1, 2 и 5. Узнал — начни писать название и выбери трек из поиска. Чем раньше угадаешь, тем больше очков.");
+                        color: Theme.dim;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                    }
+
+                    if Guess.rounds > 0: HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        padding-top: 4px;
+                        GuessStat {
+                            value: Guess.score;
+                            label: @tr("очки");
+                            icon: Icons.sparkle;
+                            hot: true;
+                        }
+
+                        GuessStat {
+                            value: Guess.best;
+                            label: @tr("лучшая серия");
+                            icon: Icons.flame;
+                        }
+
+                        GuessStat {
+                            value: Guess.hits + "/" + Guess.rounds;
+                            label: @tr("угадано");
+                            icon: Icons.check;
+                        }
+                    }
+                }
             }
 
-            Text {
-                text: @tr("Выбери плейлист или артиста — заиграет случайная песня: сначала 0.1 секунды, потом 0.5, 1, 2 и 5. Узнал — начни писать название и выбери трек из поиска. Чем раньше угадаешь, тем больше очков.");
-                color: Theme.dim;
-                font-size: 13px;
-                wrap: word-wrap;
+            if Guess.error != "": Rectangle {
+                border-radius: 14px;
+                background: #ff5a6e1a;
+                border-width: 1px;
+                border-color: #ff5a6e55;
+                HorizontalLayout {
+                    padding: 12px;
+                    spacing: 10px;
+                    VerticalLayout {
+                        alignment: center;
+                        Icon {
+                            d: Icons.info;
+                            width: 18px;
+                            height: 18px;
+                            fill: #ff8a9a;
+                        }
+                    }
+
+                    Text {
+                        text: Guess.error;
+                        color: #ffb3bf;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                    }
+                }
             }
 
-            if Guess.error != "": Text {
-                text: Guess.error;
-                color: #ff8a9a;
-                font-size: 13px;
-                wrap: word-wrap;
+            GuessEyebrow {
+                text: @tr("РЕЖИМ");
             }
 
             HorizontalLayout {
-                spacing: 8px;
-                alignment: start;
-                Chip {
-                    text: @tr("Соло");
+                spacing: 12px;
+                GuessModeTile {
+                    horizontal-stretch: 1;
+                    icon: Icons.user;
+                    title: @tr("Соло");
+                    sub: @tr("Ты и музыка: очки за скорость, серии подряд");
                     active: Guess.kind == 0;
                     clicked => {
                         Guess.kind = 0;
                     }
                 }
 
-                Chip {
-                    text: @tr("1 на 1");
+                GuessModeTile {
+                    horizontal-stretch: 1;
+                    icon: Icons.people;
+                    title: @tr("1 на 1");
+                    sub: @tr("Дуэль с другом: одни и те же песни, кто первый — тот и взял");
                     active: Guess.kind == 1;
                     clicked => {
                         Guess.kind = 1;
@@ -4481,94 +5339,119 @@ component GuessPage inherits Rectangle {
                 }
             }
 
-            if Guess.kind == 1: VerticalLayout {
-                spacing: 8px;
-                Text {
-                    text: @tr("Дуэль: у вас одни и те же песни, раунд берёт тот, кто угадал первым. Фрагмент становится длиннее, только когда «дальше» нажали оба. Есть код от друга — входи; нет — выбери источник ниже, и код появится у тебя.");
-                    color: Theme.dim;
-                    font-size: 12px;
-                    wrap: word-wrap;
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Field {
-                        width: 220px;
-                        height: 42px;
-                        placeholder: @tr("Код дуэли");
-                        text <=> Guess.join-code;
-                        accepted(t) => {
-                            Guess.duel-join(t);
-                        }
+            if Guess.kind == 1: Rectangle {
+                border-radius: 20px;
+                background: #ffffff06;
+                border-width: 1px;
+                border-color: #ffffff10;
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 10px;
+                    Text {
+                        text: @tr("Дуэль: у вас одни и те же песни, раунд берёт тот, кто угадал первым. Фрагмент становится длиннее, только когда «дальше» нажали оба. Есть код от друга — входи; нет — выбери источник ниже, и код появится у тебя.");
+                        color: Theme.dim;
+                        font-size: 12px;
+                        wrap: word-wrap;
                     }
 
-                    Pill {
-                        height: 42px;
-                        text: @tr("Войти");
-                        enabled: Guess.join-code != "" && !Guess.busy;
-                        clicked => {
-                            Guess.duel-join(Guess.join-code);
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        Field {
+                            width: 220px;
+                            height: 44px;
+                            placeholder: @tr("Код дуэли");
+                            text <=> Guess.join-code;
+                            accepted(t) => {
+                                Guess.duel-join(t);
+                            }
+                        }
+
+                        Pill {
+                            height: 44px;
+                            text: @tr("Войти");
+                            enabled: Guess.join-code != "" && !Guess.busy;
+                            clicked => {
+                                Guess.duel-join(Guess.join-code);
+                            }
                         }
                     }
                 }
             }
 
             HorizontalLayout {
-                spacing: 8px;
+                spacing: 14px;
                 alignment: start;
-                Chip {
-                    text: @tr("Плейлист");
-                    active: Guess.mode == 0;
-                    clicked => {
-                        Guess.set-mode(0);
+                VerticalLayout {
+                    alignment: center;
+                    GuessEyebrow {
+                        text: @tr("ОТКУДА ПЕСНИ");
                     }
                 }
 
-                Chip {
-                    text: @tr("Артист");
-                    active: Guess.mode == 1;
-                    clicked => {
-                        Guess.set-mode(1);
+                GuessTabs {
+                    width: 260px;
+                    items: [@tr("Плейлист"), @tr("Артист")];
+                    current: Guess.mode;
+                    picked(i) => {
+                        Guess.set-mode(i);
                     }
                 }
 
                 if Guess.busy: Text {
-                    text: @tr("Готовлю…");
-                    color: Theme.dim;
+                    text: @tr("Собираю песни") + ["", ".", "..", "..."][Math.mod(Math.floor(root.t * 2.5), 4)];
+                    color: Theme.soft1;
                     font-size: 13px;
+                    font-weight: 700;
                     vertical-alignment: center;
                 }
             }
 
-            if Guess.mode == 0: VerticalLayout {
-                spacing: 2px;
-                if Guess.playlists.length == 0: Text {
-                    text: @tr("Плейлистов пока нет");
-                    color: Theme.faint;
-                    font-size: 13px;
-                }
-                for p in Guess.playlists: GRow {
+            if Guess.mode == 0 && Guess.playlists.length == 0: Text {
+                text: @tr("Плейлистов пока нет — нужен хотя бы один на три песни");
+                color: Theme.faint;
+                font-size: 13px;
+            }
+
+            if Guess.mode == 0: Rectangle {
+                property <int> cols: max(2, Math.floor((self.width + 16px) / (176px + 16px)));
+                property <length> cw: (self.width - (self.cols - 1) * 16px) / self.cols;
+                height: Math.ceil(Guess.playlists.length / self.cols) * (self.cw + 64px);
+                for p[i] in Guess.playlists: GuessCard {
+                    x: Math.mod(i, parent.cols) * (parent.cw + 16px);
+                    y: Math.floor(i / parent.cols) * (parent.cw + 64px);
+                    width: parent.cw;
+                    height: parent.cw + 52px;
                     it: p;
+                    idx: i;
                     clicked => {
                         Guess.pick-playlist(p.id);
                     }
                 }
             }
 
-            if Guess.mode == 1: VerticalLayout {
-                spacing: 8px;
-                Field {
-                    height: 44px;
-                    icon: Icons.search;
-                    placeholder: @tr("Имя артиста");
-                    text <=> Guess.artist-q;
-                    changed text => {
-                        Guess.search-artist(self.text);
-                    }
+            if Guess.mode == 1: Field {
+                height: 48px;
+                icon: Icons.search;
+                placeholder: @tr("Имя артиста");
+                text <=> Guess.artist-q;
+                changed text => {
+                    Guess.search-artist(self.text);
                 }
+            }
 
-                for a in Guess.artists: GRow {
+            if Guess.mode == 1: Rectangle {
+                property <int> cols: max(2, Math.floor((self.width + 16px) / (150px + 16px)));
+                property <length> cw: (self.width - (self.cols - 1) * 16px) / self.cols;
+                height: Math.ceil(Guess.artists.length / self.cols) * (self.cw + 64px);
+                for a[i] in Guess.artists: GuessCard {
+                    x: Math.mod(i, parent.cols) * (parent.cw + 16px);
+                    y: Math.floor(i / parent.cols) * (parent.cw + 64px);
+                    width: parent.cw;
+                    height: parent.cw + 52px;
                     it: a;
+                    idx: i;
+                    round: true;
                     clicked => {
                         Guess.pick-artist(a.id);
                     }
@@ -4580,25 +5463,43 @@ component GuessPage inherits Rectangle {
     // ── дуэль: ждём соперника ──
     if Guess.stage == 3: VerticalLayout {
         alignment: center;
-        spacing: 14px;
-        padding: 40px;
-        Text {
-            text: @tr("Код дуэли");
-            color: Theme.dim;
-            font-size: 14px;
+        spacing: 16px;
+        padding: 30px;
+        HorizontalLayout {
+            alignment: center;
+            GuessOrb {
+                size: clamp(root.height * 0.32, 160px, 250px);
+                t: root.t;
+                energy: 0.35 + 0.2 * Math.sin(root.t * 70deg);
+                mode: 0;
+                spin: 150;
+                icon: Icons.people;
+            }
+        }
+
+        GuessEyebrow {
+            text: @tr("КОД ДУЭЛИ");
             horizontal-alignment: center;
         }
 
-        Text {
-            text: Guess.duel-code;
-            color: Theme.soft2;
-            font-size: 52px;
-            font-weight: 900;
-            letter-spacing: 6px;
-            horizontal-alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            spacing: 8px;
+            for c[i] in Guess.code-chars: GuessCodeChar {
+                ch: c;
+                idx: i;
+            }
         }
 
         Text {
+            text: (Guess.host ? @tr("Ждём соперника") : @tr("Ждём начала")) + ["", ".", "..", "..."][Math.mod(Math.floor(root.t * 2.5), 4)];
+            color: Theme.text;
+            font-size: 16px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        if Guess.host: Text {
             text: @tr("Отправь его сопернику: «Угадай песню» → «1 на 1» → «Войти». Как только он войдёт, начнётся первый раунд.");
             color: Theme.dim;
             font-size: 13px;
@@ -4615,6 +5516,15 @@ component GuessPage inherits Rectangle {
 
         HorizontalLayout {
             alignment: center;
+            spacing: 10px;
+            Pill {
+                text: @tr("Скопировать код");
+                icon: Icons.copy;
+                clicked => {
+                    Guess.copy-code();
+                }
+            }
+
             Pill {
                 text: @tr("Отменить");
                 primary: false;
@@ -4625,63 +5535,121 @@ component GuessPage inherits Rectangle {
         }
     }
 
-    // ── раунд ──
+    // ── раунд и ответ ──
     if Guess.stage == 1 || Guess.stage == 2: VerticalLayout {
         padding: 26px;
+        padding-bottom: 20px;
         spacing: 16px;
+        // шапка: откуда песни, счёт, «Сменить»
         HorizontalLayout {
-            spacing: 12px;
+            spacing: 10px;
             VerticalLayout {
                 horizontal-stretch: 1;
-                Text {
-                    text: @tr("Угадай песню");
-                    color: Theme.text;
-                    font-size: 24px;
-                    font-weight: 800;
+                alignment: center;
+                spacing: 2px;
+                GuessEyebrow {
+                    text: @tr("УГАДАЙ ПЕСНЮ");
                 }
 
                 Text {
                     text: Guess.source;
-                    color: Theme.dim;
-                    font-size: 12px;
+                    color: Theme.text;
+                    font-size: 20px;
+                    font-weight: 800;
                     overflow: elide;
                 }
             }
 
-            if Guess.kind == 1: VerticalLayout {
-                alignment: center;
-                Text {
-                    text: Guess.me-score + " : " + Guess.opp-score;
-                    color: Theme.soft2;
-                    font-size: 22px;
-                    font-weight: 900;
-                    horizontal-alignment: center;
-                }
-
-                Text {
-                    text: @tr("ты · {}", Guess.opp-name);
-                    color: Theme.faint;
-                    font-size: 11px;
-                    horizontal-alignment: center;
-                }
+            if Guess.kind == 0: GuessStat {
+                value: Math.round(root.sc);
+                label: @tr("очки");
+                icon: Icons.sparkle;
+                hot: true;
             }
-            if Guess.kind == 0: HorizontalLayout {
-                spacing: 14px;
-                for s[i] in [@tr("очки"), @tr("серия"), @tr("угадано")]: VerticalLayout {
-                    alignment: center;
-                    Text {
-                        text: i == 0 ? "" + Guess.score : i == 1 ? "" + Guess.streak : Guess.hits + "/" + Guess.rounds;
-                        color: i == 0 ? Theme.soft2 : Theme.text;
-                        font-size: 20px;
-                        font-weight: 800;
-                        horizontal-alignment: center;
+            if Guess.kind == 0: GuessStat {
+                value: Guess.streak;
+                label: @tr("серия");
+                icon: Icons.flame;
+                hot: Guess.streak >= 3;
+            }
+            if Guess.kind == 0: GuessStat {
+                value: Guess.hits + "/" + Guess.rounds;
+                label: @tr("угадано");
+                icon: Icons.check;
+            }
+            // дуэль: табло
+            if Guess.kind == 1: Rectangle {
+                height: 56px;
+                width: 290px;
+                border-radius: 18px;
+                background: #ffffff08;
+                border-width: 1px;
+                border-color: #ffffff10;
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: @tr("ТЫ");
+                            color: Theme.soft1;
+                            font-size: 10px;
+                            font-weight: 800;
+                            letter-spacing: 1.5px;
+                            horizontal-alignment: right;
+                        }
+
+                        Text {
+                            text: Math.round(root.ms);
+                            color: Theme.text;
+                            font-size: 22px;
+                            font-weight: 900;
+                            horizontal-alignment: right;
+                        }
                     }
 
-                    Text {
-                        text: s;
-                        color: Theme.faint;
-                        font-size: 11px;
-                        horizontal-alignment: center;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 34px;
+                            height: 34px;
+                            border-radius: 17px;
+                            background: Theme.accent;
+                            drop-shadow-blur: 14px;
+                            drop-shadow-color: Theme.c1.transparentize(0.5);
+                            Text {
+                                width: 100%;
+                                height: 100%;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                text: "VS";
+                                color: #ffffff;
+                                font-size: 11px;
+                                font-weight: 900;
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: Guess.opp-name;
+                            color: Theme.soft2;
+                            font-size: 10px;
+                            font-weight: 800;
+                            letter-spacing: 0.5px;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: Math.round(root.os);
+                            color: Theme.text;
+                            font-size: 22px;
+                            font-weight: 900;
+                        }
                     }
                 }
             }
@@ -4689,7 +5657,7 @@ component GuessPage inherits Rectangle {
             VerticalLayout {
                 alignment: center;
                 Pill {
-                    height: 36px;
+                    height: 38px;
                     text: @tr("Сменить");
                     primary: false;
                     clicked => {
@@ -4699,176 +5667,396 @@ component GuessPage inherits Rectangle {
             }
         }
 
-        // пять делений: сколько уже открыто
         HorizontalLayout {
-            spacing: 6px;
-            height: 34px;
-            for l[i] in ["0.1", "0.5", "1", "2", "5"]: Rectangle {
-                horizontal-stretch: i == 4 ? 4 : i == 3 ? 2 : 1;
-                border-radius: 8px;
-                background: i < Guess.level ? #ffffff14 : i == Guess.level ? (Guess.stage == 2 ? Theme.c1.transparentize(0.6) : Theme.c1.transparentize(0.3)) : #ffffff08;
-                border-width: i == Guess.level && Guess.stage == 1 ? 1px : 0px;
-                border-color: Theme.soft1;
-                Text {
-                    text: l + " " + @tr("с");
-                    color: i <= Guess.level ? Theme.text : Theme.faint;
-                    font-size: 12px;
-                    font-weight: 700;
-                }
-            }
-        }
-
-        HorizontalLayout {
-            spacing: 14px;
-            alignment: center;
-            VerticalLayout {
-                alignment: center;
-                IconBtn {
-                    size: 64px;
-                    primary: true;
-                    icon: Icons.play;
-                    tip: @tr("Ещё раз");
-                    clicked => {
-                        Guess.replay();
-                    }
-                }
-            }
-
-            VerticalLayout {
-                alignment: center;
-                Text {
-                    text: !Guess.ready && Guess.stage == 1 ? @tr("Готовлю фрагмент…") : Guess.stage == 1 ? @tr("Фрагмент {} с — жми, чтобы переслушать", ["0.1", "0.5", "1", "2", "5"][Guess.level])
-                        : Guess.kind == 1 ? (Guess.won ? @tr("Ты был первым!") : Guess.winner != "" ? @tr("Раунд взял(а) {}", Guess.winner) : @tr("Никто не угадал"))
-                        : (Guess.won ? @tr("Угадал! +{}", Guess.gained) : @tr("Не угадал"));
-                    color: Guess.stage == 2 && Guess.won ? Theme.soft2 : Theme.text;
-                    font-size: 16px;
-                    font-weight: 700;
-                }
-
-                if Guess.wrong != "" && Guess.stage == 1: Text {
-                    text: Guess.wrong;
-                    color: #ff8a9a;
-                    font-size: 12px;
-                }
-                if Guess.kind == 1 && Guess.stage == 1 && (Guess.me-skip || Guess.opp-skip): Text {
-                    text: Guess.me-skip ? @tr("Ждём, пока «дальше» нажмёт соперник") : @tr("Соперник хочет фрагмент подлиннее");
-                    color: Theme.soft1;
-                    font-size: 12px;
-                }
-            }
-
-            // раунд раскрыт — «Следующая» здесь, по центру
-            if Guess.stage == 2 && (Guess.kind == 0 || Guess.host): VerticalLayout {
-                alignment: center;
-                Pill {
-                    height: 42px;
-                    text: @tr("Следующая");
-                    clicked => {
-                        Guess.next();
-                    }
-                }
-            }
-            if Guess.stage == 2 && Guess.kind == 1 && !Guess.host: VerticalLayout {
-                alignment: center;
-                Text {
-                    text: @tr("Следующую включит {}", Guess.opp-name);
-                    color: Theme.dim;
-                    font-size: 13px;
-                }
-            }
-            if Guess.stage == 1: VerticalLayout {
-                alignment: center;
-                Pill {
-                    height: 38px;
-                    text: Guess.level < 4 ? @tr("Не знаю — дальше") : @tr("Сдаюсь");
-                    primary: false;
-                    enabled: !(Guess.kind == 1 && Guess.me-skip);
-                    clicked => {
-                        Guess.skip();
-                    }
-                }
-            }
-        }
-
-        // ответ: поиск как обычный
-        if Guess.stage == 1: VerticalLayout {
-            spacing: 6px;
+            spacing: 22px;
             vertical-stretch: 1;
-            Field {
-                height: 46px;
-                icon: Icons.search;
-                placeholder: @tr("Название трека…");
-                text <=> Guess.q;
-                changed text => {
-                    Guess.search(self.text);
-                }
-                accepted(t) => {
-                    Guess.guess-text(t);
-                }
-            }
-
-            gf := Flickable {
-                vertical-stretch: 1;
-                content-height: gl.preferred-height;
-                gl := VerticalLayout {
-                    width: gf.width;
-                    alignment: start;
-                    if Guess.searching && Guess.results.length == 0: Text {
-                        text: @tr("Ищу…");
-                        color: Theme.faint;
-                        font-size: 12px;
-                    }
-                    for r in Guess.results: GRow {
-                        it: r;
+            // слева — шар и что сейчас происходит
+            VerticalLayout {
+                width: max(root.orb + 40px, min(440px, root.width * 0.42));
+                alignment: center;
+                spacing: 12px;
+                HorizontalLayout {
+                    alignment: center;
+                    GuessOrb {
+                        size: root.orb;
+                        t: root.t;
+                        energy: root.energy;
+                        level: Guess.level;
+                        fill: root.fill;
+                        mode: Guess.stage == 2 ? 2 : 1;
+                        won: Guess.won;
+                        busy: Guess.stage == 1 && !Guess.ready;
+                        cover: Guess.ans-cover;
+                        has-cover: Guess.ans-has-cover;
+                        reveal: root.rve;
+                        burst: root.burst;
+                        clickable: Guess.ready && Guess.stage == 1;
                         clicked => {
-                            Guess.guess(r.id);
+                            Guess.replay();
+                        }
+                    }
+                }
+
+                // пять делений подписями
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    for l[i] in root.secs: Rectangle {
+                        property <bool> cur: i == Guess.level;
+                        width: 50px;
+                        height: 26px;
+                        border-radius: 13px;
+                        background: self.cur ? (Guess.stage == 2 && !Guess.won ? #ff5a6e4d : Theme.accent) : i < Guess.level ? #ffffff14 : #ffffff06;
+                        border-width: 1px;
+                        border-color: self.cur ? #00000000 : #ffffff10;
+                        drop-shadow-blur: self.cur ? 14px : 0px;
+                        drop-shadow-color: Theme.c1.transparentize(0.55);
+                        animate drop-shadow-blur { duration: 260ms; }
+                        Text {
+                            width: 100%;
+                            height: 100%;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            text: l + " " + @tr("с");
+                            color: parent.cur ? #ffffff : i < Guess.level ? Theme.text : Theme.faint;
+                            font-size: 11px;
+                            font-weight: 800;
+                        }
+                    }
+                }
+
+                Text {
+                    text: Guess.stage == 1 && !Guess.ready ? @tr("Готовлю фрагмент…")
+                        : Guess.stage == 1 ? @tr("Фрагмент {} с", root.secs[Guess.level])
+                        : Guess.won ? @tr("Узнал за {} с", root.secs[Guess.level]) : @tr("Вот что это было");
+                    color: Theme.text;
+                    font-size: 18px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: Guess.stage == 2 ? @tr("Песня играет целиком — до следующей")
+                        : Guess.kind == 1 && Guess.me-skip ? @tr("Ждём, пока «дальше» нажмёт соперник")
+                        : Guess.kind == 1 && Guess.opp-skip ? @tr("Соперник хочет фрагмент подлиннее")
+                        : @tr("Угадаешь сейчас — +{} · нажми на шар, чтобы переслушать", root.pts[Guess.level]);
+                    color: Guess.kind == 1 && Guess.stage == 1 && (Guess.me-skip || Guess.opp-skip) ? Theme.soft1 : Theme.dim;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                if Guess.stage == 1: HorizontalLayout {
+                    alignment: center;
+                    spacing: 10px;
+                    Pill {
+                        height: 42px;
+                        text: @tr("Ещё раз");
+                        icon: Icons.play;
+                        primary: false;
+                        enabled: Guess.ready;
+                        clicked => {
+                            Guess.replay();
+                        }
+                    }
+
+                    Pill {
+                        height: 42px;
+                        text: Guess.level < 4 ? @tr("Не знаю — дальше") : @tr("Сдаюсь");
+                        icon: Guess.level < 4 ? Icons.next : "";
+                        primary: false;
+                        enabled: !(Guess.kind == 1 && Guess.me-skip);
+                        clicked => {
+                            Guess.skip();
                         }
                     }
                 }
             }
-        }
 
-        // раскрытый ответ
-        if Guess.stage == 2: HorizontalLayout {
-            spacing: 18px;
-            alignment: start;
-            Cover {
-                width: 140px;
-                height: 140px;
-                border-radius: 16px;
-                img: Guess.ans-cover;
-                has: Guess.ans-has-cover;
-                src: "yt";
-            }
+            // справа — ответ: поиск среди песен игры, потом карточка результата
+            Rectangle {
+                horizontal-stretch: 1;
+                border-radius: 24px;
+                background: #120f1cd0;
+                border-width: 1px;
+                border-color: #ffffff12;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000070;
 
-            VerticalLayout {
-                spacing: 8px;
-                alignment: center;
-                Text {
-                    text: Guess.ans-title;
-                    color: Theme.text;
-                    font-size: 24px;
-                    font-weight: 800;
-                    wrap: word-wrap;
+                if Guess.stage == 1: VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+                    HorizontalLayout {
+                        Text {
+                            text: @tr("Твой ответ");
+                            color: Theme.text;
+                            font-size: 16px;
+                            font-weight: 800;
+                            horizontal-stretch: 1;
+                        }
+
+                        if Guess.pool-n > 0: Text {
+                            text: @tr("песен в игре: {}", Guess.pool-n);
+                            color: Theme.faint;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        height: 50px;
+                        Field {
+                            x: root.shake;
+                            width: parent.width;
+                            height: 50px;
+                            icon: Icons.search;
+                            placeholder: @tr("Название трека…");
+                            text <=> Guess.q;
+                            changed text => {
+                                Guess.search(self.text);
+                            }
+                            accepted(t) => {
+                                Guess.guess-text(t);
+                            }
+                        }
+                    }
+
+                    if Guess.wrong != "": Rectangle {
+                        height: 36px;
+                        Rectangle {
+                            x: root.shake * 0.6;
+                            width: parent.width;
+                            border-radius: 12px;
+                            background: #ff5a6e1c;
+                            border-width: 1px;
+                            border-color: #ff5a6e50;
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 12px;
+                                spacing: 8px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Icon {
+                                        d: Icons.close;
+                                        width: 15px;
+                                        height: 15px;
+                                        fill: #ff8a9a;
+                                    }
+                                }
+
+                                Text {
+                                    text: Guess.wrong;
+                                    color: #ffb3bf;
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                            }
+                        }
+                    }
+
+                    if Guess.q == "": VerticalLayout {
+                        vertical-stretch: 1;
+                        alignment: center;
+                        spacing: 10px;
+                        HorizontalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 64px;
+                                height: 64px;
+                                border-radius: 32px;
+                                background: #ffffff08;
+                                border-width: 1px;
+                                border-color: #ffffff12;
+                                Icon {
+                                    d: Icons.quiz;
+                                    width: 28px;
+                                    height: 28px;
+                                    x: 18px;
+                                    y: 18px;
+                                    fill: Theme.soft1;
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: @tr("Начни писать название — ищу только среди песен игры. Enter выбирает первый вариант.");
+                            color: Theme.faint;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    if Guess.q != "": gf := Flickable {
+                        vertical-stretch: 1;
+                        content-height: gl.preferred-height;
+                        gl := VerticalLayout {
+                            width: gf.width;
+                            alignment: start;
+                            if Guess.results.length == 0: Text {
+                                text: Guess.searching ? @tr("Ищу…") : @tr("Среди песен игры такого нет — попробуй иначе");
+                                color: Theme.faint;
+                                font-size: 12px;
+                            }
+                            for r[i] in Guess.results: GuessRow {
+                                it: r;
+                                idx: i;
+                                clicked => {
+                                    Guess.guess(r.id);
+                                }
+                            }
+                        }
+                    }
                 }
 
-                Text {
-                    text: Guess.ans-artist;
-                    color: Theme.dim;
-                    font-size: 15px;
-                }
+                // карточка результата: въезжает снизу
+                if Guess.stage == 2: Rectangle {
+                    clip: true;
+                    Rectangle {
+                    y: (1 - root.rve) * 26px;
+                    opacity: root.rve;
+                    VerticalLayout {
+                        padding: 26px;
+                        spacing: 10px;
+                        alignment: center;
+                        Text {
+                            text: Guess.kind == 1 ? (Guess.won ? @tr("Ты был первым!") : Guess.winner != "" ? @tr("Раунд взял(а) {}", Guess.winner) : @tr("Никто не угадал"))
+                                : (Guess.won ? @tr("Угадал!") : @tr("Не угадал"));
+                            color: Guess.won ? Theme.soft2 : #ff8a9a;
+                            font-size: 34px;
+                            font-weight: 900;
+                            wrap: word-wrap;
+                        }
 
-                Text {
-                    text: @tr("Играет целиком — до следующей песни");
-                    color: Theme.faint;
-                    font-size: 12px;
-                }
+                        if Guess.kind == 0 && Guess.won: HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            Rectangle {
+                                height: 34px;
+                                border-radius: 17px;
+                                background: Theme.accent;
+                                drop-shadow-blur: 18px;
+                                drop-shadow-color: Theme.c1.transparentize(0.45);
+                                HorizontalLayout {
+                                    padding-left: 14px;
+                                    padding-right: 16px;
+                                    spacing: 6px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Icon {
+                                            d: Icons.sparkle;
+                                            width: 14px;
+                                            height: 14px;
+                                            fill: #ffffff;
+                                        }
+                                    }
 
-                if Guess.kind == 0: Text {
-                    text: @tr("Лучшая серия: {}", Guess.best);
-                    color: Theme.faint;
-                    font-size: 12px;
+                                    Text {
+                                        text: @tr("+{} очков", Math.round(root.gn));
+                                        color: #ffffff;
+                                        font-size: 15px;
+                                        font-weight: 900;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            if Guess.streak >= 2: Rectangle {
+                                height: 34px;
+                                border-radius: 17px;
+                                background: #ffffff0d;
+                                border-width: 1px;
+                                border-color: Theme.soft2.transparentize(0.5);
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 14px;
+                                    spacing: 6px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Icon {
+                                            d: Icons.flame;
+                                            width: 15px;
+                                            height: 15px;
+                                            fill: Theme.soft2;
+                                        }
+                                    }
+
+                                    Text {
+                                        text: @tr("серия {}", Guess.streak);
+                                        color: Theme.soft2;
+                                        font-size: 13px;
+                                        font-weight: 800;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            height: 1px;
+                            background: @linear-gradient(90deg, #ffffff20 0%, #ffffff00 100%);
+                        }
+
+                        Text {
+                            text: Guess.ans-title;
+                            color: Theme.text;
+                            font-size: 24px;
+                            font-weight: 800;
+                            wrap: word-wrap;
+                        }
+
+                        Text {
+                            text: Guess.ans-artist;
+                            color: Theme.dim;
+                            font-size: 15px;
+                            overflow: elide;
+                        }
+
+                        if Guess.kind == 0: HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            padding-top: 6px;
+                            GuessStat {
+                                value: Math.round(root.sc);
+                                label: @tr("очки");
+                                icon: Icons.sparkle;
+                            }
+
+                            GuessStat {
+                                value: Guess.best;
+                                label: @tr("лучшая серия");
+                                icon: Icons.flame;
+                            }
+
+                            GuessStat {
+                                value: Guess.hits + "/" + Guess.rounds;
+                                label: @tr("угадано");
+                                icon: Icons.check;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            alignment: start;
+                            padding-top: 10px;
+                            if Guess.kind == 0 || Guess.host: Pill {
+                                height: 48px;
+                                text: @tr("Следующая");
+                                icon: Icons.next;
+                                clicked => {
+                                    Guess.next();
+                                }
+                            }
+                            if Guess.kind == 1 && !Guess.host: Text {
+                                text: @tr("Следующую включит {}", Guess.opp-name);
+                                color: Theme.dim;
+                                font-size: 13px;
+                            }
+                        }
+                    }
                 }
+                    }
             }
         }
     }
@@ -6489,6 +7677,7 @@ export component AppWindow inherits Window {
                         GuessPage {
                             width: 100%;
                             height: 100%;
+                            live: root.page == "guess" && !root.lite && !root.lyrics-open;
                         }
                     }
 

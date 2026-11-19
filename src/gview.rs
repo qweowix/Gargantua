@@ -168,6 +168,7 @@ impl App {
         self.game.pool = pool;
         self.game.next = 0;
         let g = self.g();
+        g.set_pool_n(self.game.pool.len() as i32);
         g.set_source(source.into());
         g.set_error(SharedString::new());
         self.guess_round();
@@ -306,6 +307,14 @@ impl App {
             p.send(Cmd::Volume(self.vol_at(1.0)));
             p.send(Cmd::Load(clip.display().to_string(), 1));
         }
+        self.guess_sound((LEVELS[self.game.level] * 1000.0) as i32);
+    }
+
+    /// Запустили звук: кольцо шара заливается за clip_ms (0 — песня целиком), частицы пляшут
+    fn guess_sound(&self, clip_ms: i32) {
+        let g = self.g();
+        g.set_clip_ms(clip_ms);
+        g.set_play_n(g.get_play_n().wrapping_add(1));
     }
 
     /// «Не знаю» или неверный ответ: длиннее фрагмент; после 5 с — проигрыш
@@ -390,7 +399,7 @@ impl App {
     /// Поиск-ответ: только среди песен игры (плейлиста или артиста) — мгновенно, без сети
     pub(crate) fn guess_search(&mut self, q: String) {
         let pool: Vec<Track> = if self.game.duel { duel::state().map(|d| d.pool).unwrap_or_default() } else { self.game.pool.clone() };
-        let found: Vec<Track> = guess::search_pool(&pool, &q, 12).into_iter().map(|i| pool[i].clone()).collect();
+        let found: Vec<Track> = guess::search_pool(&pool, &q, 30).into_iter().map(|i| pool[i].clone()).collect();
         let mut rows = Vec::new();
         for (i, t) in found.iter().enumerate() {
             self.want_cover(&t.cover);
@@ -398,7 +407,26 @@ impl App {
         }
         self.game.results = found;
         self.g().set_searching(false);
-        self.g().set_results(model(rows));
+        self.guess_rows(rows);
+    }
+
+    /// Строки ответа — в ту же модель: совпавшие по месту меняются без пересоздания, лишние убираются
+    fn guess_rows(&self, rows: Vec<GItem>) {
+        let m = self.g().get_results();
+        let Some(vm) = m.as_any().downcast_ref::<VecModel<GItem>>() else {
+            return self.g().set_results(model(rows));
+        };
+        let n = rows.len();
+        for (i, r) in rows.into_iter().enumerate() {
+            if i < vm.row_count() {
+                vm.set_row_data(i, r);
+            } else {
+                vm.push(r);
+            }
+        }
+        while vm.row_count() > n {
+            vm.remove(vm.row_count() - 1);
+        }
     }
 
     pub(crate) fn guess_pick(&mut self, i: usize) {
@@ -417,9 +445,8 @@ impl App {
         }
         if guess::typed(&ans, &text) {
             self.guess_finish(true);
-        } else if let Some(first) = self.game.results.first().cloned().filter(|g| guess::same(&ans, g)) {
-            // Enter при первом найденном — то же, что клик по нему
-            let _ = first;
+        } else if self.game.results.first().is_some_and(|g| guess::title_hit(g, &text) && guess::same(&ans, g)) {
+            // Enter при первом найденном по названию — то же, что клик по нему
             self.guess_finish(true);
         } else {
             self.guess_wrong(&text);
@@ -428,8 +455,10 @@ impl App {
 
     fn guess_wrong(&mut self, what: &str) {
         let msg = tr!("Не то: {}", "Not it: {}", "Не те: {}", "Nie je to: {}", what);
-        self.g().set_q(SharedString::new());
-        self.g().set_results(model(Vec::new()));
+        let g = self.g();
+        g.set_wrong_n(g.get_wrong_n().wrapping_add(1));
+        g.set_q(SharedString::new());
+        self.guess_rows(Vec::new());
         if self.game.duel {
             self.g().set_wrong(msg.into());
             return;
@@ -465,6 +494,7 @@ impl App {
             p.send(Cmd::Volume(self.vol_at(1.0)));
             p.send(Cmd::Load(src, 1));
         }
+        self.guess_sound(0);
     }
 
     pub(crate) fn guess_change(&mut self) {
@@ -533,6 +563,7 @@ impl App {
         self.game.duel_round = None;
         self.game.score = 0;
         let g = self.g();
+        g.set_code_chars(model(code.chars().map(|c| SharedString::from(c.to_string())).collect()));
         g.set_duel_code(code.into());
         g.set_host(host);
         g.set_error(SharedString::new());
@@ -558,6 +589,7 @@ impl App {
         let opp = d.opponent(&me);
         let g = self.g();
         g.set_source(d.meta.source.as_str().into());
+        g.set_pool_n(d.pool.len() as i32);
         g.set_host(d.meta.host == me);
         g.set_me_name(d.name_of(&me).into());
         g.set_opp_name(if opp.is_empty() { SharedString::new() } else { d.name_of(&opp).into() });
