@@ -26,6 +26,11 @@ use crate::model::{Src, Track};
 
 pub const ONLINE_MS: i64 = 40_000;
 const CHAT_KEEP: usize = 200;
+/// Открытая комната в списке живёт, пока владелец отмечается (раз в минуту): дольше тишина — комнату
+/// бросили (закрыли приложение, упали, сменили аккаунт) и в списке её не показываем, а ещё дольше — убираем
+const PUBLIC_REFRESH_MS: i64 = 60_000;
+const PUBLIC_HIDE_MS: i64 = 180_000;
+const PUBLIC_DROP_MS: i64 = 300_000;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -166,11 +171,14 @@ pub fn uid() -> String {
 }
 
 fn req(method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
-    let db = crate::connect::db().context("нет базы")?;
     let c = crate::cloud::cfg().context("облако не настроено")?;
     me()?;
-    let tok = crate::cloud::auth_token(&c)?;
-    let r = crate::util::agent().request(method, &format!("{db}/{path}.json")).query("auth", &tok);
+    req_tok(&crate::cloud::auth_token(&c)?, method, path, body)
+}
+
+fn req_tok(tok: &str, method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
+    let db = crate::connect::db().context("нет базы")?;
+    let r = crate::util::agent().request(method, &format!("{db}/{path}.json")).query("auth", tok);
     let r = match body {
         Some(b) => r.send_json(b),
         None => r.call(),
@@ -219,6 +227,8 @@ pub fn join(code: &str, on_change: impl Fn() + Send + 'static) -> Result<()> {
     let (uid, my_name) = me()?;
     let meta = req("GET", &format!("rooms/{code}/meta"), None)?;
     if meta.is_null() {
+        // комнаты уже нет, а в списке открытых она могла остаться — убираем
+        let _ = req("DELETE", &format!("public_rooms/{code}"), None);
         bail!("NO_ROOM");
     }
     let role = if meta["owner"].as_str() == Some(uid.as_str()) { "owner" } else { "member" };
@@ -239,22 +249,44 @@ pub fn join(code: &str, on_change: impl Fn() + Send + 'static) -> Result<()> {
 
 /// Выйти. Владелец закрывает комнату совсем
 pub fn leave() {
-    let Some(code) = joined().lock().unwrap().take().map(|j| j.code) else { return };
+    let Some(j) = joined().lock().unwrap().take() else { return };
     GEN.fetch_add(1, Ordering::SeqCst);
-    let (owner, uid) = {
-        let r = room();
-        (r.as_ref().map(|r| r.meta.owner.clone()).unwrap_or_default(), uid())
-    };
+    let uid = uid();
     std::thread::spawn(move || {
-        let r = if owner == uid {
-            req("DELETE", &format!("public_rooms/{code}"), None).and_then(|_| req("DELETE", &format!("rooms/{code}"), None))
-        } else {
-            req("DELETE", &format!("rooms/{code}/members/{uid}"), None)
-        };
-        if let Err(e) = r {
+        if let Err(e) = crate::cloud::cfg().context("облако не настроено").and_then(|c| crate::cloud::auth_token(&c)).and_then(|tok| bye(&j, &uid, &tok)) {
             crate::logln!("выход из комнаты: {e:#}");
         }
     });
+}
+
+/// Сменился аккаунт: комнату забываем у себя, а выходим из неё от имени прошлого (uid и его токен —
+/// новым её уже не закрыть). Пустые — только забыть
+pub fn leave_as(uid: &str, tok: &str) {
+    let Some(j) = joined().lock().unwrap().take() else { return };
+    GEN.fetch_add(1, Ordering::SeqCst);
+    if let Some(f) = notify().lock().unwrap().as_ref() {
+        f();
+    }
+    if uid.is_empty() || tok.is_empty() {
+        return;
+    }
+    let (uid, tok) = (uid.to_string(), tok.to_string());
+    std::thread::spawn(move || {
+        if let Err(e) = bye(&j, &uid, &tok) {
+            crate::logln!("выход из комнаты прошлого аккаунта: {e:#}");
+        }
+    });
+}
+
+fn bye(j: &Joined, uid: &str, tok: &str) -> Result<()> {
+    let code = &j.code;
+    if j.tree["meta"]["owner"].as_str() == Some(uid) {
+        req_tok(tok, "DELETE", &format!("public_rooms/{code}"), None)?;
+        req_tok(tok, "DELETE", &format!("rooms/{code}"), None)?;
+    } else {
+        req_tok(tok, "DELETE", &format!("rooms/{code}/members/{uid}"), None)?;
+    }
+    Ok(())
 }
 
 pub fn code() -> Option<String> {
@@ -391,6 +423,15 @@ pub fn set_state(track: Option<&Track>, pos: f64, playing: bool, seq: u64, upnex
 pub fn beat(pos: f64, playing: bool, key: &str) -> Result<()> {
     let (uid, _) = me()?;
     req("PATCH", &path(&format!("members/{uid}"))?, Some(&json!({"seen": {".sv": "timestamp"}, "pos": pos, "playing": playing, "key": key})))?;
+    // владелец открытой комнаты раз в минуту отмечает её в списке: по этой отметке видно, что комната живая
+    static LISTED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+    let now = crate::connect::now();
+    if let Some(r) = room().filter(|r| r.is_owner(&uid) && r.meta.public) {
+        if now - LISTED.load(Ordering::Relaxed) >= PUBLIC_REFRESH_MS {
+            LISTED.store(now, Ordering::Relaxed);
+            req("PATCH", &format!("public_rooms/{}", r.code), Some(&json!({"at": {".sv": "timestamp"}})))?;
+        }
+    }
     Ok(())
 }
 
@@ -474,17 +515,38 @@ pub fn kick(uid: &str) -> Result<()> {
     Ok(())
 }
 
-/// Открытые комнаты: (код, название, владелец)
+/// Открытые комнаты: (код, название, владелец). Брошенные (владелец давно не отмечался) не показываем,
+/// а совсем старые убираем из списка — иначе там навсегда висели комнаты, которых уже нет
 pub fn public_rooms() -> Result<Vec<(String, String, String)>> {
     let v = req("GET", "public_rooms", None)?;
-    let mut out: Vec<(i64, String, String, String)> = v
-        .as_object()
-        .into_iter()
-        .flatten()
-        .map(|(c, r)| (r["at"].as_i64().unwrap_or(0), c.clone(), r["name"].as_str().unwrap_or("?").to_string(), r["owner_name"].as_str().unwrap_or("?").to_string()))
-        .collect();
-    out.sort_by(|a, b| b.0.cmp(&a.0));
-    Ok(out.into_iter().take(30).map(|x| (x.1, x.2, x.3)).collect())
+    let (live, gone) = public_split(&v, crate::connect::now());
+    if !gone.is_empty() {
+        std::thread::spawn(move || {
+            for code in gone {
+                if let Err(e) = req("DELETE", &format!("public_rooms/{code}"), None) {
+                    crate::logln!("список комнат: не убрал {code}: {e:#}");
+                    break;
+                }
+            }
+        });
+    }
+    Ok(live)
+}
+
+/// (живые по свежести: код, название, владелец; коды брошенных давно — убрать)
+fn public_split(v: &Value, now: i64) -> (Vec<(String, String, String)>, Vec<String>) {
+    let mut live: Vec<(i64, String, String, String)> = Vec::new();
+    let mut gone = Vec::new();
+    for (c, r) in v.as_object().into_iter().flatten() {
+        let at = r["at"].as_i64().unwrap_or(0);
+        if now - at > PUBLIC_DROP_MS {
+            gone.push(c.clone());
+        } else if now - at <= PUBLIC_HIDE_MS {
+            live.push((at, c.clone(), r["name"].as_str().unwrap_or("?").to_string(), r["owner_name"].as_str().unwrap_or("?").to_string()));
+        }
+    }
+    live.sort_by(|a, b| b.0.cmp(&a.0));
+    (live.into_iter().take(30).map(|x| (x.1, x.2, x.3)).collect(), gone)
 }
 
 /// Насколько подстроить скорость, чтобы догнать комнату: расхождение (мы − комната, с) →
@@ -519,6 +581,21 @@ mod tests {
         assert_eq!(r.chat[0].emoji, "🔥");
         assert!(r.can_queue("u2") && !r.can_control("u2") && r.can_control("u1"));
         assert_eq!(r.state.unwrap().pos_now(), 10.0, "на паузе позиция стоит");
+    }
+
+    #[test]
+    fn stale_public_rooms() {
+        let now = 1_000_000_000;
+        let v = json!({
+            "LIVE01": {"name": "живая", "owner_name": "ann", "at": now - 30_000},
+            "QUIET1": {"name": "тихая", "owner_name": "bob", "at": now - 240_000},
+            "DEAD01": {"name": "брошенная", "owner_name": "eve", "at": now - 3_600_000},
+            "NOAT01": {"name": "без отметки", "owner_name": "old"}
+        });
+        let (live, mut gone) = public_split(&v, now);
+        assert_eq!(live, [("LIVE01".to_string(), "живая".to_string(), "ann".to_string())], "показываем только живые");
+        gone.sort();
+        assert_eq!(gone, ["DEAD01", "NOAT01"], "давно брошенные — убрать; тихую пару минут — просто не показывать");
     }
 
     #[test]

@@ -86,7 +86,10 @@ impl App {
                             with(|a| a.room_tick());
                         });
                     }
-                    Err(e) => a.room_rooms().set_error(room_err(&e).into()),
+                    Err(e) => {
+                        a.room_rooms().set_error(room_err(&e).into());
+                        a.room_publics(); // комнаты нет — из списка она уже убрана
+                    }
                 }
             });
         });
@@ -111,7 +114,13 @@ impl App {
 
     /// Пришло изменение из базы — перерисовать комнату; подстройка плеера — в тике
     pub(crate) fn room_changed(&mut self) {
-        let Some(r) = rooms::room() else { return };
+        let Some(r) = rooms::room() else {
+            // комнату забыли из-под нас (сменили аккаунт) — экран тоже выходит
+            if self.room.live {
+                self.room_leave();
+            }
+            return;
+        };
         if r.meta.owner.is_empty() && self.room.at.is_some() {
             // комнату закрыл владелец
             self.room_leave();

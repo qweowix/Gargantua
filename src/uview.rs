@@ -130,6 +130,18 @@ pub struct View {
     /// фон: таймер 15 кадров/с, пока страница на экране
     bg: Timer,
     bg_t: f32,
+    /// выбрали звезду: её линии растут к соседям (0..1, 1 — дорисованы), соседи загораются, когда линия дошла
+    grow: f32,
+    grow_timer: Timer,
+    grow_fn: Option<fn()>,
+}
+
+/// Рост линий: кадров по 16 мс и доля пути, на которой соседи загораются
+const GROW_FRAMES: f32 = 26.0;
+const GROW_LIT: f32 = 0.8;
+
+fn ease_out(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
 }
 
 /// Звёздная пыль: кружки с периодом 2000 по обеим осям (повторены сеткой 4×4, чтобы перенос был без шва)
@@ -180,6 +192,9 @@ impl Default for View {
             taste_on: false,
             bg: Timer::default(),
             bg_t: 0.0,
+            grow: 1.0,
+            grow_timer: Timer::default(),
+            grow_fn: None,
         }
     }
 }
@@ -221,7 +236,8 @@ impl View {
     }
 
     /// Фон плывёт, пока страница открыта (в лайт-режиме — стоит)
-    pub fn start_bg(&mut self, ui: &AppWindow, tick: fn()) {
+    pub fn start_bg(&mut self, ui: &AppWindow, tick: fn(), grow: fn()) {
+        self.grow_fn = Some(grow);
         let uni = self.uni(ui);
         if uni.get_dust().is_empty() {
             uni.set_dust(dust().into());
@@ -238,6 +254,49 @@ impl View {
         }
         self.bg_t += 0.066;
         self.uni(ui).set_bg_t(self.bg_t);
+    }
+
+    /// Идёт рост линий выбранной звезды
+    fn growing(&self) -> bool {
+        self.grow < 1.0 && self.sel.is_some() && self.br_shown.is_none()
+    }
+
+    /// Линии выбранной звезды, дорисованные на долю k: из неё к соседям
+    fn hi_grow(&self, hi: &HashSet<usize>, k: f32) -> String {
+        use std::fmt::Write;
+        let (Some(u), Some(s)) = (&self.u, self.sel) else { return String::new() };
+        let a = u.pos[s];
+        let mut out = String::new();
+        for &li in hi {
+            let l = &u.links[li];
+            let b = u.pos[if l.a == s { l.b } else { l.a }];
+            let _ = write!(out, "M{:.1} {:.1}L{:.1} {:.1}", a.0, a.1, a.0 + (b.0 - a.0) * k, a.1 + (b.1 - a.1) * k);
+        }
+        out
+    }
+
+    /// Кадр роста линий (таймер 16 мс): двигаем только подсвеченный путь; соседей зажигаем, когда линия дошла
+    pub fn grow_tick(&mut self, ui: &AppWindow) {
+        if !self.growing() {
+            self.grow = 1.0;
+            self.grow_timer.stop();
+            return;
+        }
+        let was = self.grow;
+        self.grow = (self.grow + 1.0 / GROW_FRAMES).min(1.0);
+        if self.grow >= 1.0 || (was < GROW_LIT && self.grow >= GROW_LIT) {
+            self.refresh(ui);
+        } else {
+            let (_, hi) = self.focus();
+            let path = self.hi_grow(&hi, ease_out(self.grow));
+            let paths = self.uni(ui).get_paths();
+            if paths.row_count() > 3 {
+                paths.set_row_data(3, path.into());
+            }
+        }
+        if self.grow >= 1.0 {
+            self.grow_timer.stop();
+        }
     }
 
     /// Номер звезды из UI — только если такая есть
@@ -304,13 +363,16 @@ impl View {
         let zoom = uni.get_zoom();
         let vis = u.visible(zoom, &focus);
         let dimming = !focus.is_empty();
+        // линии ещё растут — соседи выбранной пока тусклые
+        let unlit = self.growing() && self.grow < GROW_LIT;
+        let dim_of = |s: usize| dimming && (!focus.contains(&s) || (unlit && Some(s) != self.sel));
         // подписи: важные первыми, каждая — только если не налезает на уже поставленные (в пикселях
         // при этом приближении: относительное расположение от сдвига карты не зависит)
         let mut placed: Vec<(f32, f32, f32, f32)> = Vec::new();
         let mut lab = std::collections::HashSet::new();
         let rk = zoom.powf(0.55);
         for &s in &vis {
-            if dimming && !focus.contains(&s) {
+            if dim_of(s) {
                 continue;
             }
             let name = &u.g.nodes[u.stars[s]].name;
@@ -337,7 +399,7 @@ impl View {
                 label: u.g.nodes[u.stars[s]].name.as_str().into(),
                 kind: 1,
                 sel: Some(s) == self.sel,
-                dim: dimming && !focus.contains(&s),
+                dim: dim_of(s),
                 lab: lab.contains(&s),
                 id: s as i32,
             })
@@ -353,7 +415,10 @@ impl View {
             self.row_of = vis.iter().enumerate().map(|(r, &s)| (s, r)).collect();
             self.nodes.set_vec(rows);
         }
-        let p = u.paths(&vis, if dimming { 0 } else { PER_STAR }, &self.origins, &hi);
+        let mut p = u.paths(&vis, if dimming { 0 } else { PER_STAR }, &self.origins, &hi);
+        if self.growing() {
+            p[3] = self.hi_grow(&hi, ease_out(self.grow));
+        }
         uni.set_paths(model(p.into_iter().map(SharedString::from).collect()));
         let dna_n = u.g.nodes.iter().filter(|n| n.track.as_ref().is_some_and(|t| dna::get(&t.key()).is_some())).count();
         let genres = u.g.nodes.iter().filter(|n| n.kind == Kind::Genre).count();
@@ -489,6 +554,14 @@ impl View {
         self.sel = Some(s);
         self.br_shown = None;
         self.uni(ui).set_br_shown(-1);
+        // линии вырастают из звезды к соседям (в лайт-режиме — сразу)
+        match self.grow_fn.filter(|_| !ui.get_lite()) {
+            Some(f) => {
+                self.grow = 0.0;
+                self.grow_timer.start(TimerMode::Repeated, Duration::from_millis(16), f);
+            }
+            None => self.grow = 1.0,
+        }
         self.panel(ui);
         self.refresh(ui);
     }
@@ -612,14 +685,19 @@ impl View {
         let Some(u) = &mut self.u else { return };
         u.pos[s].0 += dx;
         u.pos[s].1 += dy;
+        let (x, y) = u.pos[s];
         if let Some(&r) = self.row_of.get(&s) {
             if let Some(mut row) = self.nodes.row_data(r) {
-                row.x = u.pos[s].0;
-                row.y = u.pos[s].1;
+                row.x = x;
+                row.y = y;
                 self.nodes.set_row_data(r, row);
             }
         }
-        let p = u.paths(&self.vis, if dimming { 0 } else { PER_STAR }, &self.origins, &hi);
+        let Some(u) = &self.u else { return };
+        let mut p = u.paths(&self.vis, if dimming { 0 } else { PER_STAR }, &self.origins, &hi);
+        if self.growing() {
+            p[3] = self.hi_grow(&hi, ease_out(self.grow));
+        }
         ui.global::<Uni>().set_paths(model(p.into_iter().map(SharedString::from).collect()));
     }
 

@@ -5016,8 +5016,11 @@ fn main() -> Result<(), slint::PlatformError> {
             fn bg() {
                 with(|a| a.uni.bg_tick(&a.ui));
             }
+            fn grow() {
+                with(|a| a.uni.grow_tick(&a.ui));
+            }
             with(|a| {
-                a.uni.start_bg(&a.ui, bg);
+                a.uni.start_bg(&a.ui, bg, grow);
                 a.uni_build();
             });
         });

@@ -99,7 +99,7 @@
     "public_rooms": {
       ".read": "auth != null && auth.token.email_verified == true",
       "$code": {
-        ".write": "auth != null && (root.child('rooms').child($code).child('meta/owner').val() == auth.uid || newData.child('owner').val() == auth.uid && !data.exists())"
+        ".write": "auth != null && auth.token.email_verified == true && (root.child('rooms').child($code).child('meta/owner').val() == auth.uid || (!data.exists() && newData.child('owner').val() == auth.uid) || (!newData.exists() && (!root.child('rooms').child($code).child('meta').exists() || !data.child('at').isNumber() || data.child('at').val() < now - 300000)))"
       }
     }
   }

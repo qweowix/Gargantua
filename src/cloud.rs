@@ -71,8 +71,17 @@ pub fn update(f: impl FnOnce(&mut Account)) {
 }
 
 pub fn sign_out() {
+    let old = (account().uid, cached_token());
     *token() = None;
     update(|a| *a = Account::default());
+    if !old.0.is_empty() {
+        crate::connect::account_changed(old.1.map(|t| (old.0, t)));
+    }
+}
+
+/// Токен из памяти, если ещё жив (без сети): им прощаемся с прошлым аккаунтом при смене
+fn cached_token() -> Option<String> {
+    token().as_ref().filter(|(_, exp)| Instant::now() < *exp).map(|(t, _)| t.clone())
 }
 
 // ── Auth ──
@@ -104,8 +113,9 @@ fn keep_session(email: &str, v: &Value) -> Result<()> {
         bail!("bad answer")
     };
     let secs = v["expiresIn"].as_str().and_then(|s| s.parse().ok()).unwrap_or(3600u64);
+    let old = (account().uid, cached_token());
     *token() = Some((id.to_string(), Instant::now() + Duration::from_secs(secs.saturating_sub(60))));
-    let same = account().uid == uid;
+    let same = old.0 == uid;
     update(|a| {
         if !same {
             *a = Account::default(); // другой аккаунт — прошлая база слияния не про него
@@ -114,6 +124,10 @@ fn keep_session(email: &str, v: &Value) -> Result<()> {
         a.uid = uid.to_string();
         a.refresh = refresh.to_string();
     });
+    if !same {
+        // другой аккаунт: Connect, комната и дуэль прошлого — закрыть, поток — к узлу этого
+        crate::connect::account_changed(old.1.filter(|_| !old.0.is_empty()).map(|t| (old.0, t)));
+    }
     Ok(())
 }
 

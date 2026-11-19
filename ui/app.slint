@@ -1959,6 +1959,8 @@ component UniverseMap inherits Rectangle {
         // сплошной цвет: градиент внутри скругления рисуется квадратом и стоит дорого;
         // притушенные — прозрачностью цвета, а не opacity (opacity — по слою на звезду, всё тормозит)
         background: n.dim ? n.c.transparentize(0.82) : n.c;
+        // сосед загорается плавно, когда до него дошла линия
+        animate background { duration: 220ms; }
         // светлое ядро — звезда «светится»
         if !n.dim && self.rr >= 4px: Rectangle {
             width: parent.width * 0.42;
@@ -1969,16 +1971,32 @@ component UniverseMap inherits Rectangle {
         border-width: n.sel ? 2px : 0px;
         border-color: #ffffff;
         nta := TouchArea {
-            mouse-cursor: pointer;
+            // тащили звезду — отпускание её не открывает; сдвиг меньше 4 px — это ещё щелчок, звезда стоит
+            property <bool> drg;
+            mouse-cursor: self.drg ? MouseCursor.grabbing : MouseCursor.pointer;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    self.drg = false;
+                }
+            }
             clicked => {
-                Uni.pick(n.id);
+                if !self.drg {
+                    Uni.pick(n.id);
+                }
             }
             double-clicked => {
-                Uni.fly(n.id);
+                if !self.drg {
+                    Uni.fly(n.id);
+                }
             }
             moved => {
                 if self.pressed {
-                    Uni.drag(n.id, (self.mouse-x - self.pressed-x) / 1px / Uni.zoom, (self.mouse-y - self.pressed-y) / 1px / Uni.zoom);
+                    if !self.drg && abs((self.mouse-x - self.pressed-x) / 1px) + abs((self.mouse-y - self.pressed-y) / 1px) > 4 {
+                        self.drg = true;
+                    }
+                    if self.drg {
+                        Uni.drag(n.id, (self.mouse-x - self.pressed-x) / 1px / Uni.zoom, (self.mouse-y - self.pressed-y) / 1px / Uni.zoom);
+                    }
                 }
             }
         }

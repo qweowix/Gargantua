@@ -545,7 +545,8 @@ impl App {
         if !self.game.duel {
             return;
         }
-        let Some(d) = duel::state() else { return };
+        // дуэль забыли из-под нас (сменили аккаунт) — к выбору игры
+        let Some(d) = duel::state() else { return self.guess_change() };
         if d.gone {
             self.game.duel = false;
             duel::leave();

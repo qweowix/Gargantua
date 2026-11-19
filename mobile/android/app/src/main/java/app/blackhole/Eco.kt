@@ -271,9 +271,11 @@ class EcoState(private val vm: AppState) {
             dnaNode?.let { openDna(it, node) }
             return@launch
         }
+        // связи — до смены выбора: выбор и его линии меняются разом (иначе линии росли бы к соседям прошлой звезды)
+        val inf = runCatching { core("uni_star") { put("i", JsonPrimitive(star)) }.to<UStarInfo>() }.getOrNull()
         sel = star
         brShown = null
-        info = runCatching { core("uni_star") { put("i", JsonPrimitive(star)) }.to<UStarInfo>() }.getOrNull()
+        info = inf
     }
 
     fun clear() { sel = null; info = null; brShown = null }
@@ -433,7 +435,7 @@ class EcoState(private val vm: AppState) {
         roomErr = ""
         val r = runCatching { core("rooms_join") { put("code", JsonPrimitive(code.trim().uppercase())) } }
         roomBusy = false
-        r.onFailure { roomErr = EcoText.err(it); return@launch }
+        r.onFailure { roomErr = EcoText.err(it); loadPublics(); return@launch } // комнаты нет — из списка она уже убрана
         pubSig = ""; seq = 0
         loop?.cancel()
         loop = vm.viewModelScope.launch {
@@ -445,7 +447,8 @@ class EcoState(private val vm: AppState) {
                 serverOffset = s.now - now()
                 me = s.me
                 val r2 = s.room
-                if (r2 == null) { room = null; break }
+                // комнату забыли из-под нас (сменили аккаунт) — выходим и тут
+                if (r2 == null) { tick?.cancel(); room = null; Eq.nudge.value = 1f; break }
                 if (r2.meta.owner.isEmpty() && room != null) {
                     vm.toast(tr("Комнату закрыли", "The room was closed", "Кімнату закрили", "Miestnosť bola zatvorená"))
                     leave()

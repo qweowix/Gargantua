@@ -340,7 +340,8 @@ class GuessState(private val vm: AppState) {
     }
 
     private fun onDuel(s: DuelSnap) {
-        val d = s.duel ?: return
+        // дуэль забыли из-под нас (сменили аккаунт) — к выбору игры
+        val d = s.duel ?: return change()
         if (d.meta.host.isEmpty() && lastDuel != null) {
             vm.toast(tr("Дуэль закрыта", "The duel was closed", "Дуель закрито", "Duel bol zatvorený"))
             leaveDuel(); stage = 0; return

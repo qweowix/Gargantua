@@ -10,7 +10,7 @@
 
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader};
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -97,6 +97,8 @@ fn shared() -> &'static (Mutex<Shared>, Condvar) {
 }
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
+/// Поколение потока: меняется при смене аккаунта — поток прошлого аккаунта видит, что он лишний, и выходит
+static GEN: AtomicU64 = AtomicU64::new(0);
 static OFFSET: AtomicI64 = AtomicI64::new(0); // серверное время − наше, мс
 
 #[derive(Clone, Default)]
@@ -190,15 +192,66 @@ pub fn start(id: &str, name: &str, kind: &str, on_change: impl Fn() + Send + 'st
         }
         std::thread::sleep(BEAT);
     });
-    std::thread::spawn(|| loop {
-        if let Err(e) = listen() {
-            crate::logln!("connect: {e:#}");
+    spawn_listener();
+}
+
+/// Поток изменений узла текущего аккаунта; живёт, пока не сменилось поколение
+fn spawn_listener() {
+    let gen = GEN.load(Ordering::SeqCst);
+    std::thread::spawn(move || {
+        while GEN.load(Ordering::SeqCst) == gen {
+            if let Err(e) = listen(gen) {
+                crate::logln!("connect: {e:#}");
+            }
+            if GEN.load(Ordering::SeqCst) != gen {
+                break;
+            }
+            std::thread::sleep(Duration::from_secs(3));
         }
-        std::thread::sleep(Duration::from_secs(3));
     });
 }
 
-fn listen() -> Result<()> {
+/// Сменился аккаунт (вход в другой или выход). Без этого поток так и читал узел прошлого аккаунта
+/// (до часа, пока жив его токен): чужая сессия на экране, а команды уходили уже в новый — всё «багалось».
+/// old — прошлый uid и его токен: пока он действителен, от его имени говорим «это устройство ушло»,
+/// выходим из комнаты и дуэли (иначе они висят у остальных)
+pub fn account_changed(old: Option<(String, String)>) {
+    let me = me();
+    if let Some((uid, tok)) = old.filter(|(u, t)| !u.is_empty() && !t.is_empty()) {
+        crate::rooms::leave_as(&uid, &tok);
+        crate::duel::leave_as(&uid, &tok);
+        if let (Some(db), true) = (db(), RUNNING.load(Ordering::SeqCst) && !me.is_empty()) {
+            std::thread::spawn(move || {
+                let url = format!("{db}/connect/{uid}/devices/{me}.json");
+                if let Err(e) = crate::util::agent().request("PATCH", &url).query("auth", &tok).send_json(json!({"seen": 0})) {
+                    crate::logln!("connect: прощание со старым аккаунтом: {e}");
+                }
+            });
+        }
+    } else {
+        crate::rooms::leave_as("", "");
+        crate::duel::leave_as("", "");
+    }
+    let (lock, cv) = shared();
+    {
+        let mut s = lock.lock().unwrap();
+        GEN.fetch_add(1, Ordering::SeqCst);
+        s.tree = json!({});
+        s.ver += 1;
+    }
+    cv.notify_all();
+    if let Some(f) = notify_lock().lock().unwrap().as_ref() {
+        f();
+    }
+    if RUNNING.load(Ordering::SeqCst) {
+        spawn_listener();
+        std::thread::spawn(|| {
+            let _ = heartbeat();
+        });
+    }
+}
+
+fn listen(gen: u64) -> Result<()> {
     let (base, tok) = base()?;
     // отдельный клиент: база шлёт keep-alive раз в ~30 с, общий таймаут в 20 с оборвал бы поток
     static AG: OnceLock<ureq::Agent> = OnceLock::new();
@@ -206,6 +259,9 @@ fn listen() -> Result<()> {
     let r = ag.get(&format!("{base}.json")).query("auth", &tok).set("Accept", "text/event-stream").call().map_err(|e| anyhow!("{e}"))?;
     let mut event = String::new();
     for line in BufReader::new(r.into_reader()).lines() {
+        if GEN.load(Ordering::SeqCst) != gen {
+            return Ok(());
+        }
         let line = line?;
         if let Some(e) = line.strip_prefix("event:") {
             event = e.trim().to_string();
@@ -213,7 +269,7 @@ fn listen() -> Result<()> {
             match event.as_str() {
                 "put" | "patch" => {
                     let v: Value = serde_json::from_str(d.trim())?;
-                    apply(&event, v["path"].as_str().unwrap_or("/"), v["data"].clone());
+                    apply(gen, &event, v["path"].as_str().unwrap_or("/"), v["data"].clone());
                 }
                 // токен истёк или доступ отозван — переподключаемся со свежим
                 "cancel" | "auth_revoked" => bail!("поток закрыт: {event}"),
@@ -224,10 +280,14 @@ fn listen() -> Result<()> {
     Ok(())
 }
 
-fn apply(kind: &str, path: &str, data: Value) {
+fn apply(gen: u64, kind: &str, path: &str, data: Value) {
     let (lock, cv) = shared();
     {
         let mut s = lock.lock().unwrap();
+        // событие из потока прошлого аккаунта — мимо (поколение меняют под этим же замком)
+        if GEN.load(Ordering::SeqCst) != gen {
+            return;
+        }
         let mut node = &mut s.tree;
         let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
         for p in &parts {
@@ -424,14 +484,24 @@ mod tests {
 
     #[test]
     fn tree_events() {
-        apply("put", "/", json!({"state": {"host": "a", "pos": 1.0}}));
-        apply("patch", "/state", json!({"pos": 2.0, "host": null}));
-        apply("put", "/cmd/x1", json!({"to": "b", "op": "toggle"}));
+        let g = GEN.load(Ordering::SeqCst);
+        apply(g, "put", "/", json!({"state": {"host": "a", "pos": 1.0}}));
+        apply(g, "patch", "/state", json!({"pos": 2.0, "host": null}));
+        apply(g, "put", "/cmd/x1", json!({"to": "b", "op": "toggle"}));
         let (_, t) = snapshot();
         assert_eq!(t["state"]["pos"], 2.0);
         assert!(t["state"].get("host").is_none());
         assert_eq!(t["cmd"]["x1"]["op"], "toggle");
-        apply("put", "/cmd/x1", Value::Null);
+        apply(g, "put", "/cmd/x1", Value::Null);
         assert!(snapshot().1["cmd"]["x1"].is_null());
+        // сменили аккаунт: узел пустеет, а запоздалые события потока прошлого аккаунта не применяются
+        let (v0, _) = snapshot();
+        account_changed(None);
+        let (v1, t) = snapshot();
+        assert!(v1 > v0 && t.as_object().is_some_and(|o| o.is_empty()), "узел прошлого аккаунта сброшен");
+        apply(g, "put", "/", json!({"state": {"host": "old", "playing": true}}));
+        assert!(state(&snapshot().1).is_none(), "событие старого потока отброшено");
+        apply(g + 1, "put", "/", json!({"state": {"host": "new"}}));
+        assert_eq!(state(&snapshot().1).unwrap().host, "new");
     }
 }

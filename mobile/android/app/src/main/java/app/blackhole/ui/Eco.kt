@@ -219,6 +219,14 @@ fun UniverseScreen(vm: AppState) {
     // фон: три пятна цветов темы медленно плывут; в лайт-режиме стоят
     val acc = LocalAccent.current
     val lite = LocalLite.current
+    // выбрали звезду — её линии вырастают к соседям, соседи загораются, когда линия до них дошла
+    val grow = remember { Animatable(1f) }
+    LaunchedEffect(eco.sel, eco.info) {
+        if (eco.sel != null && eco.info != null && !lite) {
+            grow.snapTo(0f)
+            grow.animateTo(1f, tween(450, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+        } else grow.snapTo(1f)
+    }
     val drift = androidx.compose.animation.core.rememberInfiniteTransition(label = "sky")
     val bgT by drift.animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable(tween(60_000, easing = androidx.compose.animation.core.LinearEasing)), label = "t")
 
@@ -290,7 +298,13 @@ fun UniverseScreen(vm: AppState) {
                     if (a in stars.indices && b in stars.indices) drawLine(LocalAccentColor, Offset(sx(stars[a].x), sy(stars[a].y)), Offset(sx(stars[b].x), sy(stars[b].y)), 4f)
                 }
             } else eco.sel?.let { s ->
-                eco.info?.links?.forEach { l -> if (l.star in stars.indices) drawLine(LocalAccentColor.copy(alpha = 0.7f), Offset(sx(stars[s].x), sy(stars[s].y)), Offset(sx(stars[l.star].x), sy(stars[l.star].y)), 2.5f) }
+                val k = grow.value
+                eco.info?.links?.forEach { l ->
+                    if (l.star !in stars.indices) return@forEach
+                    val a = Offset(sx(stars[s].x), sy(stars[s].y))
+                    val b = Offset(sx(stars[l.star].x), sy(stars[l.star].y))
+                    drawLine(LocalAccentColor.copy(alpha = 0.7f), a, a + (b - a) * k, 2.5f)
+                }
             }
             // звёзды и подписи
             val rk = zoom.toDouble().pow(0.55).toFloat()
@@ -301,8 +315,16 @@ fun UniverseScreen(vm: AppState) {
                 if (x < -60 || x > size.width + 60 || y < -60 || y > size.height + 60) continue
                 val r = maxOf(2.5.dp.toPx(), st.r * rk * density * 0.55f)
                 val c = rgb(st.c)
-                val faded = focus.isNotEmpty() && st.i !in focus
-                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.White, c, c.copy(alpha = 0.85f)), Offset(x, y), r), r, Offset(x, y), alpha = if (faded) 0.18f else 1f)
+                // сосед выбранной разгорается, пока к нему растёт линия
+                val neighbour = bridge == null && eco.sel != null && st.i != eco.sel && st.i in focus
+                val alpha = when {
+                    focus.isEmpty() -> 1f
+                    st.i !in focus -> 0.18f
+                    neighbour -> (0.18f + (grow.value - 0.6f) / 0.4f * 0.82f).coerceIn(0.18f, 1f)
+                    else -> 1f
+                }
+                val faded = alpha < 0.6f
+                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.White, c, c.copy(alpha = 0.85f)), Offset(x, y), r), r, Offset(x, y), alpha = alpha)
                 if (st.i == eco.sel) drawCircle(Color.White, r + 5f, Offset(x, y), style = Stroke(3f))
                 if (!faded && placed.size < 60) {
                     val label = st.n.take(24)

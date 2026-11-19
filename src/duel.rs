@@ -117,11 +117,14 @@ pub fn uid() -> String {
 }
 
 fn req(method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
-    let db = crate::connect::db().context("нет базы")?;
     let c = crate::cloud::cfg().context("облако не настроено")?;
     me()?;
-    let tok = crate::cloud::auth_token(&c)?;
-    let r = crate::util::agent().request(method, &format!("{db}/{path}.json")).query("auth", &tok);
+    req_tok(&crate::cloud::auth_token(&c)?, method, path, body)
+}
+
+fn req_tok(tok: &str, method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
+    let db = crate::connect::db().context("нет базы")?;
+    let r = crate::util::agent().request(method, &format!("{db}/{path}.json")).query("auth", tok);
     let r = match body {
         Some(b) => r.send_json(b),
         None => r.call(),
@@ -206,20 +209,44 @@ fn listen_start(code: &str, on_change: impl Fn() + Send + 'static) {
 
 /// Выйти. Хозяин закрывает дуэль совсем
 pub fn leave() {
-    let Some(code) = joined().lock().unwrap().take().map(|j| j.code) else { return };
+    // кто хозяин — по дереву, взятому вместе с кодом (после take() state() уже пустой: раньше хозяин
+    // из-за этого дуэль не закрывал, только «уходил гостем»)
+    let Some(j) = joined().lock().unwrap().take() else { return };
     GEN.fetch_add(1, Ordering::SeqCst);
-    let host = state().map(|d| d.meta.host).unwrap_or_default();
     let me = uid();
     std::thread::spawn(move || {
-        let r = if host == me {
-            req("DELETE", &format!("duels/{code}"), None)
-        } else {
-            req("PATCH", &format!("duels/{code}/meta"), Some(&json!({"guest": "", "guest_name": ""})))
-        };
-        if let Err(e) = r {
+        if let Err(e) = crate::cloud::cfg().context("облако не настроено").and_then(|c| crate::cloud::auth_token(&c)).and_then(|tok| bye(&j, &me, &tok)) {
             crate::logln!("выход из дуэли: {e:#}");
         }
     });
+}
+
+/// Сменился аккаунт: дуэль забываем у себя, выходим от имени прошлого (uid аккаунта и его токен). Пустые — только забыть
+pub fn leave_as(account: &str, tok: &str) {
+    let Some(j) = joined().lock().unwrap().take() else { return };
+    GEN.fetch_add(1, Ordering::SeqCst);
+    if let Some(f) = notify().lock().unwrap().as_ref() {
+        f();
+    }
+    if account.is_empty() || tok.is_empty() {
+        return;
+    }
+    let (me, tok) = (format!("{account}_{}", device()), tok.to_string());
+    std::thread::spawn(move || {
+        if let Err(e) = bye(&j, &me, &tok) {
+            crate::logln!("выход из дуэли прошлого аккаунта: {e:#}");
+        }
+    });
+}
+
+fn bye(j: &Joined, me: &str, tok: &str) -> Result<()> {
+    let code = &j.code;
+    if j.tree["meta"]["host"].as_str() == Some(me) {
+        req_tok(tok, "DELETE", &format!("duels/{code}"), None)?;
+    } else {
+        req_tok(tok, "PATCH", &format!("duels/{code}/meta"), Some(&json!({"guest": "", "guest_name": ""})))?;
+    }
+    Ok(())
 }
 
 fn listen(code: &str, gen: u64) -> Result<()> {
