@@ -1956,8 +1956,16 @@ component UniverseMap inherits Rectangle {
         height: self.rr * 2;
         visible: self.sx > -40px && self.sx < root.width + 40px && self.sy > -40px && self.sy < root.height + 40px;
         border-radius: self.rr;
-        // притушенные — цветом с прозрачностью, а не opacity: opacity даёт по слою на звезду и всё тормозит
-        background: n.dim ? n.c.transparentize(0.82) : @radial-gradient(circle, #ffffff 0%, n.c 38%, n.c.transparentize(0.15) 100%);
+        // сплошной цвет: градиент внутри скругления рисуется квадратом и стоит дорого;
+        // притушенные — прозрачностью цвета, а не opacity (opacity — по слою на звезду, всё тормозит)
+        background: n.dim ? n.c.transparentize(0.82) : n.c;
+        // светлое ядро — звезда «светится»
+        if !n.dim && self.rr >= 4px: Rectangle {
+            width: parent.width * 0.42;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: #ffffffd9;
+        }
         border-width: n.sel ? 2px : 0px;
         border-color: #ffffff;
         nta := TouchArea {
@@ -1992,7 +2000,7 @@ component UniverseMap inherits Rectangle {
         property <length> rr: max(2.5px, n.r * root.rk * 1px);
         property <length> sx: (n.x - Uni.cam-x) * Uni.zoom * 1px + root.width / 2;
         property <length> sy: (n.y - Uni.cam-y) * Uni.zoom * 1px + root.height / 2;
-        visible: (n.lab || self.rr >= 11px) && !n.dim && self.sx > -100px && self.sx < root.width + 100px && self.sy > -40px && self.sy < root.height + 40px;
+        visible: n.lab && !n.dim && self.sx > -100px && self.sx < root.width + 100px && self.sy > -40px && self.sy < root.height + 40px;
         x: self.sx - self.width / 2;
         y: self.sy + self.rr + 4px;
         width: min(150px, self.preferred-width);
@@ -4353,7 +4361,6 @@ export global Guess {
     callback guess(int);
     callback guess-text(string);
     callback next();
-    callback play-full();
     callback change();
 }
 
@@ -4732,6 +4739,25 @@ component GuessPage inherits Rectangle {
                 }
             }
 
+            // раунд раскрыт — «Следующая» здесь, по центру
+            if Guess.stage == 2 && (Guess.kind == 0 || Guess.host): VerticalLayout {
+                alignment: center;
+                Pill {
+                    height: 42px;
+                    text: @tr("Следующая");
+                    clicked => {
+                        Guess.next();
+                    }
+                }
+            }
+            if Guess.stage == 2 && Guess.kind == 1 && !Guess.host: VerticalLayout {
+                alignment: center;
+                Text {
+                    text: @tr("Следующую включит {}", Guess.opp-name);
+                    color: Theme.dim;
+                    font-size: 13px;
+                }
+            }
             if Guess.stage == 1: VerticalLayout {
                 alignment: center;
                 Pill {
@@ -4814,30 +4840,10 @@ component GuessPage inherits Rectangle {
                     font-size: 15px;
                 }
 
-                HorizontalLayout {
-                    spacing: 8px;
-                    alignment: start;
-                    if Guess.kind == 0 || Guess.host: Pill {
-                        text: @tr("Следующая");
-                        clicked => {
-                            Guess.next();
-                        }
-                    }
-                    if Guess.kind == 1 && !Guess.host: Text {
-                        text: @tr("Следующую включит {}", Guess.opp-name);
-                        color: Theme.dim;
-                        font-size: 13px;
-                        vertical-alignment: center;
-                    }
-
-                    Pill {
-                        text: @tr("Слушать целиком");
-                        icon: Icons.play;
-                        primary: false;
-                        clicked => {
-                            Guess.play-full();
-                        }
-                    }
+                Text {
+                    text: @tr("Играет целиком — до следующей песни");
+                    color: Theme.faint;
+                    font-size: 12px;
                 }
 
                 if Guess.kind == 0: Text {

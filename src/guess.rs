@@ -172,18 +172,37 @@ pub fn typed(answer: &Track, text: &str) -> bool {
     variants(answer).iter().any(|a| close(a, &t))
 }
 
-/// С какого места резать фрагмент, секунды: начало части трека по Music DNA (не раньше 20 с),
-/// иначе примерно треть трека — вступления часто тихие или одинаковые
-pub fn clip_start(t: &Track, dur: f64) -> f64 {
-    let dur = if dur > 0.0 { dur } else { t.dur as f64 };
-    let from_dna = crate::dna::get(&t.key()).and_then(|d| d.sections.iter().copied().find(|&s| s as f64 >= 20.0 && (dur <= 0.0 || (s as f64) < dur - 10.0)).map(|s| s as f64));
-    let guess = if dur > 30.0 { dur * 0.3 } else { 0.0 };
-    let s = from_dna.unwrap_or(guess);
-    if dur > 8.0 {
-        s.clamp(0.0, dur - 8.0)
-    } else {
-        0.0
+/// С какого места резать фрагмент: с начала песни (так её и узнают). Тишину в самом начале ПК пропускает
+/// сам при нарезке (make_clips с trim); в дуэли — ровно с нуля у обоих, чтобы было честно
+pub fn clip_start(_t: &Track, _dur: f64) -> f64 {
+    0.0
+}
+
+/// Простой поиск по названию и исполнителю среди песен игры: начинающиеся с запроса — первыми
+pub fn search_pool(pool: &[Track], q: &str, limit: usize) -> Vec<usize> {
+    let q = letters(q);
+    if q.is_empty() {
+        return Vec::new();
     }
+    let mut hits: Vec<(u8, usize)> = pool
+        .iter()
+        .enumerate()
+        .filter_map(|(i, t)| {
+            let title = letters(&t.title);
+            let all = format!("{title} {}", letters(&t.artist));
+            if title.starts_with(&q) {
+                Some((0, i))
+            } else if title.contains(&q) {
+                Some((1, i))
+            } else if all.contains(&q) {
+                Some((2, i))
+            } else {
+                None
+            }
+        })
+        .collect();
+    hits.sort();
+    hits.into_iter().take(limit).map(|h| h.1).collect()
 }
 
 /// Перемешать (Фишер — Йейтс на xorshift, засеянном временем — для игры этого хватает)
@@ -223,13 +242,13 @@ pub fn artist_pool(browse_id: &str, name: &str) -> anyhow::Result<Vec<Track>> {
 /// ПК: нарезать фрагменты всех уровней одним заходом. src — файл или прямая ссылка на поток.
 /// ffmpeg отдаёт 5 с звука с start, дальше — WAV на каждый уровень с мягкими краями (без щелчков)
 #[cfg(not(target_os = "android"))]
-pub fn make_clips(src: &str, start: f64, dir: &std::path::Path) -> anyhow::Result<Vec<std::path::PathBuf>> {
+pub fn make_clips(src: &str, start: f64, trim: bool, dir: &std::path::Path) -> anyhow::Result<Vec<std::path::PathBuf>> {
     use anyhow::Context;
     use std::io::{Read, Write};
     const SR: u32 = 44_100;
     let ffmpeg = crate::util::find_bin("ffmpeg").context("для игры нужен ffmpeg")?;
     let mut child = crate::util::command(&ffmpeg)
-        .args(["-v", "error", "-nostdin", "-ss", &format!("{start:.2}"), "-i", src, "-t", "5.2", "-vn", "-ac", "2", "-ar", &SR.to_string(), "-f", "s16le", "-"])
+        .args(["-v", "error", "-nostdin", "-ss", &format!("{start:.2}"), "-i", src, "-t", if trim { "9" } else { "5.2" }, "-vn", "-ac", "2", "-ar", &SR.to_string(), "-f", "s16le", "-"])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -238,7 +257,12 @@ pub fn make_clips(src: &str, start: f64, dir: &std::path::Path) -> anyhow::Resul
     let mut raw = Vec::new();
     child.stdout.take().context("нет вывода ffmpeg")?.read_to_end(&mut raw)?;
     child.wait()?;
-    let pcm: Vec<i16> = raw.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
+    let mut pcm: Vec<i16> = raw.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
+    if trim {
+        // тишина в начале трека (бывает и пара секунд) — мимо: иначе 0.1 с беззвучные
+        let quiet = pcm.chunks(2).take(SR as usize * 4).position(|f| f.iter().any(|x| x.unsigned_abs() > 330)).unwrap_or(0);
+        pcm.drain(..quiet.saturating_sub(SR as usize / 100) * 2);
+    }
     if pcm.len() < (SR as usize) * 2 {
         anyhow::bail!("не вышло достать звук");
     }
@@ -289,7 +313,7 @@ mod tests {
     use crate::model::Src;
 
     fn t(src: Src, title: &str, artist: &str) -> Track {
-        Track { src, id: title.into(), title: title.into(), artist: artist.into(), ..Default::default() }
+        Track { src, id: format!("{title}|{artist}"), title: title.into(), artist: artist.into(), ..Default::default() }
     }
 
     #[test]

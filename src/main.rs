@@ -5338,9 +5338,6 @@ fn main() -> Result<(), slint::PlatformError> {
         g.on_next(|| {
             with(|a| a.guess_next());
         });
-        g.on_play_full(|| {
-            with(|a| a.guess_full());
-        });
         g.on_change(|| {
             with(|a| a.guess_change());
         });

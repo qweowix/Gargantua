@@ -203,6 +203,12 @@ private fun GuessRound(vm: AppState) {
                 }
             }
         }
+        if (g.stage == 2) item {
+            Row(Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                if (g.kind == 0 || g.host) Pill(tr("Следующая", "Next", "Наступна", "Ďalšia")) { g.nextRound() }
+                else Text(tr("Следующую включит ${g.oppName}", "${g.oppName} starts the next one", "Наступну ввімкне ${g.oppName}", "Ďalšiu pustí ${g.oppName}"), color = Pal.dim, fontSize = 13.sp)
+            }
+        }
         if (g.stage == 1) {
             item {
                 Row(Modifier.padding(16.dp)) {
@@ -210,7 +216,7 @@ private fun GuessRound(vm: AppState) {
                 }
                 GlassField(
                     q, { q = it; g.search(it) }, Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
-                    placeholder = { Text(tr("Название трека…", "Track title…", "Назва треку…", "Názov skladby…")) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true,
+                    placeholder = { Text(tr("Название — ищу среди песен игры…", "Title — searching the game's songs…", "Назва — шукаю серед пісень гри…", "Názov — hľadám medzi piesňami hry…")) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { g.typed(q); q = "" }),
                 )
             }
@@ -225,9 +231,7 @@ private fun GuessRound(vm: AppState) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(t?.title ?: "", color = Pal.text, fontSize = 20.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(t?.artist ?: "", color = Pal.dim, fontSize = 14.sp)
-                    if (g.kind == 0 || g.host) Pill(tr("Следующая", "Next", "Наступна", "Ďalšia")) { g.nextRound() }
-                    else Text(tr("Следующую включит ${g.oppName}", "${g.oppName} starts the next one", "Наступну ввімкне ${g.oppName}", "Ďalšiu pustí ${g.oppName}"), color = Pal.dim, fontSize = 13.sp)
-                    Pill(tr("Слушать целиком", "Play in full", "Слухати повністю", "Počúvať celú"), primary = false) { g.playFull() }
+                    Text(tr("Играет целиком — до следующей песни", "Playing in full until the next song", "Грає повністю — до наступної пісні", "Hrá celá — do ďalšej piesne"), color = Pal.faint, fontSize = 12.sp)
                 }
             }
         }

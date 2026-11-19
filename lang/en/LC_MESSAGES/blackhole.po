@@ -1642,3 +1642,9 @@ msgstr "Play in full"
 
 msgid "Лучшая серия: {}"
 msgstr "Best streak: {}"
+
+msgid "Играет целиком — до следующей песни"
+msgstr "Playing in full until the next song"
+
+msgid "Название — ищу среди песен игры…"
+msgstr "Title — searching the game's songs…"

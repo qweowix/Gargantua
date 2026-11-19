@@ -288,7 +288,7 @@ impl Graph {
             let Some(ai) = g.find(&Graph::artist_id(a)) else { continue };
             for (rank, s) in sim.iter().enumerate() {
                 if let Some(bi) = g.find(&Graph::artist_id(s)) {
-                    g.link(ai, bi, Rel::YtSimilar, (1.0 - rank as f32 * 0.06).max(0.4), "похожие по YouTube Music");
+                    g.link(ai, bi, Rel::YtSimilar, (1.0 - rank as f32 * 0.06).max(0.4), String::new());
                 }
             }
         }
@@ -336,7 +336,7 @@ impl Graph {
             co.sort_by_key(|x| (x.0, x.1));
             co.dedup_by_key(|x| (x.0, x.1));
             for (a, b, w, n) in co {
-                g.link(a, b, Rel::CoPlaylist, w, format!("вместе в {n} плейлистах"));
+                g.link(a, b, Rel::CoPlaylist, w, format!("×{n}"));
             }
         }
 
@@ -379,7 +379,7 @@ impl Graph {
         sess.sort_by_key(|x| (x.0, x.1));
         sess.dedup_by_key(|x| (x.0, x.1));
         for (a, b, w, n) in sess {
-            g.link(a, b, Rel::Session, w, format!("подряд {n} раз"));
+            g.link(a, b, Rel::Session, w, format!("×{n}"));
         }
 
         // звук: каждому треку — до трёх самых похожих по DNA (если похожи всерьёз)

@@ -37,6 +37,24 @@ pub struct Game {
     my_want: usize,
     claimed: bool,
     revealed: bool,
+    /// готовые фрагменты по ключу трека (и откуда звук — для полного прослушивания на раскрытии);
+    /// следующие песни готовятся заранее, пока идёт раунд
+    prepared: std::collections::HashMap<String, (Vec<std::path::PathBuf>, String)>,
+    preparing: std::collections::HashSet<String>,
+    src: Option<String>,
+}
+
+/// Откуда брать звук и нарезать фрагменты — в фоне (это и есть «Готовлю фрагмент»: ссылка на поток + ffmpeg)
+fn fetch_clips(t: &Track, start: f64, trim: bool, local: Option<String>) -> anyhow::Result<(Vec<std::path::PathBuf>, String)> {
+    let src = match local {
+        Some(s) => s,
+        None => crate::resolve(t).and_then(|u| crate::ytmusic::stream_url(&u))?,
+    };
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    key(t).hash(&mut h);
+    let clips = guess::make_clips(&src, start, trim, &dir().join(format!("{:016x}", h.finish())))?;
+    Ok((clips, src))
 }
 
 fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
@@ -189,38 +207,89 @@ impl App {
         g.set_results(model(Vec::new()));
         g.set_me_skip(false);
         g.set_opp_skip(false);
-        // звук: файл с диска (свой, скачанный или из кэша), иначе прямая ссылка на поток
-        let k = key(&t);
-        let local = if t.src == Src::Lc { Some(t.url.clone()) } else { None }
-            .or_else(|| Some(self.dl_dir().join(crate::download::file_name(&t))).filter(|p| p.is_file()).map(|p| p.display().to_string()))
-            .or_else(|| cache::path_of(&k).map(|p| p.display().to_string()));
-        let cached = self.stream_cache.get(&k).map(|(u, _)| u.clone());
-        let duel_mode = self.game.duel;
-        std::thread::spawn(move || {
-            let src = match local.or(cached) {
-                Some(s) => Ok(s),
-                None => crate::resolve(&t).and_then(|u| crate::ytmusic::stream_url(&u)),
-            };
-            let r = src.and_then(|s| guess::make_clips(&s, start, &dir()));
-            post(move |a| {
-                if a.game.gen != gen {
-                    return;
-                }
-                match r {
-                    Ok(clips) => {
-                        a.game.clips = clips;
-                        a.g().set_ready(true);
-                        a.guess_play();
+        self.game.src = None;
+        if let Some((clips, src)) = self.game.prepared.remove(&key(&t)) {
+            // заготовлено заранее — играем сразу
+            self.game.clips = clips;
+            self.game.src = Some(src);
+            self.g().set_ready(true);
+            self.guess_play();
+        } else {
+            let job = self.guess_job(&t, start);
+            let duel_mode = self.game.duel;
+            std::thread::spawn(move || {
+                let r = job();
+                post(move |a| {
+                    if a.game.gen != gen {
+                        return;
                     }
-                    Err(e) => {
-                        crate::logln!("угадайка: {e:#}");
-                        if !duel_mode {
-                            // песня не достаётся — молча берём следующую, раунд не засчитываем
-                            a.guess_round();
-                        } else {
-                            a.g().set_wrong(tr!("Эта песня у меня не грузится — жди соперника или жми «дальше»", "This song won't load here — wait for your opponent or press “next”", "Ця пісня в мене не вантажиться — чекай суперника або тисни «далі»", "Táto skladba sa nenačíta — počkaj na súpera alebo stlač „ďalej“").into());
+                    match r {
+                        Ok((clips, src)) => {
+                            a.game.clips = clips;
+                            a.game.src = Some(src);
+                            a.g().set_ready(true);
+                            a.guess_play();
+                        }
+                        Err(e) => {
+                            crate::logln!("угадайка: {e:#}");
+                            if !duel_mode {
+                                // песня не достаётся — молча берём следующую, раунд не засчитываем
+                                a.guess_round();
+                            } else {
+                                a.g().set_wrong(tr!("Эта песня у меня не грузится — жди соперника или жми «дальше»", "This song won't load here — wait for your opponent or press “next”", "Ця пісня в мене не вантажиться — чекай суперника або тисни «далі»", "Táto skladba sa nenačíta — počkaj na súpera alebo stlač „ďalej“").into());
+                            }
                         }
                     }
+                });
+            });
+        }
+        self.guess_prefetch();
+    }
+
+    /// Задача «достать звук и нарезать» для трека: файл с диска, если есть, иначе поток
+    fn guess_job(&self, t: &Track, start: f64) -> impl FnOnce() -> anyhow::Result<(Vec<std::path::PathBuf>, String)> + Send + 'static {
+        let k = key(t);
+        let local = if t.src == Src::Lc { Some(t.url.clone()) } else { None }
+            .or_else(|| Some(self.dl_dir().join(crate::download::file_name(t))).filter(|p| p.is_file()).map(|p| p.display().to_string()))
+            .or_else(|| cache::path_of(&k).map(|p| p.display().to_string()))
+            .or_else(|| self.stream_cache.get(&k).map(|(u, _)| u.clone()));
+        let t = t.clone();
+        // в дуэли — ровно с начала у обоих; соло — тишина в начале пропускается
+        let trim = !self.game.duel;
+        move || fetch_clips(&t, start, trim, local)
+    }
+
+    /// Следующие две песни — заранее, по одной за раз
+    fn guess_prefetch(&mut self) {
+        let next: Vec<Track> = if self.game.duel {
+            match (duel::state(), self.game.duel_round) {
+                (Some(d), Some((n, _))) if !d.pool.is_empty() => (1..=2).map(|k| d.pool[(n + k) % d.pool.len()].clone()).collect(),
+                _ => Vec::new(),
+            }
+        } else {
+            self.game.pool.iter().skip(self.game.next).take(2).cloned().collect()
+        };
+        // старые заготовки, которые уже не понадобятся, — прочь (места на диске немного, но всё же)
+        let keep: std::collections::HashSet<String> = next.iter().map(key).collect();
+        self.game.prepared.retain(|k, _| keep.contains(k));
+        let Some(t) = next.into_iter().find(|t| !self.game.prepared.contains_key(&key(t)) && !self.game.preparing.contains(&key(t))) else { return };
+        let k = key(&t);
+        self.game.preparing.insert(k.clone());
+        let job = self.guess_job(&t, guess::clip_start(&t, t.dur as f64));
+        std::thread::spawn(move || {
+            #[cfg(target_os = "linux")]
+            unsafe {
+                libc::setpriority(libc::PRIO_PROCESS, 0, 10);
+            }
+            let r = job();
+            post(move |a| {
+                a.game.preparing.remove(&k);
+                match r {
+                    Ok(v) => {
+                        a.game.prepared.insert(k, v);
+                        a.guess_prefetch();
+                    }
+                    Err(e) => crate::logln!("угадайка, заранее: {e:#}"),
                 }
             });
         });
@@ -313,47 +382,23 @@ impl App {
         g.set_ans_cover(img.unwrap_or_default());
         g.set_ans_url(t.cover.as_str().into());
         g.set_stage(2);
-        // раскрыли — пусть прозвучит самый длинный фрагмент
         g.set_level(LEVELS.len() as i32 - 1);
         self.game.level = LEVELS.len() - 1;
-        self.guess_play();
+        self.guess_full();
     }
 
-    /// Поиск-ответ: как обычный, с паузой на печать
+    /// Поиск-ответ: только среди песен игры (плейлиста или артиста) — мгновенно, без сети
     pub(crate) fn guess_search(&mut self, q: String) {
-        self.game.search_gen += 1;
-        let gen = self.game.search_gen;
-        if q.trim().is_empty() {
-            self.g().set_results(model(Vec::new()));
-            self.g().set_searching(false);
-            return;
+        let pool: Vec<Track> = if self.game.duel { duel::state().map(|d| d.pool).unwrap_or_default() } else { self.game.pool.clone() };
+        let found: Vec<Track> = guess::search_pool(&pool, &q, 12).into_iter().map(|i| pool[i].clone()).collect();
+        let mut rows = Vec::new();
+        for (i, t) in found.iter().enumerate() {
+            self.want_cover(&t.cover);
+            rows.push(self.gitem(&t.title, &t.artist, &t.cover, i));
         }
-        self.g().set_searching(true);
-        self.game.typing.start(TimerMode::SingleShot, Duration::from_millis(300), move || {
-            let q = q.clone();
-            std::thread::spawn(move || {
-                let r = crate::ytmusic::search(&q, 10);
-                post(move |a| {
-                    if a.game.search_gen != gen {
-                        return;
-                    }
-                    a.g().set_searching(false);
-                    a.game.results = r.unwrap_or_default();
-                    let rows: Vec<GItem> = a
-                        .game
-                        .results
-                        .clone()
-                        .iter()
-                        .enumerate()
-                        .map(|(i, t)| {
-                            a.want_cover(&t.cover);
-                            a.gitem(&t.title, &t.artist, &t.cover, i)
-                        })
-                        .collect();
-                    a.g().set_results(model(rows));
-                });
-            });
-        });
+        self.game.results = found;
+        self.g().set_searching(false);
+        self.g().set_results(model(rows));
     }
 
     pub(crate) fn guess_pick(&mut self, i: usize) {
@@ -413,12 +458,12 @@ impl App {
         });
     }
 
-    pub(crate) fn guess_full(&mut self) {
-        if let Some(t) = self.game.cur.clone() {
-            if let Some(p) = &self.game.player {
-                p.send(Cmd::Stop);
-            }
-            self.play_queue(vec![t], 0);
+    /// Раунд раскрыт: песня играет целиком с начала (плеером игры), пока не нажмёшь «Следующая»
+    fn guess_full(&mut self) {
+        let Some(src) = self.game.src.clone() else { return self.guess_play() };
+        if let Some(p) = &self.game.player {
+            p.send(Cmd::Volume(self.vol_at(1.0)));
+            p.send(Cmd::Load(src, 1));
         }
     }
 
@@ -591,7 +636,7 @@ impl App {
         g.set_stage(2);
         g.set_level(LEVELS.len() as i32 - 1);
         self.game.level = LEVELS.len() - 1;
-        self.guess_play();
+        self.guess_full();
     }
 
     /// Обложка загрузилась — в строки игры

@@ -272,7 +272,8 @@ impl Universe {
         for it in 0..iters {
             let temp = 22.0 * (1.0 - it as f32 / iters as f32) + 0.5;
             let mut f = vec![(0f32, 0f32); n];
-            let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+            // упорядоченная сетка: иначе порядок сложения сил плавал от запуска к запуску и звёзды чуть сдвигались
+            let mut grid: std::collections::BTreeMap<(i32, i32), Vec<usize>> = std::collections::BTreeMap::new();
             for (s, p) in pos.iter().enumerate() {
                 grid.entry(((p.0 / cell).floor() as i32, (p.1 / cell).floor() as i32)).or_default().push(s);
             }

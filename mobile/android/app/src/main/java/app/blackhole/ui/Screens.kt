@@ -9,6 +9,7 @@ import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Quiz
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.horizontalScroll
@@ -714,6 +715,8 @@ fun AccountScreen(vm: AppState) {
             NavRow(Icons.Rounded.Fingerprint, Color(0xFFFF9F0A), tr("Мой вкус", "My taste", "Мій смак", "Môj vkus")) { vm.go(Screen.Taste) }
             GroupDivider(60.dp)
             NavRow(Icons.Rounded.Groups, Color(0xFF30D158), if (vm.eco.inRoom) tr("Комната · ${vm.eco.room?.code}", "Room · ${vm.eco.room?.code}", "Кімната · ${vm.eco.room?.code}", "Miestnosť · ${vm.eco.room?.code}") else tr("Комнаты", "Rooms", "Кімнати", "Miestnosti")) { vm.go(Screen.Rooms) }
+            GroupDivider(60.dp)
+            NavRow(Icons.Rounded.Quiz, Color(0xFFBF5AF2), tr("Угадай песню", "Guess the song", "Вгадай пісню", "Uhádni pieseň")) { vm.go(Screen.Guess) }
             GroupDivider(62.dp)
             NavRow(Icons.Rounded.Settings, Color(0xFF8E8E93), tr("Настройки", "Settings", "Налаштування", "Nastavenia")) { vm.go(Screen.Settings) }
         }
@@ -876,11 +879,6 @@ fun SettingsScreen(vm: AppState) {
                 Text(tr("Язык", "Language", "Мова", "Jazyk"), color = Pal.text, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 10.dp))
                 LangChips { vm.setLang(it) }
             }
-        }
-
-        // ── игры ──
-        GlassGroup(tr("Игры", "Games", "Ігри", "Hry")) {
-            GroupRow(tr("Угадай песню", "Guess the song", "Вгадай пісню", "Uhádni pieseň"), tr("Соло или 1 на 1: узнай песню по долям секунды", "Solo or 1 vs 1: name the song from a split second", "Соло або 1 на 1: впізнай пісню за частки секунди", "Sólo alebo 1 na 1: uhádni pieseň zo zlomku sekundy"), onClick = { vm.go(Screen.Guess) }) {}
         }
 
         // ── звук ──

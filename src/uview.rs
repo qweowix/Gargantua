@@ -304,12 +304,29 @@ impl View {
         let zoom = uni.get_zoom();
         let vis = u.visible(zoom, &focus);
         let dimming = !focus.is_empty();
-        // подписи: самые крупные на этом приближении (до 40) и всё, что в фокусе
-        let label_cap = match zoom {
-            z if z < 0.4 => 25,
-            z if z < 0.9 => 45,
-            _ => 90,
-        };
+        // подписи: важные первыми, каждая — только если не налезает на уже поставленные (в пикселях
+        // при этом приближении: относительное расположение от сдвига карты не зависит)
+        let mut placed: Vec<(f32, f32, f32, f32)> = Vec::new();
+        let mut lab = std::collections::HashSet::new();
+        let rk = zoom.powf(0.55);
+        for &s in &vis {
+            if dimming && !focus.contains(&s) {
+                continue;
+            }
+            let name = &u.g.nodes[u.stars[s]].name;
+            let w = (name.chars().count().min(22) as f32 * 6.4).min(150.0) + 6.0;
+            let r = (u.radius[s] * rk).max(2.5);
+            let (cx, cy) = (u.pos[s].0 * zoom, u.pos[s].1 * zoom + r + 4.0);
+            let rect = (cx - w / 2.0, cy, cx + w / 2.0, cy + 15.0);
+            let selected = Some(s) == self.sel;
+            if selected || !placed.iter().any(|p| rect.0 < p.2 && rect.2 > p.0 && rect.1 < p.3 && rect.3 > p.1) {
+                placed.push(rect);
+                lab.insert(s);
+            }
+            if placed.len() >= 70 {
+                break;
+            }
+        }
         let rows: Vec<UNode> = vis
             .iter()
             .map(|&s| UNode {
@@ -321,7 +338,7 @@ impl View {
                 kind: 1,
                 sel: Some(s) == self.sel,
                 dim: dimming && !focus.contains(&s),
-                lab: if dimming { focus.contains(&s) } else { s < label_cap },
+                lab: lab.contains(&s),
                 id: s as i32,
             })
             .collect();
@@ -402,7 +419,16 @@ impl View {
             .map(|&li| {
                 let l = &u.links[li];
                 let o = if l.a == s { l.b } else { l.a };
-                let why: Vec<String> = l.why.iter().map(|r| if r.note.is_empty() || matches!(r.rel, Rel::Feat) { rel_name(r.rel) } else { format!("{}: {}", rel_name(r.rel), r.note) }).collect();
+                let why: Vec<String> = l
+                    .why
+                    .iter()
+                    .map(|r| match r.note.as_str() {
+                        _ if matches!(r.rel, Rel::Feat) => rel_name(r.rel),
+                        "" => rel_name(r.rel),
+                        n if n.starts_with('×') => format!("{} {n}", rel_name(r.rel)),
+                        n => format!("{}: {n}", rel_name(r.rel)),
+                    })
+                    .collect();
                 let mut srcs: Vec<String> = l.why.iter().map(|r| rel_src(r.rel)).collect();
                 srcs.dedup();
                 URel { name: g.nodes[u.stars[o]].name.as_str().into(), rel: why.join(" · ").into(), note: SharedString::new(), origin: origin_num(l.origin), src: srcs.join(", ").into(), id: o as i32 }

@@ -294,7 +294,8 @@ fun UniverseScreen(vm: AppState) {
             }
             // звёзды и подписи
             val rk = zoom.toDouble().pow(0.55).toFloat()
-            val labelCap = when { zoom < 0.4f -> 25; zoom < 0.9f -> 45; else -> 90 }
+            // подписи — важные первыми, только если не налезают на уже поставленные
+            val placed = ArrayList<android.graphics.RectF>()
             for (st in visible) {
                 val x = sx(st.x); val y = sy(st.y)
                 if (x < -60 || x > size.width + 60 || y < -60 || y > size.height + 60) continue
@@ -303,10 +304,16 @@ fun UniverseScreen(vm: AppState) {
                 val faded = focus.isNotEmpty() && st.i !in focus
                 drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.White, c, c.copy(alpha = 0.85f)), Offset(x, y), r), r, Offset(x, y), alpha = if (faded) 0.18f else 1f)
                 if (st.i == eco.sel) drawCircle(Color.White, r + 5f, Offset(x, y), style = Stroke(3f))
-                val lab = if (focus.isNotEmpty()) st.i in focus else st.i < labelCap || r > 11.dp.toPx()
-                if (lab && !faded) {
-                    paint.color = 0xE6ECE8F6.toInt(); paint.textSize = labelPx; paint.isFakeBoldText = st.i == eco.sel
-                    drawContext.canvas.nativeCanvas.drawText(st.n.take(24), x, y + r + labelPx + 2f, paint)
+                if (!faded && placed.size < 60) {
+                    val label = st.n.take(24)
+                    paint.textSize = labelPx; paint.isFakeBoldText = st.i == eco.sel
+                    val tw = paint.measureText(label)
+                    val rect = android.graphics.RectF(x - tw / 2, y + r + 2f, x + tw / 2, y + r + labelPx + 6f)
+                    if (st.i == eco.sel || placed.none { android.graphics.RectF.intersects(it, rect) }) {
+                        placed += rect
+                        paint.color = 0xE6ECE8F6.toInt()
+                        drawContext.canvas.nativeCanvas.drawText(label, x, y + r + labelPx + 2f, paint)
+                    }
                 }
             }
         }
@@ -391,7 +398,7 @@ fun UniverseScreen(vm: AppState) {
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(l.name, color = Pal.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(l.why.joinToString(" · ") { r -> if (r.note.isEmpty() || r.rel == "Feat") EcoText.rel(r.rel) else "${EcoText.rel(r.rel)}: ${r.note}" }, color = Pal.dim, fontSize = 11.sp)
+                            Text(l.why.joinToString(" · ") { r -> when { r.note.isEmpty() || r.rel == "Feat" -> EcoText.rel(r.rel); r.note.startsWith("×") -> "${EcoText.rel(r.rel)} ${r.note}"; else -> "${EcoText.rel(r.rel)}: ${r.note}" } }, color = Pal.dim, fontSize = 11.sp)
                             Text(l.why.map { EcoText.src(it.rel) }.distinct().joinToString(", "), color = Pal.faint, fontSize = 10.sp)
                         }
                     }

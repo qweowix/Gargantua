@@ -156,6 +156,18 @@ class GuessState(private val vm: AppState) {
         startMs = (start * 1000).toLong()
         stage = 1
         play()
+        prefetch()
+    }
+
+    /** Следующие две песни — заранее: самое долгое — достать ссылку на поток, её и готовим */
+    private fun prefetch() {
+        val list = if (kind == 1) lastDuel?.let { d -> val n = d.round?.n ?: 0; (1..2).mapNotNull { d.pool.getOrNull((n + it) % maxOf(1, d.pool.size)) } } ?: emptyList()
+        else pool.drop(next).take(2)
+        for (t in list) {
+            if (Offline.uri(t.key) != null) continue
+            Streams.tracks[t.key] = t
+            vm.viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { Streams.urlFor(t.key) } }
+        }
     }
 
     /** Фрагмент текущего уровня: тот же трек, обрезанный с start на длину уровня (данные из кэша — мгновенно) */
@@ -187,15 +199,26 @@ class GuessState(private val vm: AppState) {
         play()
     }
 
+    /** Поиск-ответ — только среди песен игры (плейлиста или артиста): мгновенно, без сети */
     fun search(q: String) {
         searchJob?.cancel()
-        if (q.isBlank()) { results = emptyList(); searching = false; return }
-        searching = true
-        searchJob = vm.viewModelScope.launch {
-            delay(300)
-            results = runCatching { core("search") { put("q", JsonPrimitive(q)); put("src", JsonPrimitive("yt")) }.to<List<Track>>() }.getOrDefault(emptyList()).take(10)
-            searching = false
-        }
+        searching = false
+        val n = q.trim().lowercase().replace('ё', 'е')
+        if (n.isEmpty()) { results = emptyList(); return }
+        val list = if (kind == 1) lastDuel?.pool ?: emptyList() else pool
+        fun norm(s: String) = s.lowercase().replace('ё', 'е')
+        results = list.withIndex()
+            .mapNotNull { (i, t) ->
+                val title = norm(t.title)
+                when {
+                    title.startsWith(n) -> 0 to i
+                    title.contains(n) -> 1 to i
+                    norm(t.artist).contains(n) -> 2 to i
+                    else -> null
+                }
+            }
+            .sortedWith(compareBy({ it.first }, { it.second }))
+            .take(12).map { list[it.second] }
     }
 
     fun pick(g: Track) = vm.viewModelScope.launch {
@@ -235,11 +258,18 @@ class GuessState(private val vm: AppState) {
         reveal(ok, "")
     }
 
+    /** Раунд раскрыт: песня играет целиком с начала, пока не нажмёшь «Следующая» */
     private fun reveal(ok: Boolean, who: String) {
         won = ok; winner = who
         stage = 2
         level = GUESS_LEVELS.size - 1
-        play()
+        val t = cur ?: return
+        Streams.tracks[t.key] = t
+        val uri = Offline.uri(t.key) ?: Uri.parse("bh://t/" + Uri.encode(t.key))
+        val p = exo()
+        p.setMediaItem(MediaItem.Builder().setUri(uri).setCustomCacheKey(t.key).build())
+        p.prepare()
+        p.play()
     }
 
     fun nextRound() {
@@ -251,12 +281,6 @@ class GuessState(private val vm: AppState) {
             val start = runCatching { core("guess_start") { put("track", d.pool[n]) }.jsonPrimitive.content.toDouble() }.getOrDefault(30.0)
             runCatching { core("duel_round") { put("n", JsonPrimitive(n)); put("start", JsonPrimitive(start)) } }
         }
-    }
-
-    fun playFull() {
-        val t = cur ?: return
-        player?.stop()
-        vm.play(listOf(t), 0)
     }
 
     fun change() {

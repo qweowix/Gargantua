@@ -1642,3 +1642,9 @@ msgstr "Počúvať celú"
 
 msgid "Лучшая серия: {}"
 msgstr "Najlepšia séria: {}"
+
+msgid "Играет целиком — до следующей песни"
+msgstr "Hrá celá — do ďalšej piesne"
+
+msgid "Название — ищу среди песен игры…"
+msgstr "Názov — hľadám medzi piesňami hry…"
