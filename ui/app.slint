@@ -1668,6 +1668,7 @@ export struct UNode {
     dim: bool,
     lab: bool, // подписывать
     id: int, // номер звезды
+    big: bool, // из самых слушаемых: с лучами-бликами
 }
 
 // туманность жанра
@@ -1725,9 +1726,23 @@ export struct RadarLabel {
 
 export global Uni {
     in property <[UNode]> nodes;
+    in property <[UNode]> bright; // самые слушаемые на экране — с лучами-бликами (короткий список, не у каждой звезды)
     in property <[UNeb]> nebulas;
     in property <float> bg-t; // секунды — фон плывёт (тикает таймер Rust, 15 кадров/с)
     in property <string> dust; // звёздная пыль: кружки путём SVG, координаты 0..4000
+    in property <string> dust-far; // дальний слой: мельче, тусклее, плывёт медленнее
+    // спрайты звёзд (белые, цвет — colorize): ореол, горячее ядро, лучи блика
+    in property <image> glow;
+    in property <image> core;
+    in property <image> ray-h;
+    in property <image> ray-v;
+    in property <image> cloud-a; // облака туманностей
+    in property <image> cloud-b;
+    // выбранная звезда: вокруг неё расходятся кольца, имя — в стеклянной плашке
+    in property <bool> sel-on;
+    in property <float> sel-x;
+    in property <float> sel-y;
+    in property <float> sel-r;
     // линии путями SVG в координатах неба: факты, чужой алгоритм, вычислено, подсветка
     in property <[string]> paths: ["", "", "", ""];
     in-out property <float> cam-x;
@@ -1858,9 +1873,10 @@ component UniverseMap inherits Rectangle {
     property <bool> dragged;
     // радиус на экране растёт медленнее приближения: издалека искры, вблизи — шары
     property <float> rk: pow(Uni.zoom, 0.55);
-    background: #07060b;
+    // глубокий космос: сверху чуть светлее, книзу темнее
+    background: @linear-gradient(180deg, #0c0a16 0%, #07060b 55%, #050409 100%);
 
-    // фон: три пятна цветов темы медленно плывут, пыль чуть сдвигается вслед за картой (глубина)
+    // фон: три пятна цветов темы медленно плывут, пыль — двумя слоями с разной глубиной
     property <float> t: Uni.bg-t;
     property <length> big: max(root.width, root.height);
     for blob[i] in [Theme.c1, Theme.c2, Theme.glow]: Rectangle {
@@ -1869,14 +1885,25 @@ component UniverseMap inherits Rectangle {
         height: self.width;
         x: root.width * (i == 0 ? 0.25 : i == 1 ? 0.75 : 0.5) - self.width / 2 + root.width * 0.12 * sin((root.t / (37 + i * 11) * 360 + self.ph * 57) * 1deg);
         y: root.height * (i == 0 ? 0.3 : i == 1 ? 0.75 : 0.5) - self.height / 2 + root.height * 0.12 * cos((root.t / (43 + i * 7) * 360 + self.ph * 31) * 1deg);
-        background: @radial-gradient(circle, blob.transparentize(i == 2 ? 0.86 : 0.8) 0%, blob.transparentize(0.94) 40%, blob.transparentize(1) 70%);
+        background: @radial-gradient(circle, blob.transparentize(i == 2 ? 0.86 : 0.82) 0%, blob.transparentize(0.95) 40%, blob.transparentize(1) 70%);
+    }
+
+    Path {
+        width: root.width;
+        height: root.height;
+        commands: Uni.dust-far;
+        fill: #ffffff1c;
+        viewbox-x: Math.mod(Math.mod(Uni.cam-x * 0.05, 2000) + 2000, 2000) + 1000 - root.width / 1px / 2;
+        viewbox-y: Math.mod(Math.mod(Uni.cam-y * 0.05, 2000) + 2000, 2000) + 1000 - root.height / 1px / 2;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
     }
 
     Path {
         width: root.width;
         height: root.height;
         commands: Uni.dust;
-        fill: #ffffff2e;
+        fill: #ffffff33;
         viewbox-x: Math.mod(Math.mod(Uni.cam-x * 0.12, 2000) + 2000, 2000) + 1000 - root.width / 1px / 2;
         viewbox-y: Math.mod(Math.mod(Uni.cam-y * 0.12, 2000) + 2000, 2000) + 1000 - root.height / 1px / 2;
         viewbox-width: root.width / 1px;
@@ -1912,8 +1939,8 @@ component UniverseMap inherits Rectangle {
         }
     }
 
-    // туманности: мягкое пятно цвета жанра и название по центру
-    for b in Uni.nebulas: Rectangle {
+    // туманности: облако цвета жанра неровной формы — одна готовая картинка (дешевле градиента), имя — заглавными в разрядку
+    for b[i] in Uni.nebulas: Rectangle {
         property <length> rr: max(30px, b.r * Uni.zoom * 1px);
         property <length> sx: (b.x - Uni.cam-x) * Uni.zoom * 1px + root.width / 2;
         property <length> sy: (b.y - Uni.cam-y) * Uni.zoom * 1px + root.height / 2;
@@ -1922,18 +1949,40 @@ component UniverseMap inherits Rectangle {
         width: self.rr * 2;
         height: self.rr * 2;
         visible: self.sx + self.rr > 0 && self.sx - self.rr < root.width && self.sy + self.rr > 0 && self.sy - self.rr < root.height;
-        border-radius: self.rr;
-        background: @radial-gradient(circle, b.c.transparentize(0.84) 0%, b.c.transparentize(0.93) 45%, b.c.transparentize(1) 70%);
+        Image {
+            width: parent.width * 1.1;
+            height: self.width;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            source: Math.mod(i, 2) == 0 ? Uni.cloud-a : Uni.cloud-b;
+            image-fit: fill;
+            colorize: b.c.transparentize(0.83);
+        }
+
         Text {
-            y: max(6px, parent.height * 0.5 - parent.rr * 0.62);
+            y: max(6px, parent.height * 0.5 - parent.rr * 0.6);
             width: parent.width;
             horizontal-alignment: center;
             text: b.label;
-            color: b.c.transparentize(0.25);
-            font-size: max(12px, min(26px, parent.rr / 7));
-            font-weight: 800;
-            letter-spacing: 1px;
+            color: b.c.mix(#ffffff, 0.45).transparentize(0.3);
+            font-size: max(10px, min(17px, parent.rr / 9));
+            font-weight: 700;
+            letter-spacing: max(2px, min(5px, parent.rr / 45));
         }
+    }
+
+    // линии: тонкие и тихие; связи выбранной — со свечением (широкий бледный след под тонкой яркой линией)
+    Path {
+        width: root.width;
+        height: root.height;
+        commands: Uni.paths[3];
+        fill: transparent;
+        stroke: Theme.soft2.transparentize(0.84);
+        stroke-width: 6px;
+        viewbox-x: Uni.cam-x - root.width / 1px / 2 / Uni.zoom;
+        viewbox-y: Uni.cam-y - root.height / 1px / 2 / Uni.zoom;
+        viewbox-width: root.width / 1px / Uni.zoom;
+        viewbox-height: root.height / 1px / Uni.zoom;
     }
 
     for p[i] in Uni.paths: Path {
@@ -1941,39 +1990,96 @@ component UniverseMap inherits Rectangle {
         height: root.height;
         commands: p;
         fill: transparent;
-        stroke: i == 0 ? #e9e4ff38 : i == 1 ? #60a5fa47 : i == 2 ? #fb923c47 : Theme.soft2.transparentize(0.1);
-        stroke-width: i == 3 ? 2px : 1px;
+        stroke: i == 0 ? #e9e4ff30 : i == 1 ? #60a5fa3d : i == 2 ? #fb923c3d : Theme.soft2.transparentize(0.05);
+        stroke-width: i == 3 ? 1.6px : 0.9px;
         viewbox-x: Uni.cam-x - root.width / 1px / 2 / Uni.zoom;
         viewbox-y: Uni.cam-y - root.height / 1px / 2 / Uni.zoom;
         viewbox-width: root.width / 1px / Uni.zoom;
         viewbox-height: root.height / 1px / Uni.zoom;
     }
 
+    // лучи-блики самых слушаемых, чуть мерцают: отдельный короткий список под звёздами — время читают только они
+    for n in Uni.bright: Rectangle {
+        property <length> rr: max(2.5px, n.r * root.rk * 1px);
+        property <length> sx: (n.x - Uni.cam-x) * Uni.zoom * 1px + root.width / 2;
+        property <length> sy: (n.y - Uni.cam-y) * Uni.zoom * 1px + root.height / 2;
+        property <float> tw: 0.84 + 0.16 * sin((root.t * 1.6 + n.id * 1.7) * 1rad);
+        x: self.sx;
+        y: self.sy;
+        width: 0px;
+        height: 0px;
+        visible: self.sx > -120px && self.sx < root.width + 120px && self.sy > -120px && self.sy < root.height + 120px;
+        Image {
+            width: parent.rr * 15 * parent.tw;
+            height: max(3px, parent.rr * 0.64);
+            x: -self.width / 2;
+            y: -self.height / 2;
+            source: Uni.ray-h;
+            image-fit: fill;
+            colorize: n.c.mix(#ffffff, 0.45).transparentize(0.25);
+        }
+
+        Image {
+            width: max(3px, parent.rr * 0.64);
+            height: parent.rr * 12 * (1.84 - parent.tw);
+            x: -self.width / 2;
+            y: -self.height / 2;
+            source: Uni.ray-v;
+            image-fit: fill;
+            colorize: n.c.mix(#ffffff, 0.45).transparentize(0.25);
+        }
+    }
+
+    // звёзды: ореол цвета жанра, тело, горячее белое ядро.
+    // Всё — спрайты с colorize и сплошные круги: ни градиентов, ни opacity (по слою на звезду — тормоза).
+    // Притушенные — прозрачностью цвета; детали прячет visible, а не if: выделение не пересоздаёт сотни элементов
     for n in Uni.nodes: Rectangle {
         property <length> rr: max(2.5px, n.r * root.rk * 1px);
         property <length> sx: (n.x - Uni.cam-x) * Uni.zoom * 1px + root.width / 2;
         property <length> sy: (n.y - Uni.cam-y) * Uni.zoom * 1px + root.height / 2;
+        property <bool> lit: !n.dim;
+        property <float> hk: nta.has-hover ? 1.3 : 1;
+        animate hk { duration: 180ms; easing: ease-out; }
         x: self.sx - self.rr;
         y: self.sy - self.rr;
         width: self.rr * 2;
         height: self.rr * 2;
-        visible: self.sx > -40px && self.sx < root.width + 40px && self.sy > -40px && self.sy < root.height + 40px;
-        border-radius: self.rr;
-        // сплошной цвет: градиент внутри скругления рисуется квадратом и стоит дорого;
-        // притушенные — прозрачностью цвета, а не opacity (opacity — по слою на звезду, всё тормозит)
-        background: n.dim ? n.c.transparentize(0.82) : n.c;
-        // сосед загорается плавно, когда до него дошла линия
-        animate background { duration: 220ms; }
-        // светлое ядро — звезда «светится»
-        if !n.dim && self.rr >= 4px: Rectangle {
-            width: parent.width * 0.42;
+        visible: self.sx > -60px && self.sx < root.width + 60px && self.sy > -60px && self.sy < root.height + 60px;
+        Image {
+            visible: parent.lit;
+            width: parent.width * (n.big ? 3.8 : parent.rr < 4px ? 2.4 : 3) * parent.hk * (n.sel ? 1.25 : 1);
             height: self.width;
-            border-radius: self.width / 2;
-            background: #ffffffd9;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            source: Uni.glow;
+            image-fit: fill;
+            colorize: n.c.transparentize(n.sel ? 0.3 : n.big ? 0.45 : 0.6);
         }
-        border-width: n.sel ? 2px : 0px;
-        border-color: #ffffff;
+
+        Rectangle {
+            border-radius: self.width / 2;
+            background: n.dim ? n.c.transparentize(0.82) : n.c;
+            // сосед загорается плавно, когда до него дошла линия
+            animate background { duration: 220ms; }
+        }
+
+        Image {
+            visible: parent.lit && parent.rr >= 4px;
+            width: parent.width * 0.8;
+            height: self.width;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            source: Uni.core;
+            image-fit: fill;
+            colorize: #fffffff0;
+        }
+
         nta := TouchArea {
+            // мелкие звёзды ловятся не только точкой: зона нажатия не меньше 18 px
+            width: max(18px, parent.width);
+            height: self.width;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
             // тащили звезду — отпускание её не открывает; сдвиг меньше 4 px — это ещё щелчок, звезда стоит
             property <bool> drg;
             mouse-cursor: self.drg ? MouseCursor.grabbing : MouseCursor.pointer;
@@ -2004,35 +2110,87 @@ component UniverseMap inherits Rectangle {
             }
         }
 
-        // ореол у выбранной и под мышью
-        if n.sel || nta.has-hover: Rectangle {
-            x: -6px;
-            y: -6px;
-            width: parent.width + 12px;
-            height: parent.height + 12px;
+        // тонкое кольцо у выбранной и под мышью
+        Rectangle {
+            visible: n.sel || nta.has-hover;
+            x: -5px;
+            y: -5px;
+            width: parent.width + 10px;
+            height: parent.height + 10px;
             border-radius: self.width / 2;
-            border-width: 1.5px;
-            border-color: n.c.transparentize(0.3);
+            border-width: 1.2px;
+            border-color: n.sel ? #ffffffcc : n.c.transparentize(0.35);
         }
     }
 
-    // подписи — поверх всех звёзд
+    property <length> sel-rr: max(2.5px, Uni.sel-r * root.rk * 1px);
+    property <length> sel-sx: (Uni.sel-x - Uni.cam-x) * Uni.zoom * 1px + root.width / 2;
+    property <length> sel-sy: (Uni.sel-y - Uni.cam-y) * Uni.zoom * 1px + root.height / 2;
+
+    // выбранная: от неё расходятся два кольца, как пульс
+    if Uni.sel-on: Rectangle {
+        for k[j] in 2: Rectangle {
+            property <float> ph: Math.mod(root.t * 0.55 + j * 0.5, 1);
+            width: root.sel-rr * 2 + 12px + root.sel-rr * 7 * self.ph + 40px * self.ph;
+            height: self.width;
+            x: root.sel-sx - self.width / 2;
+            y: root.sel-sy - self.height / 2;
+            border-radius: self.width / 2;
+            border-width: 1.5px;
+            border-color: Uni.sel-color.mix(#ffffff, 0.6).transparentize(0.25 + 0.75 * self.ph);
+        }
+    }
+
+    // подписи — поверх всех звёзд, с тёмной обводкой: читаются и на ярком
     for n in Uni.nodes: Text {
         property <length> rr: max(2.5px, n.r * root.rk * 1px);
         property <length> sx: (n.x - Uni.cam-x) * Uni.zoom * 1px + root.width / 2;
         property <length> sy: (n.y - Uni.cam-y) * Uni.zoom * 1px + root.height / 2;
-        visible: n.lab && !n.dim && self.sx > -100px && self.sx < root.width + 100px && self.sy > -40px && self.sy < root.height + 40px;
+        visible: n.lab && !n.dim && !n.sel && self.sx > -100px && self.sx < root.width + 100px && self.sy > -40px && self.sy < root.height + 40px;
         x: self.sx - self.width / 2;
-        y: self.sy + self.rr + 4px;
+        y: self.sy + self.rr + 5px;
         width: min(150px, self.preferred-width);
         text: n.label;
-        color: n.sel ? #ffffff : #ece8f6e6;
-        font-size: n.sel ? 13px : 11px;
-        font-weight: n.sel ? 700 : 500;
+        color: n.big ? #ffffff : #ece8f6e0;
+        font-size: n.big ? 12px : 11px;
+        font-weight: n.big ? 650 : 500;
+        stroke: #07060bc0;
+        stroke-width: 3px;
+        stroke-style: outside;
         overflow: elide;
         horizontal-alignment: center;
     }
+
+    // имя выбранной — в стеклянной плашке под звездой
+    if Uni.sel-on: Rectangle {
+        y: root.sel-sy + root.sel-rr + 9px;
+        x: root.sel-sx - self.width / 2;
+        height: 26px;
+        width: min(220px, sl.preferred-width + 24px);
+        border-radius: 13px;
+        background: #15122200;
+        Rectangle {
+            border-radius: 13px;
+            background: #151222d9;
+            border-width: 1px;
+            border-color: #ffffff26;
+            drop-shadow-blur: 14px;
+            drop-shadow-color: #00000080;
+        }
+
+        sl := Text {
+            width: parent.width - 20px;
+            text: Uni.sel-name;
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
 }
+
 
 // строка связи или трека в панели
 component UniRelRow inherits Rectangle {

@@ -127,9 +127,11 @@ pub struct View {
     /// «Мой вкус»: id узлов артистов и жанров из отпечатка (переживают перестройку графа)
     taste_ids: Vec<String>,
     taste_on: bool,
-    /// фон: таймер 15 кадров/с, пока страница на экране
+    /// фон: таймер 15 кадров/с (30 — пока выбрана звезда: вокруг неё расходятся кольца), пока страница на экране
     bg: Timer,
-    bg_t: f32,
+    bg_t0: Option<std::time::Instant>,
+    bg_fast: bool,
+    bg_fn: Option<fn()>,
     /// выбрали звезду: её линии растут к соседям (0..1, 1 — дорисованы), соседи загораются, когда линия дошла
     grow: f32,
     grow_timer: Timer,
@@ -144,17 +146,67 @@ fn ease_out(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(3)
 }
 
-/// Звёздная пыль: кружки с периодом 2000 по обеим осям (повторены сеткой 4×4, чтобы перенос был без шва)
+/// Спрайт: белая картинка с прозрачностью alpha(u, v), u и v — от -1 до 1. Цвет звезде даёт colorize:
+/// одна картинка на всех дешевле градиента у каждой звезды и в любом рендере круглая
+fn sprite(w: u32, h: u32, alpha: impl Fn(f32, f32) -> f32) -> slint::Image {
+    let mut buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(w, h);
+    for (i, px) in buf.make_mut_slice().iter_mut().enumerate() {
+        let (x, y) = ((i as u32 % w) as f32, (i as u32 / w) as f32);
+        let (u, v) = ((x + 0.5) / w as f32 * 2.0 - 1.0, (y + 0.5) / h as f32 * 2.0 - 1.0);
+        let a = (alpha(u, v).clamp(0.0, 1.0) * 255.0).round() as u8;
+        *px = slint::Rgba8Pixel { r: 255, g: 255, b: 255, a };
+    }
+    slint::Image::from_rgba8(buf)
+}
+
+fn smooth(e0: f32, e1: f32, x: f32) -> f32 {
+    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Ореол (свечение до самого края: прозрачные поля — зря закрашенные пиксели), горячее ядро (белое плато,
+/// тает к краю), луч блика — горизонтальный и вертикальный, и два облака туманностей неровной формы
+fn sprites() -> [slint::Image; 6] {
+    let glow = sprite(96, 96, |u, v| {
+        let d = (u * u + v * v).sqrt();
+        ((-d * d * 2.6).exp() * 0.8 + (-d * 6.0).exp() * 0.2) * (1.0 - smooth(0.7, 1.0, d))
+    });
+    let core = sprite(64, 64, |u, v| 1.0 - smooth(0.25, 1.0, (u * u + v * v).sqrt()));
+    let ray = |along: f32, across: f32| (1.0 - along.abs()).powf(2.6) * (-(across * 2.4).powi(2)).exp();
+    let h = sprite(256, 16, |u, v| ray(u, v));
+    let v = sprite(16, 256, |u, v| ray(v, u));
+    // облако — несколько мягких комков: туманность не идеальный круг, а рисуется одной картинкой
+    let cloud = |lumps: [(f32, f32, f32, f32); 4]| {
+        sprite(160, 160, move |u, v| {
+            let a: f32 = lumps.iter().map(|&(x, y, r, w)| w * (-((u - x).powi(2) + (v - y).powi(2)) / (r * r)).exp()).sum();
+            a.min(1.0) * (1.0 - smooth(0.75, 1.0, (u * u + v * v).sqrt()))
+        })
+    };
+    let ca = cloud([(0.0, 0.0, 0.42, 0.9), (0.3, -0.16, 0.3, 0.55), (-0.28, 0.2, 0.28, 0.5), (0.1, 0.34, 0.24, 0.35)]);
+    let cb = cloud([(0.0, 0.0, 0.4, 0.9), (-0.32, -0.12, 0.3, 0.55), (0.26, 0.24, 0.3, 0.45), (-0.06, -0.36, 0.22, 0.35)]);
+    [glow, core, h, v, ca, cb]
+}
+
+/// Звёздная пыль: кружки с периодом 2000 по обеим осям (повторены сеткой 4×4, чтобы перенос был без шва).
+/// Два слоя: ближний и дальний — мельче, тусклее и плывёт медленнее (глубина)
 fn dust() -> String {
+    dust_layer(0x2545F491, 140, 0.6, 1.1)
+}
+
+fn dust_far() -> String {
+    dust_layer(0x9E3779B9, 70, 0.35, 0.6)
+}
+
+fn dust_layer(seed0: u32, count: usize, rmin: f32, rspan: f32) -> String {
     use std::fmt::Write;
-    let mut seed = 0x2545F491u32;
+    let mut seed = seed0;
     let mut rnd = || {
         seed ^= seed << 13;
         seed ^= seed >> 17;
         seed ^= seed << 5;
         seed as f32 / u32::MAX as f32
     };
-    let dots: Vec<(f32, f32, f32)> = (0..140).map(|_| (rnd() * 2000.0, rnd() * 2000.0, 0.6 + rnd() * 1.1)).collect();
+    let dots: Vec<(f32, f32, f32)> = (0..count).map(|_| (rnd() * 2000.0, rnd() * 2000.0, rmin + rnd() * rspan)).collect();
     let mut s = String::new();
     for ox in [-2000.0f32, 0.0, 2000.0, 4000.0] {
         for oy in [-2000.0f32, 0.0, 2000.0, 4000.0] {
@@ -191,7 +243,9 @@ impl Default for View {
             taste_ids: Vec::new(),
             taste_on: false,
             bg: Timer::default(),
-            bg_t: 0.0,
+            bg_t0: None,
+            bg_fast: false,
+            bg_fn: None,
             grow: 1.0,
             grow_timer: Timer::default(),
             grow_fn: None,
@@ -201,6 +255,9 @@ impl Default for View {
 
 /// Сколько сильнейших линий рисовать у каждой звезды
 const PER_STAR: usize = 3;
+
+/// У скольких самых слушаемых звёзд лучи-блики
+const BIG_STARS: usize = 12;
 
 impl View {
     fn uni<'a>(&self, ui: &'a AppWindow) -> Uni<'a> {
@@ -219,8 +276,10 @@ impl View {
         self.dna_cmp = c.and_then(|id| u.g.find(&id));
         self.bridges.clear();
         self.br_shown = None;
+        self.assets(ui);
         let uni = self.uni(ui);
-        let nebs: Vec<UNeb> = u.nebulas.iter().map(|n| UNeb { x: n.x, y: n.y, r: n.r, c: color(n.color), label: n.name.as_str().into() }).collect();
+        // подписи туманностей — заглавными в разрядку, как на картах Apple
+        let nebs: Vec<UNeb> = u.nebulas.iter().map(|n| UNeb { x: n.x, y: n.y, r: n.r, c: color(n.color), label: n.name.to_uppercase().into() }).collect();
         uni.set_nebulas(model(nebs));
         uni.set_nodes(self.nodes.clone().into());
         uni.set_bridges(model(Vec::new()));
@@ -238,12 +297,27 @@ impl View {
     /// Фон плывёт, пока страница открыта (в лайт-режиме — стоит)
     pub fn start_bg(&mut self, ui: &AppWindow, tick: fn(), grow: fn()) {
         self.grow_fn = Some(grow);
+        self.bg_fn = Some(tick);
+        self.assets(ui);
+        if !ui.get_lite() && !self.bg.running() {
+            self.bg_fast = false;
+            self.bg.start(TimerMode::Repeated, Duration::from_millis(66), tick);
+        }
+    }
+
+    /// Пыль и спрайты звёзд — один раз
+    fn assets(&self, ui: &AppWindow) {
         let uni = self.uni(ui);
         if uni.get_dust().is_empty() {
             uni.set_dust(dust().into());
-        }
-        if !ui.get_lite() && !self.bg.running() {
-            self.bg.start(TimerMode::Repeated, Duration::from_millis(66), tick);
+            uni.set_dust_far(dust_far().into());
+            let [glow, core, h, v, ca, cb] = sprites();
+            uni.set_glow(glow);
+            uni.set_core(core);
+            uni.set_ray_h(h);
+            uni.set_ray_v(v);
+            uni.set_cloud_a(ca);
+            uni.set_cloud_b(cb);
         }
     }
 
@@ -252,8 +326,31 @@ impl View {
             self.bg.stop();
             return;
         }
-        self.bg_t += 0.066;
-        self.uni(ui).set_bg_t(self.bg_t);
+        // время настоящее, а не счётчик тиков: от частоты таймера скорость не зависит
+        let t0 = *self.bg_t0.get_or_insert_with(std::time::Instant::now);
+        self.uni(ui).set_bg_t(t0.elapsed().as_secs_f32());
+        // выбрана звезда — 30 кадров/с, чтобы кольца вокруг неё шли плавно; иначе фону хватает 15
+        let fast = self.sel.is_some();
+        if fast != self.bg_fast {
+            if let Some(f) = self.bg_fn {
+                self.bg_fast = fast;
+                self.bg.start(TimerMode::Repeated, Duration::from_millis(if fast { 33 } else { 66 }), f);
+            }
+        }
+    }
+
+    /// Выбранная звезда для колец и плашки с именем: один элемент вместо проверки в каждой звезде
+    fn sel_mark(&self, ui: &AppWindow) {
+        let uni = self.uni(ui);
+        match (&self.u, self.sel) {
+            (Some(u), Some(s)) if s < u.pos.len() => {
+                uni.set_sel_x(u.pos[s].0);
+                uni.set_sel_y(u.pos[s].1);
+                uni.set_sel_r(u.radius[s]);
+                uni.set_sel_on(true);
+            }
+            _ => uni.set_sel_on(false),
+        }
     }
 
     /// Идёт рост линий выбранной звезды
@@ -402,8 +499,12 @@ impl View {
                 dim: dim_of(s),
                 lab: lab.contains(&s),
                 id: s as i32,
+                // самые слушаемые (звёзды отсортированы по прослушиванию) — с лучами-бликами
+                big: s < BIG_STARS,
             })
             .collect();
+        self.sel_mark(ui);
+        uni.set_bright(model(rows.iter().filter(|r| r.big && !r.dim).cloned().collect()));
         // те же звёзды — меняем только изменившиеся строки: пересоздание сотен элементов и давало лаг при выделении
         if vis == self.vis && self.nodes.row_count() == rows.len() {
             for (i, r) in rows.into_iter().enumerate() {
@@ -699,6 +800,18 @@ impl View {
             p[3] = self.hi_grow(&hi, ease_out(self.grow));
         }
         ui.global::<Uni>().set_paths(model(p.into_iter().map(SharedString::from).collect()));
+        if self.sel == Some(s) {
+            self.sel_mark(ui);
+        }
+        if s < BIG_STARS {
+            let bright = ui.global::<Uni>().get_bright();
+            for i in 0..bright.row_count() {
+                if let Some(mut r) = bright.row_data(i).filter(|r| r.id == s as i32) {
+                    (r.x, r.y) = (x, y);
+                    bright.set_row_data(i, r);
+                }
+            }
+        }
     }
 
     pub fn search(&self, ui: &AppWindow, q: &str) {

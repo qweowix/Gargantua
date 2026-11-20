@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -229,8 +230,31 @@ fun UniverseScreen(vm: AppState) {
     }
     val drift = androidx.compose.animation.core.rememberInfiniteTransition(label = "sky")
     val bgT by drift.animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable(tween(60_000, easing = androidx.compose.animation.core.LinearEasing)), label = "t")
+    // секунды для мерцания лучей и колец у выбранной: читаются только верхним слоем, где всего десяток штрихов
+    val clock = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(lite) {
+        if (lite) { clock.floatValue = 0f; return@LaunchedEffect }
+        val t0 = androidx.compose.runtime.withFrameNanos { it }
+        while (true) androidx.compose.runtime.withFrameNanos { clock.floatValue = (it - t0) / 1e9f }
+    }
+    // звёздная пыль: два слоя, дальний мельче, тусклее и плывёт медленнее (глубина); период 2000 по обеим осям
+    val dust = remember {
+        var seed = 0x2545F491
+        fun rnd(): Float {
+            seed = seed xor (seed shl 13); seed = seed xor (seed ushr 17); seed = seed xor (seed shl 5)
+            return (seed.toLong() and 0xFFFFFFFFL).toFloat() / 4294967295f
+        }
+        List(2) { layer -> List(if (layer == 0) 110 else 140) { floatArrayOf(rnd() * 2000f, rnd() * 2000f, if (layer == 0) 0.35f + rnd() * 0.6f else 0.6f + rnd() * 1.1f) } }
+    }
+    val halo = remember {
+        android.graphics.Paint().apply {
+            isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER
+            style = android.graphics.Paint.Style.STROKE; strokeJoin = android.graphics.Paint.Join.ROUND; color = 0xC007060B.toInt()
+        }
+    }
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF07060B))) {
+    // глубокий космос: сверху чуть светлее, книзу темнее
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0C0A16), Color(0xFF07060B), Color(0xFF050409))))) {
         Canvas(Modifier.fillMaxSize()) {
             val t = if (lite) 0f else bgT
             val big = maxOf(size.width, size.height)
@@ -240,7 +264,27 @@ fun UniverseScreen(vm: AppState) {
                     size.width * at.first + size.width * 0.12f * sin(Math.toRadians((t * (1 + i * 0.3) + i * 120).toDouble())).toFloat(),
                     size.height * at.second + size.height * 0.12f * cos(Math.toRadians((t * (1.2 + i * 0.2) + i * 70).toDouble())).toFloat(),
                 )
-                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(c.copy(alpha = if (i == 2) 0.35f else 0.2f), c.copy(alpha = 0.06f), Color.Transparent), o, r), r, o)
+                drawCircle(Brush.radialGradient(listOf(c.copy(alpha = if (i == 2) 0.35f else 0.18f), c.copy(alpha = 0.05f), Color.Transparent), o, r), r, o)
+            }
+        }
+        // пыль — отдельный слой: перерисовывается только при сдвиге карты
+        Canvas(Modifier.fillMaxSize()) {
+            dust.forEachIndexed { layer, dots ->
+                val k = if (layer == 0) 0.05f else 0.12f
+                val col = Color.White.copy(alpha = if (layer == 0) 0.11f else 0.2f)
+                val ox = -((((cx * k) % 2000f) + 2000f) % 2000f)
+                val oy = -((((cy * k) % 2000f) + 2000f) % 2000f)
+                for (d in dots) {
+                    var x = d[0] + ox
+                    while (x < size.width + 4f) {
+                        var y = d[1] + oy
+                        while (y < size.height + 4f) {
+                            if (x > -4f && y > -4f) drawCircle(col, d[2] * density, Offset(x, y))
+                            y += 2000f
+                        }
+                        x += 2000f
+                    }
+                }
             }
         }
         Canvas(
@@ -269,33 +313,43 @@ fun UniverseScreen(vm: AppState) {
             fun sx(x: Float) = (x - cx) * zoom + size.width / 2
             fun sy(y: Float) = (y - cy) * zoom + size.height / 2
             val paint = android.graphics.Paint().apply { isAntiAlias = true; textAlign = android.graphics.Paint.Align.CENTER }
-            // туманности жанров
-            data?.nebulas?.forEach { n ->
+            // туманности: два облака цвета жанра (второе смещено — не идеальный круг), имя — заглавными в разрядку
+            data?.nebulas?.forEachIndexed { ni, n ->
                 val r = maxOf(30.dp.toPx(), n.r * zoom)
                 val o = Offset(sx(n.x), sy(n.y))
-                if (o.x + r < 0 || o.x - r > size.width || o.y + r < 0 || o.y - r > size.height) return@forEach
+                if (o.x + r * 1.4f < 0 || o.x - r * 1.4f > size.width || o.y + r * 1.4f < 0 || o.y - r * 1.4f > size.height) return@forEachIndexed
                 val c = rgb(n.c)
-                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(c.copy(alpha = 0.16f), c.copy(alpha = 0.07f), Color.Transparent), o, r), r, o)
-                paint.color = c.copy(alpha = 0.75f).toArgb(); paint.textSize = (r / 7f).coerceIn(nebPx * 0.8f, nebPx * 1.8f); paint.isFakeBoldText = true
-                drawContext.canvas.nativeCanvas.drawText(n.n, o.x, o.y - r * 0.6f, paint)
+                drawCircle(Brush.radialGradient(listOf(c.copy(alpha = 0.15f), c.copy(alpha = 0.07f), Color.Transparent), o, r), r, o)
+                val ph = ni * 2.4f
+                val o2 = Offset(o.x + r * 0.42f * cos(ph), o.y + r * 0.3f * sin(ph))
+                val c2 = androidx.compose.ui.graphics.lerp(c, acc.c2, 0.3f)
+                drawCircle(Brush.radialGradient(listOf(c2.copy(alpha = 0.12f), c2.copy(alpha = 0.04f), Color.Transparent), o2, r * 0.78f), r * 0.78f, o2)
+                paint.color = androidx.compose.ui.graphics.lerp(c, Color.White, 0.45f).copy(alpha = 0.7f).toArgb()
+                paint.textSize = (r / 9f).coerceIn(nebPx * 0.65f, nebPx * 1.15f); paint.isFakeBoldText = true; paint.letterSpacing = 0.22f
+                drawContext.canvas.nativeCanvas.drawText(n.n.uppercase(), o.x, o.y - r * 0.6f, paint)
             }
-            // линии: у каждой звезды — её самые сильные; в фокусе — только связи выбранной (или моста)
+            paint.letterSpacing = 0f
+            // линии: тонкие и тихие; в фокусе — только связи выбранной (или моста), со свечением
             val on = BooleanArray(stars.size)
             visible.forEach { on[it.i] = true }
             val links = data?.links ?: emptyList()
-            fun line(li: Int, hi: Boolean) {
+            fun glowLine(a: Offset, b: Offset) {
+                drawLine(LocalAccentColor.copy(alpha = 0.16f), a, b, 9f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(LocalAccentColor.copy(alpha = 0.85f), a, b, 2.5f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+            fun line(li: Int) {
                 val l = links.getOrNull(li) ?: return
                 val a = l[0].toInt(); val b = l[1].toInt()
                 if (a !in stars.indices || b !in stars.indices || !on[a] || !on[b]) return
                 val sa = stars[a]; val sb = stars[b]
-                drawLine(if (hi) LocalAccentColor else originColor(l[2].toInt()), Offset(sx(sa.x), sy(sa.y)), Offset(sx(sb.x), sy(sb.y)), if (hi) 4f else 1.5f)
+                drawLine(originColor(l[2].toInt()), Offset(sx(sa.x), sy(sa.y)), Offset(sx(sb.x), sy(sb.y)), 1.2f)
             }
             if (focus.isEmpty()) {
                 val drawn = HashSet<Int>()
-                visible.forEach { s -> s.top.forEach { li -> if (drawn.add(li)) line(li, false) } }
+                visible.forEach { s -> s.top.forEach { li -> if (drawn.add(li)) line(li) } }
             } else if (bridge != null) {
                 bridge.stars.zipWithNext().forEach { (a, b) ->
-                    if (a in stars.indices && b in stars.indices) drawLine(LocalAccentColor, Offset(sx(stars[a].x), sy(stars[a].y)), Offset(sx(stars[b].x), sy(stars[b].y)), 4f)
+                    if (a in stars.indices && b in stars.indices) glowLine(Offset(sx(stars[a].x), sy(stars[a].y)), Offset(sx(stars[b].x), sy(stars[b].y)))
                 }
             } else eco.sel?.let { s ->
                 val k = grow.value
@@ -303,18 +357,18 @@ fun UniverseScreen(vm: AppState) {
                     if (l.star !in stars.indices) return@forEach
                     val a = Offset(sx(stars[s].x), sy(stars[s].y))
                     val b = Offset(sx(stars[l.star].x), sy(stars[l.star].y))
-                    drawLine(LocalAccentColor.copy(alpha = 0.7f), a, a + (b - a) * k, 2.5f)
+                    glowLine(a, a + (b - a) * k)
                 }
             }
-            // звёзды и подписи
+            // звёзды: ореол цвета жанра, тело, горячее белое ядро (лучи и кольца — в верхнем слое)
             val rk = zoom.toDouble().pow(0.55).toFloat()
-            // подписи — важные первыми, только если не налезают на уже поставленные
-            val placed = ArrayList<android.graphics.RectF>()
+            val labels = ArrayList<Triple<UStar, Offset, Float>>()
             for (st in visible) {
                 val x = sx(st.x); val y = sy(st.y)
                 if (x < -60 || x > size.width + 60 || y < -60 || y > size.height + 60) continue
                 val r = maxOf(2.5.dp.toPx(), st.r * rk * density * 0.55f)
                 val c = rgb(st.c)
+                val o = Offset(x, y)
                 // сосед выбранной разгорается, пока к нему растёт линия
                 val neighbour = bridge == null && eco.sel != null && st.i != eco.sel && st.i in focus
                 val alpha = when {
@@ -324,18 +378,75 @@ fun UniverseScreen(vm: AppState) {
                     else -> 1f
                 }
                 val faded = alpha < 0.6f
-                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.White, c, c.copy(alpha = 0.85f)), Offset(x, y), r), r, Offset(x, y), alpha = alpha)
-                if (st.i == eco.sel) drawCircle(Color.White, r + 5f, Offset(x, y), style = Stroke(3f))
-                if (!faded && placed.size < 60) {
-                    val label = st.n.take(24)
-                    paint.textSize = labelPx; paint.isFakeBoldText = st.i == eco.sel
-                    val tw = paint.measureText(label)
-                    val rect = android.graphics.RectF(x - tw / 2, y + r + 2f, x + tw / 2, y + r + labelPx + 6f)
-                    if (st.i == eco.sel || placed.none { android.graphics.RectF.intersects(it, rect) }) {
-                        placed += rect
-                        paint.color = 0xE6ECE8F6.toInt()
-                        drawContext.canvas.nativeCanvas.drawText(label, x, y + r + labelPx + 2f, paint)
-                    }
+                if (!faded) {
+                    val selected = st.i == eco.sel
+                    val hr = r * (if (st.i < BIG_STARS) 3.2f else 2.6f) * (if (selected) 1.25f else 1f)
+                    val a0 = (if (selected) 0.75f else if (st.i < BIG_STARS) 0.6f else 0.45f) * alpha
+                    drawCircle(Brush.radialGradient(0f to c.copy(alpha = a0), 0.35f to c.copy(alpha = a0 * 0.35f), 1f to Color.Transparent, center = o, radius = hr), hr, o)
+                }
+                drawCircle(c, r, o, alpha = alpha)
+                if (!faded && r >= 3.dp.toPx()) drawCircle(Brush.radialGradient(0f to Color.White.copy(alpha = 0.95f), 0.45f to Color.White.copy(alpha = 0.7f), 1f to Color.Transparent, center = o, radius = r * 0.92f), r * 0.92f, o, alpha = alpha)
+                if (st.i == eco.sel) drawCircle(Color.White.copy(alpha = 0.8f), r + 5.dp.toPx(), o, style = Stroke(1.2.dp.toPx()))
+                if (!faded) labels += Triple(st, o, r)
+            }
+            // края темнее — глубина, взгляд в центр
+            drawRect(Brush.radialGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.42f), center = center, radius = maxOf(size.width, size.height) * 0.72f))
+            // подписи — важные первыми, только если не налезают; с тёмной обводкой, выбранная — в стеклянной плашке
+            val placed = ArrayList<android.graphics.RectF>()
+            halo.strokeWidth = 3.dp.toPx()
+            for ((st, o, r) in labels) {
+                if (placed.size >= 60 && st.i != eco.sel) continue
+                val label = st.n.take(24)
+                val selected = st.i == eco.sel
+                paint.textSize = if (selected) labelPx * 1.1f else if (st.i < BIG_STARS) labelPx * 1.08f else labelPx
+                paint.isFakeBoldText = selected || st.i < BIG_STARS
+                val tw = paint.measureText(label)
+                val top = o.y + r + (if (selected) 8.dp.toPx() else 3f)
+                val rect = android.graphics.RectF(o.x - tw / 2, top, o.x + tw / 2, top + labelPx + 6f)
+                if (!selected && placed.any { android.graphics.RectF.intersects(it, rect) }) continue
+                placed += rect
+                if (selected) {
+                    val padX = 12.dp.toPx(); val ph = labelPx + 12.dp.toPx()
+                    val corner = androidx.compose.ui.geometry.CornerRadius(ph / 2)
+                    drawRoundRect(Color(0xD9151222), Offset(o.x - tw / 2 - padX, top), androidx.compose.ui.geometry.Size(tw + padX * 2, ph), corner)
+                    drawRoundRect(Color(0x26FFFFFF), Offset(o.x - tw / 2 - padX, top), androidx.compose.ui.geometry.Size(tw + padX * 2, ph), corner, style = Stroke(1.dp.toPx()))
+                    paint.color = android.graphics.Color.WHITE
+                    drawContext.canvas.nativeCanvas.drawText(label, o.x, top + ph / 2 + paint.textSize / 3, paint)
+                } else {
+                    halo.textSize = paint.textSize; halo.isFakeBoldText = paint.isFakeBoldText
+                    drawContext.canvas.nativeCanvas.drawText(label, o.x, top + labelPx, halo)
+                    paint.color = if (st.i < BIG_STARS) android.graphics.Color.WHITE else 0xE6ECE8F6.toInt()
+                    drawContext.canvas.nativeCanvas.drawText(label, o.x, top + labelPx, paint)
+                }
+            }
+        }
+        // верхний слой, каждый кадр: лучи-блики самых слушаемых мерцают, от выбранной расходятся кольца
+        Canvas(Modifier.fillMaxSize()) {
+            val tt = clock.floatValue
+            fun sx(x: Float) = (x - cx) * zoom + size.width / 2
+            fun sy(y: Float) = (y - cy) * zoom + size.height / 2
+            val rk = zoom.toDouble().pow(0.55).toFloat()
+            for (st in visible) {
+                if (st.i >= BIG_STARS || (focus.isNotEmpty() && st.i !in focus)) continue
+                val x = sx(st.x); val y = sy(st.y)
+                if (x < -80 || x > size.width + 80 || y < -80 || y > size.height + 80) continue
+                val r = maxOf(2.5.dp.toPx(), st.r * rk * density * 0.55f)
+                val k = 0.84f + 0.16f * sin(tt * 1.6f + st.i * 1.7f)
+                val c = androidx.compose.ui.graphics.lerp(rgb(st.c), Color.White, 0.45f).copy(alpha = 0.75f)
+                val wid = maxOf(1.5.dp.toPx(), r * 0.3f)
+                val hx = r * 6f * k
+                drawLine(Brush.horizontalGradient(0f to Color.Transparent, 0.5f to c, 1f to Color.Transparent, startX = x - hx, endX = x + hx), Offset(x - hx, y), Offset(x + hx, y), wid)
+                val hy = r * 4.8f * (1.84f - k)
+                drawLine(Brush.verticalGradient(0f to Color.Transparent, 0.5f to c, 1f to Color.Transparent, startY = y - hy, endY = y + hy), Offset(x, y - hy), Offset(x, y + hy), wid)
+            }
+            if (bridge == null) eco.sel?.let { s ->
+                val st = stars.getOrNull(s) ?: return@let
+                val o = Offset(sx(st.x), sy(st.y))
+                val r = maxOf(2.5.dp.toPx(), st.r * rk * density * 0.55f)
+                val ring = androidx.compose.ui.graphics.lerp(rgb(st.c), Color.White, 0.6f)
+                for (j in 0..1) {
+                    val ph = (tt * 0.55f + j * 0.5f) % 1f
+                    drawCircle(ring.copy(alpha = 0.75f * (1 - ph)), r + 6.dp.toPx() + r * 3.5f * ph + 20.dp.toPx() * ph, o, style = Stroke(1.5.dp.toPx()))
                 }
             }
         }
@@ -444,6 +555,9 @@ fun UniverseScreen(vm: AppState) {
 
 /** Цвет подсветки моста — акцент темы (константа, чтобы не тянуть CompositionLocal в рисование) */
 private val LocalAccentColor = Color(0xFFFFD166)
+
+/** У скольких самых слушаемых звёзд лучи-блики (звёзды отсортированы по прослушиванию) — как на ПК */
+private const val BIG_STARS = 12
 
 @UnstableApi
 @Composable
